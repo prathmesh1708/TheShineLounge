@@ -11,6 +11,7 @@ import Home from './pages/Home';
 import CafePage from './cafe/pages/CafePage';
 import DriveThroughCafePage from './drive-through-cafe/pages/DriveThroughCafePage';
 import CarWashPage from './car-wash/pages/CarWashPage';
+import CarWashConfirmPage from './car-wash/pages/CarWashConfirmPage';
 import CarDetailingPage from './car-detailing/pages/CarDetailingPage';
 import DogWashPage from './dog-wash/pages/DogWashPage';
 import SalonPage from './salon/pages/SalonPage';
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/cafe" element={<CafePage />} />
               <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
               <Route path="/car-wash" element={<CarWashPage />} />
+              <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
               <Route path="/car-detailing" element={<CarDetailingPage />} />
               <Route path="/dog-wash" element={<DogWashPage />} />
               <Route path="/salon" element={<SalonPage />} />
