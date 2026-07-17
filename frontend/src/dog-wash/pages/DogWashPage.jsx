@@ -19,7 +19,7 @@ export default function DogWashPage() {
   const leftColRef = useEntrance({ x: -20, duration: 0.7, delay: loading ? 0 : 0.05 });
   const rightColRef = useEntrance({ x: 20, duration: 0.7, delay: loading ? 0 : 0.05 });
 
-  const durationOptions = data.durations.map(d => `${d.name} ($${d.price.toFixed(2)})`);
+  const durationOptions = data.durations.map(d => `${d.name} (₹${d.price.toFixed(2)})`);
 
   if (loading) {
     return (
@@ -53,7 +53,7 @@ export default function DogWashPage() {
             {data.durations.map((tile) => (
               <div key={tile.id} className="duration-tile">
                 <h3 className="tile-label">{tile.name.split(' (')[0]}</h3>
-                <span className="tile-price">${tile.price.toFixed(2)}</span>
+                <span className="tile-price">₹{tile.price.toFixed(2)}</span>
                 <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
                   {tile.name.includes('2 Minutes') ? 'Express rinse' : tile.name.includes('5 Minutes') ? 'Standard shampoo' : 'Condition + wash'}
                 </p>

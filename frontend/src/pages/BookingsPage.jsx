@@ -9,7 +9,7 @@ export default function BookingsPage() {
     {
       id: 'B-2026-9028',
       service: 'Car Wash',
-      package: 'Executive Wash ($18.00)',
+      package: 'Executive Wash (₹18.00)',
       date: 'July 18, 2026',
       time: '02:00 PM - 02:30 PM',
       status: 'Confirmed',
@@ -19,7 +19,7 @@ export default function BookingsPage() {
     {
       id: 'B-2026-4412',
       service: 'Men\'s Salon',
-      package: 'Haircut & Styling ($35.00)',
+      package: 'Haircut & Styling (₹35.00)',
       date: 'July 18, 2026',
       time: '03:30 PM - 04:00 PM',
       status: 'Pending',

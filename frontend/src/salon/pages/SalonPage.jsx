@@ -55,7 +55,7 @@ export default function SalonPage() {
                   <span className="item-duration">({service.duration})</span>
                 </span>
                 <span className="menu-item-leader"></span>
-                <span className="menu-item-price">${service.price.toFixed(2)}</span>
+                <span className="menu-item-price">₹{service.price.toFixed(2)}</span>
               </div>
             ))}
           </div>

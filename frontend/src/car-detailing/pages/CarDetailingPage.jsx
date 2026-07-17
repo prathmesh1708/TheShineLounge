@@ -19,7 +19,7 @@ export default function CarDetailingPage() {
   const leftColRef = useEntrance({ x: -20, duration: 0.7, delay: loading ? 0 : 0.05 });
   const rightColRef = useEntrance({ x: 20, duration: 0.7, delay: loading ? 0 : 0.05 });
 
-  const serviceOptions = data.services.map(s => `${s.name} (Starts at $${s.startPrice.toFixed(2)})`);
+  const serviceOptions = data.services.map(s => `${s.name} (Starts at ₹${s.startPrice.toFixed(2)})`);
 
   if (loading) {
     return (
@@ -54,7 +54,7 @@ export default function CarDetailingPage() {
               <div key={idx} className="menu-item">
                 <span className="menu-item-name">{service.name}</span>
                 <span className="menu-item-leader"></span>
-                <span className="menu-item-price">From ${service.startPrice.toFixed(2)}</span>
+                <span className="menu-item-price">From ₹{service.startPrice.toFixed(2)}</span>
               </div>
             ))}
           </div>

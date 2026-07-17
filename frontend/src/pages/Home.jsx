@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ShimmerCard } from '../common/components/Shimmer';
 import { servicesData } from '../common/data/servicesData';
 import useEntrance from '../common/hooks/useEntrance';
+import ServiceIcon from '../common/components/ServiceIcon';
 
 // Import local image assets for trending items
 import trendingToast from '../assets/images/gourmet_toast.png';
@@ -110,7 +111,7 @@ export default function Home() {
       id: 'toast',
       title: 'Sourdough Poached Egg Toast',
       category: 'Brunch Special',
-      price: '$11.00',
+      price: '₹11.00',
       rating: '⭐ 4.9 (124 reviews)',
       image: trendingToast,
       path: '/cafe'
@@ -119,7 +120,7 @@ export default function Home() {
       id: 'chicken',
       title: 'Herbed Chicken Skillet',
       category: 'Gourmet Mains',
-      price: '$14.00',
+      price: '₹14.00',
       rating: '⭐ 4.7 (86 reviews)',
       image: trendingChicken,
       path: '/cafe'
@@ -128,7 +129,7 @@ export default function Home() {
       id: 'pancakes',
       title: 'Signature Pancakes Stack',
       category: 'Sweet Plates',
-      price: '$9.50',
+      price: '₹9.50',
       rating: '⭐ 4.8 (98 reviews)',
       image: trendingHero,
       path: '/cafe'
@@ -230,7 +231,7 @@ export default function Home() {
               }}
             >
               <div className="circle-icon-box" style={{ '--circle-accent': cat.color }}>
-                <span className="circle-emoji">{cat.icon}</span>
+                <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={38} />
               </div>
               <span className="circle-label">{cat.label}</span>
             </button>

@@ -27,6 +27,11 @@
   padding: 0;
 }
 
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background: linear-gradient(135deg, #FAF9F6 0%, #F5F2EB 100%);
   background-attachment: fixed;
@@ -2047,22 +2052,17 @@ h1, h2, h3, h4, h5, h6 {
 .circle-icon-box {
   width: 58px;
   height: 58px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--border-color);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 6px 16px rgba(35, 31, 29, 0.02);
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
   transition: all 0.25s ease;
 }
 
 .category-circle-item:hover .circle-icon-box {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(var(--circle-accent), 0.15);
-  border-color: var(--circle-accent);
 }
 
 .circle-emoji {
