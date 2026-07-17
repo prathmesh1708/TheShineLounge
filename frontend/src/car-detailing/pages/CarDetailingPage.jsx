@@ -1,77 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { servicesData } from '../../common/data/servicesData';
-import PageHeader from '../../common/components/PageHeader';
-import BookingForm from '../../common/components/BookingForm';
-import { ShimmerPageHeader, ShimmerMenu, ShimmerForm } from '../../common/components/Shimmer';
-import useEntrance from '../../common/hooks/useEntrance';
+import React, { useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import CarDetailingNavbar from '../components/carDetailingNavbar';
+
+// Sub Pages
+import CarDetailingHomePage from './carDetailingHomePage';
+import CarDetailingServicesPage from './carDetailingServicesPage';
+import CarDetailingServiceDetailsPage from './carDetailingServiceDetailsPage';
+import CarDetailingPackagesPage from './carDetailingPackagesPage';
+import CarDetailingBookingPage from './carDetailingBookingPage';
+import CarDetailingSuccessPage from './carDetailingSuccessPage';
+import CarDetailingMyBookingsPage from './carDetailingMyBookingsPage';
+import CarDetailingTrackingPage from './carDetailingTrackingPage';
+import CarDetailingOffersPage from './carDetailingOffersPage';
+import CarDetailingReviewsPage from './carDetailingReviewsPage';
+import CarDetailingAboutPage from './carDetailingAboutPage';
+import CarDetailingContactPage from './carDetailingContactPage';
+import CarDetailingProfilePage from './carDetailingProfilePage';
+import CarDetailingSettingsPage from './carDetailingSettingsPage';
 
 export default function CarDetailingPage() {
-  const data = servicesData['car-detailing'];
-  const [loading, setLoading] = useState(true);
-
+  // Dynamically hide the global platform footer when inside the detailing portal
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    const globalFooter = document.querySelector('.footer');
+    if (globalFooter) {
+      globalFooter.style.display = 'none';
+    }
+    return () => {
+      if (globalFooter) {
+        globalFooter.style.display = 'block';
+      }
+    };
   }, []);
 
-  const leftColRef = useEntrance({ x: -20, duration: 0.7, delay: loading ? 0 : 0.05 });
-  const rightColRef = useEntrance({ x: 20, duration: 0.7, delay: loading ? 0 : 0.05 });
-
-  const serviceOptions = data.services.map(s => `${s.name} (Starts at $${s.startPrice.toFixed(2)})`);
-
-  if (loading) {
-    return (
-      <div style={{ '--accent-color': data.accentColor }}>
-        <ShimmerPageHeader />
-        <div className="service-split-layout">
-          <ShimmerMenu />
-          <ShimmerForm />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ '--accent-color': data.accentColor }}>
-      <PageHeader 
-        id={data.id} 
-        name={data.name} 
-        tagline={data.tagline} 
-        accentColor={data.accentColor} 
-      />
+    <div className="bg-transparent min-h-screen text-zinc-800 flex flex-col justify-between selection:bg-luxury-emerald selection:text-white car-detailing-portal">
+      {/* DetailPro Specific Header */}
+      <CarDetailingNavbar />
 
-      <div className="service-split-layout">
-        {/* Left Column: Detailing Services */}
-        <div ref={leftColRef} className="section-card">
-          <h2 className="section-title">Detailing Menu</h2>
-          <p className="text-muted" style={{ marginBottom: '1.5rem', fontSize: '0.95rem' }}>
-            Our master technicians handle your vehicle with specialized steam and ceramic tools to restore showroom shine.
-          </p>
-          <div className="menu-items-list">
-            {data.services.map((service, idx) => (
-              <div key={idx} className="menu-item">
-                <span className="menu-item-name">{service.name}</span>
-                <span className="menu-item-leader"></span>
-                <span className="menu-item-price">From ${service.startPrice.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right Column: Booking Form */}
-        <div ref={rightColRef}>
-          <BookingForm
-            serviceId={data.id}
-            timeSlots={data.timeSlots}
-            extraFieldLabel="Choose Service"
-            extraFieldOptions={serviceOptions}
-            accentColor={data.accentColor}
-          />
-        </div>
-      </div>
+      {/* Main Content Area */}
+      <main className="flex-grow w-full py-4 space-y-12">
+        <Routes>
+          <Route path="/" element={<CarDetailingHomePage />} />
+          <Route path="/services" element={<CarDetailingServicesPage />} />
+          <Route path="/service/:id" element={<CarDetailingServiceDetailsPage />} />
+          <Route path="/packages" element={<CarDetailingPackagesPage />} />
+          <Route path="/booking" element={<CarDetailingBookingPage />} />
+          <Route path="/success" element={<CarDetailingSuccessPage />} />
+          <Route path="/my-bookings" element={<CarDetailingMyBookingsPage />} />
+          <Route path="/tracking" element={<CarDetailingTrackingPage />} />
+          <Route path="/offers" element={<CarDetailingOffersPage />} />
+          <Route path="/reviews" element={<CarDetailingReviewsPage />} />
+          <Route path="/about" element={<CarDetailingAboutPage />} />
+          <Route path="/contact" element={<CarDetailingContactPage />} />
+          <Route path="/profile" element={<CarDetailingProfilePage />} />
+          <Route path="/settings" element={<CarDetailingSettingsPage />} />
+        </Routes>
+      </main>
     </div>
   );
 }
-

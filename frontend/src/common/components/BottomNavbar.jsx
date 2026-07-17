@@ -17,7 +17,7 @@ export default function BottomNavbar() {
           <polyline points="9 22 9 12 15 12 15 22" />
         </svg>
       ),
-      activeCheck: () => path === '/'
+      activeCheck: () => path === '/' || (path.startsWith('/car-detailing') && path !== '/car-detailing/booking') || (path.startsWith('/dog-wash') && path !== '/dog-wash/booking')
     },
     { 
       id: 'explore', 
@@ -55,7 +55,7 @@ export default function BottomNavbar() {
           <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
       ),
-      activeCheck: () => path === '/bookings' || path === '/car-wash' || path === '/car-detailing' || path === '/dog-wash' || path === '/salon'
+      activeCheck: () => path === '/bookings' || path === '/car-wash' || path === '/car-detailing/booking' || path === '/dog-wash/booking' || path === '/salon'
     },
     { 
       id: 'profile', 

@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* --- Theme Variables & Root Setup (Apple Glassmorphism Light Mode) --- */
 :root {
   --font-display: 'Inter', sans-serif;
@@ -18,6 +22,53 @@
   /* Service Accents */
   --accent-color: #148F87;
   --accent-color-rgb: 20, 143, 135;
+
+  /* Fallback shadcn variables */
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+}
+
+.car-detailing-portal {
+  --primary: 142.1 76.2% 36.3%; /* Emerald Green #16A34A */
+  --primary-foreground: 355.7 100% 97.3%;
+  --border: 240 5.9% 90%;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --input: 240 5.9% 90%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+}
+
+.dog-wash-portal {
+  --primary: 177.4 100% 36.1%; /* Grooming Teal #00B8B0 */
+  --primary-foreground: 355.7 100% 97.3%;
+  --border: 240 5.9% 90%;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --input: 240 5.9% 90%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+}
+
+.salon-portal {
+  --primary: 177.4 100% 36.1%; /* Salon Teal #00B8B0 */
+  --primary-foreground: 355.7 100% 97.3%;
+  --border: 240 5.9% 90%;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --input: 240 5.9% 90%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
 }
 
 /* --- Base Resets & Global Styles --- */
@@ -2336,5 +2387,11 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-
-
+/* Custom scrollbar hiding utilities */
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}

@@ -51,9 +51,9 @@ export default function App() {
               <Route path="/cafe" element={<CafePage />} />
               <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
               <Route path="/car-wash" element={<CarWashPage />} />
-              <Route path="/car-detailing" element={<CarDetailingPage />} />
-              <Route path="/dog-wash" element={<DogWashPage />} />
-              <Route path="/salon" element={<SalonPage />} />
+              <Route path="/car-detailing/*" element={<CarDetailingPage />} />
+              <Route path="/dog-wash/*" element={<DogWashPage />} />
+              <Route path="/salon/*" element={<SalonPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
