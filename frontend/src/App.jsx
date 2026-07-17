@@ -14,6 +14,9 @@ import CarWashPage from './car-wash/pages/CarWashPage';
 import CarDetailingPage from './car-detailing/pages/CarDetailingPage';
 import DogWashPage from './dog-wash/pages/DogWashPage';
 import SalonPage from './salon/pages/SalonPage';
+import SearchPage from './pages/SearchPage';
+import BookingsPage from './pages/BookingsPage';
+import ProfilePage from './pages/ProfilePage';
 
 // Simple Page transition wrapper
 function PageTransition({ children }) {
@@ -51,9 +54,13 @@ export default function App() {
               <Route path="/car-detailing" element={<CarDetailingPage />} />
               <Route path="/dog-wash" element={<DogWashPage />} />
               <Route path="/salon" element={<SalonPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Routes>
           </PageTransition>
         </main>
+
 
         <footer className="footer">
           <p className="footer-text">
