@@ -2972,7 +2972,7 @@ h1, h2, h3, h4, h5, h6 {
 .carwash-hero {
   position: relative;
   width: 100%;
-  height: 145px;
+  aspect-ratio: 1 / 1;
   border-radius: 1.5rem;
   overflow: hidden;
   margin-bottom: 0.5rem;
@@ -3116,7 +3116,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .carwash-vehicle-icon {
-  font-size: 1.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  flex-shrink: 0;
 }
 
 .carwash-vehicle-text {
@@ -3211,6 +3215,109 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+/* --- Plan Cards (Single Wash / Monthly) --- */
+.carwash-plans-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.carwash-plan-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border-radius: 1.25rem;
+  padding: 1.1rem 1.25rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 2px solid transparent;
+  position: relative;
+  width: 100%;
+}
+
+.carwash-plan-card:hover {
+  transform: translateY(-2px);
+}
+
+.carwash-plan-card.selected {
+  border-color: #0F6E56;
+  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.12);
+}
+
+/* Single Wash — warm amber background */
+.carwash-plan-single {
+  background: linear-gradient(135deg, #FFF8EE 0%, #FCECD5 100%);
+  box-shadow: 0 4px 12px rgba(201, 144, 63, 0.1);
+}
+.carwash-plan-single:hover {
+  box-shadow: 0 8px 20px rgba(201, 144, 63, 0.15);
+}
+
+/* Monthly Membership — rich teal background */
+.carwash-plan-monthly {
+  background: linear-gradient(135deg, #EAF6F3 0%, #D2EDE6 100%);
+  box-shadow: 0 4px 12px rgba(15, 110, 86, 0.08);
+}
+.carwash-plan-monthly:hover {
+  box-shadow: 0 8px 20px rgba(15, 110, 86, 0.12);
+}
+
+.carwash-plan-icon {
+  font-size: 1.75rem;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.carwash-plan-details {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.carwash-plan-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.carwash-plan-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.carwash-plan-price-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.carwash-plan-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.carwash-plan-price-sub {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .carwash-service-card {
@@ -3375,8 +3482,8 @@ h1, h2, h3, h4, h5, h6 {
 
 /* --- Sticky Booking CTA --- */
 .carwash-cta-wrapper {
-  margin-top: 1.5rem;
-  padding: 0.5rem 0;
+  margin-top: 0.25rem;
+  padding: 0;
 }
 
 .carwash-book-btn {

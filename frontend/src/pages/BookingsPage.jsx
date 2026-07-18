@@ -1,5 +1,19 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 22 } }
+};
 
 export default function BookingsPage() {
   const navigate = useNavigate();
@@ -31,9 +45,19 @@ export default function BookingsPage() {
   return (
     <div className="bookings-page-container app-mobile-dashboard" style={{ marginTop: '-0.75rem' }}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <motion.div 
+        style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
         {mockBookings.map((booking) => (
-          <div key={booking.id} className="section-card" style={{ padding: '1.75rem', marginBottom: 0 }}>
+          <motion.div 
+            key={booking.id} 
+            variants={itemVariants}
+            className="section-card" 
+            style={{ padding: '1.75rem', marginBottom: 0 }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
               <div>
                 <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-muted)' }}>
@@ -67,9 +91,9 @@ export default function BookingsPage() {
                 <span className="summary-value">{booking.time}</span>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       <div style={{ textAlign: 'center', marginTop: 0 }}>
         <button 

@@ -19,7 +19,7 @@ export default function Navbar() {
   const lastScrollY = useRef(0);
   const navRef = useRef(null);
 
-  const searchPages = ['/car-detailing', '/dog-wash', '/salon', '/cafe'];
+  const searchPages = ['/car-detailing', '/dog-wash', '/salon'];
   const hasSearch = searchPages.includes(location.pathname);
 
   // Reset states on path change
