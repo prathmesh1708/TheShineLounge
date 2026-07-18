@@ -49,13 +49,27 @@ export default function Home() {
       title: 'BREAKFAST GOOD DEALS',
       subtitle: 'Discount up to 30% on freshly baked croissants & morning double lattes.',
       badge: 'Brunch Special',
-      link: '/cafe'
+      link: '/cafe',
+      floatingArt: (
+        <div className="floating-art">
+          <span className="steam">~ ~ ~</span>
+          <span className="cup">☕</span>
+          <span className="croissant">🥐</span>
+        </div>
+      )
     },
     {
       title: 'DELUXE CAR WASH OFFER',
       subtitle: 'Save 20% on all detailing and executive polish packages this week.',
       badge: 'Wash Special',
-      link: '/car-wash'
+      link: '/car-wash',
+      floatingArt: (
+        <div className="floating-art">
+          <span className="steam">~ ~ ~</span>
+          <span className="cup">🧼</span>
+          <span className="croissant">🚗</span>
+        </div>
+      )
     }
   ];
 
@@ -196,12 +210,20 @@ export default function Home() {
       {/* Promos Carousel Banners */}
       <div className="promo-carousel">
         <div className="promo-card" onClick={() => navigate(promos[activePromoIndex].link)}>
+          {/* Decorative background animations */}
+          <div className="gradient-glow"></div>
+          <div className="particle-stream"></div>
+
           <div className="promo-details">
             <span className="promo-badge">{promos[activePromoIndex].badge}</span>
             <h3 className="promo-title">{promos[activePromoIndex].title}</h3>
             <p className="promo-subtitle">{promos[activePromoIndex].subtitle}</p>
           </div>
-          <button className="promo-action-btn">Explore</button>
+
+          <div className="interactive-area">
+            {promos[activePromoIndex].floatingArt}
+            <button className="promo-action-btn pulse-glow-btn">Explore</button>
+          </div>
         </div>
         
         <div className="promo-indicators">
