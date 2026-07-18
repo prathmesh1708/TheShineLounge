@@ -5,10 +5,10 @@ export default function ProfilePage() {
   const navigate = useNavigate();
 
   return (
-    <div className="profile-page-container app-mobile-dashboard">
+    <div className="profile-page-container app-mobile-dashboard" style={{ gap: '0.75rem' }}>
       
       {/* Profile Card */}
-      <div className="profile-header-card section-card">
+      <div className="profile-header-card section-card" style={{ marginBottom: 0 }}>
         <div className="profile-avatar-circle">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -27,7 +27,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Account Settings List */}
-      <div className="profile-settings-card section-card">
+      <div className="profile-settings-card section-card" style={{ marginBottom: 0 }}>
         <h3 className="profile-settings-title">
           Account Settings
         </h3>
@@ -50,7 +50,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="profile-actions-box">
+      <div className="profile-actions-box" style={{ marginTop: 0 }}>
         <button 
           className="profile-signout-btn" 
           onClick={() => {

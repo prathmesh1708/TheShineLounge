@@ -200,7 +200,7 @@ export default function DriveThroughCafePage() {
   };
 
   return (
-    <div className="cafe-catalog-container" style={{ position: 'relative' }}>
+    <div className="cafe-catalog-container" style={{ position: 'relative', marginTop: '-0.75rem' }}>
       
       <AnimatePresence mode="wait">
         
@@ -275,13 +275,13 @@ export default function DriveThroughCafePage() {
                     {cart.map((i, idx) => (
                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>{i.quantity}x {i.item.name}</span>
-                        <span style={{ fontWeight: 700 }}>${(i.item.price * i.quantity).toFixed(2)}</span>
+                        <span style={{ fontWeight: 700 }}>₹{(i.item.price * i.quantity).toFixed(2)}</span>
                       </div>
                     ))}
                     <hr style={{ border: 'none', borderTop: '1px dashed var(--border-color)', margin: '0.5rem 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
                       <span>Total Paid</span>
-                      <span>${getCartTotal().toFixed(2)}</span>
+                      <span>₹{getCartTotal().toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -327,7 +327,7 @@ export default function DriveThroughCafePage() {
                       <img src={cartItem.item.image} alt={cartItem.item.name} style={{ width: '45px', height: '45px', borderRadius: '0.5rem', objectFit: 'cover' }} />
                       <div style={{ flexGrow: 1 }}>
                         <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}>{cartItem.item.name}</h4>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>${cartItem.item.price.toFixed(2)} each</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>₹{cartItem.item.price.toFixed(2)} each</span>
                       </div>
                       
                       {/* Quantity Selector */}
@@ -395,7 +395,7 @@ export default function DriveThroughCafePage() {
                 <div className="bill-breakdown-list">
                   <div className="bill-row">
                     <span className="bill-label">Subtotal</span>
-                    <span className="bill-val">${getCartTotal().toFixed(2)}</span>
+                    <span className="bill-val">₹{getCartTotal().toFixed(2)}</span>
                   </div>
                   <div className="bill-row">
                     <span className="bill-label">Express Pickup Fee</span>
@@ -404,7 +404,7 @@ export default function DriveThroughCafePage() {
                   <hr className="bill-divider" />
                   <div className="bill-row total">
                     <span className="bill-label">Estimated Total</span>
-                    <span className="bill-val">${getCartTotal().toFixed(2)}</span>
+                    <span className="bill-val">₹{getCartTotal().toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -415,7 +415,7 @@ export default function DriveThroughCafePage() {
                 onClick={handlePlaceOrder}
                 style={{ background: '#0F6E56' }}
               >
-                Transmit Order · ${getCartTotal().toFixed(2)}
+                Transmit Order · ₹{getCartTotal().toFixed(2)}
               </button>
             </div>
           </motion.div>
@@ -429,12 +429,6 @@ export default function DriveThroughCafePage() {
             transition={{ duration: 0.25, ease: 'easeInOut' }}
             className="catalog-main-flow"
           >
-            {/* Header Tagline */}
-            <div style={{ marginBottom: '1rem', marginTop: '0.5rem' }}>
-              <span className="carwash-promo-badge" style={{ color: '#C17F19', background: 'rgba(193, 127, 25, 0.12)' }}>EXPRESS COMMUTE</span>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.4rem' }}>Drive-Through Order Ahead</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Hot coffee & mess-free snacks prepared for your car pick-up.</p>
-            </div>
 
             {/* Catalog Search Bar */}
             <div className="catalog-search-bar-wrapper">
@@ -569,7 +563,7 @@ export default function DriveThroughCafePage() {
                     </div>
 
                     <div className="grid-item-details" onClick={(e) => addToCart(item, e)} style={{ cursor: 'pointer' }}>
-                      <span className="grid-item-price">${item.price.toFixed(2)}</span>
+                      <span className="grid-item-price">₹{item.price.toFixed(2)}</span>
                       <h4 className="grid-item-name">{item.name}</h4>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <span className="grid-item-weight">{item.weight}</span>
@@ -613,7 +607,7 @@ export default function DriveThroughCafePage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.8 }}>DRIVE-THROUGH BAG</span>
-              <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>{getCartCount()} items · ${getCartTotal().toFixed(2)}</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>{getCartCount()} items · ₹{getCartTotal().toFixed(2)}</span>
             </div>
             
             <button 

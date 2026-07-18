@@ -29,13 +29,9 @@ export default function BookingsPage() {
   ];
 
   return (
-    <div className="bookings-page-container app-mobile-dashboard">
-      <div className="greeting-text-block">
-        <h1 className="greeting-title">My Bookings</h1>
-        <p className="greeting-subtitle">Track your active lounge sessions and reservations</p>
-      </div>
+    <div className="bookings-page-container app-mobile-dashboard" style={{ marginTop: '-0.75rem' }}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         {mockBookings.map((booking) => (
           <div key={booking.id} className="section-card" style={{ padding: '1.75rem', marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
@@ -75,7 +71,7 @@ export default function BookingsPage() {
         ))}
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+      <div style={{ textAlign: 'center', marginTop: 0 }}>
         <button 
           className="form-submit-btn" 
           onClick={() => navigate('/')}

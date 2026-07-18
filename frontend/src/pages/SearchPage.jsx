@@ -37,13 +37,9 @@ export default function SearchPage() {
       gap: '1rem', 
       maxWidth: '550px', 
       margin: '0 auto', 
-      paddingBottom: '6rem' 
+      paddingBottom: '6rem',
+      marginTop: '-0.75rem'
     }}>
-      {/* Title */}
-      <div className="greeting-text-block">
-        <h1 className="greeting-title">Search Hub</h1>
-        <p className="greeting-subtitle">Find coffee, wash packages, and salon slots</p>
-      </div>
 
       {/* Search Input */}
       <div className="search-group-container">

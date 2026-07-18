@@ -61,7 +61,7 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem;
+  padding: 1.25rem 1.5rem 2.5rem;
 }
 
 /* --- Shared Navigation Header --- */
@@ -1754,7 +1754,7 @@ h1, h2, h3, h4, h5, h6 {
 .app-mobile-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 2.25rem;
+  gap: 1.25rem;
   max-width: 550px;
   margin: 0 auto;
   padding-bottom: 2rem;
