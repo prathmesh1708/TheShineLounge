@@ -81,6 +81,11 @@
   padding: 0;
 }
 
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background: linear-gradient(135deg, #FAF9F6 0%, #F5F2EB 100%);
   background-attachment: fixed;
@@ -110,7 +115,7 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem;
+  padding: 1.25rem 1.5rem 2.5rem;
 }
 
 /* --- Shared Navigation Header --- */
@@ -1856,7 +1861,7 @@ h1, h2, h3, h4, h5, h6 {
 .app-mobile-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 2.25rem;
+  gap: 1.25rem;
   max-width: 550px;
   margin: 0 auto;
   padding-bottom: 2rem;
@@ -2036,76 +2041,178 @@ h1, h2, h3, h4, h5, h6 {
   gap: 0.85rem;
 }
 
+/* Premium Promos Banner */
 .promo-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(135deg, #1A1715 0%, #2D2621 100%);
-  border-radius: 1.25rem;
-  padding: 1.35rem 1.5rem;
-  color: #FAF9F6;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
   position: relative;
+  width: 100%;
+  height: 175px;
+  background: linear-gradient(135deg, #1e1612 0%, #2d2019 50%, #1a110e 100%);
+  border: 1px solid rgba(197, 160, 124, 0.25);
+  border-radius: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  color: #f5efe9;
+  cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .promo-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
 }
 
+/* Subtle Animated Fluid Background */
+.gradient-glow {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(197, 160, 124, 0.15) 0%, transparent 60%);
+  animation: fluidWave 12s infinite ease-in-out alternate;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.particle-stream {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background-image: 
+    radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px, 30px 30px;
+  background-position: 0 0, 10px 10px;
+  animation: particlesMove 20s infinite linear;
+  pointer-events: none;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+/* Content Layout */
 .promo-details {
+  position: relative;
+  z-index: 2;
+  max-width: 60%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 75%;
 }
 
 .promo-badge {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #c5a07c;
   font-weight: 600;
-  letter-spacing: 0.1em;
-  color: #c19a5b;
-  margin-bottom: 0.25rem;
-  display: inline-block;
+  display: block;
+  margin-bottom: 6px;
 }
 
 .promo-title {
   font-size: 1.2rem;
   font-weight: 800;
+  color: #f5efe9;
   line-height: 1.25;
-  margin-bottom: 0.25rem;
-  letter-spacing: -0.01em;
-  color: #FAF9F6;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 15px rgba(245, 239, 233, 0.2);
 }
 
 .promo-subtitle {
-  font-size: 0.8rem;
-  color: #D1C9C1;
+  font-size: 0.75rem;
+  color: rgba(245, 239, 233, 0.7);
   line-height: 1.4;
+  margin: 0;
 }
 
-.promo-action-btn {
-  background-color: #FAF9F6;
-  color: #1A1715;
-  border: none;
-  border-radius: 9999px;
-  padding: 0.45rem 1.15rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.8rem;
-  cursor: pointer;
+/* Right Side Interaction & Graphics */
+.interactive-area {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  transition: transform 0.2s;
 }
 
-.promo-action-btn:hover {
-  transform: scale(1.03);
+/* Floating Art Container */
+.floating-art {
+  position: relative;
+  font-size: 26px;
+  animation: float 4s infinite ease-in-out;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.floating-art .steam {
+  position: absolute;
+  font-size: 11px;
+  top: -15px;
+  left: 6px;
+  color: #e2c7a9;
+  opacity: 0.5;
+  animation: steamRise 2s infinite linear;
+}
+
+/* Animated Explore Button */
+.promo-action-btn.pulse-glow-btn {
+  background: #ffffff;
+  color: #1a110e;
+  border: none;
+  padding: 8px 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 50px;
+  cursor: pointer;
+  outline: none;
+  position: relative;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+  animation: pulseGlow 2.5s infinite;
+  z-index: 2;
+}
+
+.promo-action-btn.pulse-glow-btn:hover {
+  transform: scale(1.05);
+  background: #e2c7a9;
+  box-shadow: 0 4px 15px rgba(197, 160, 124, 0.4);
+}
+
+/* Animations Keyframes */
+@keyframes fluidWave {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(-10%, -10%) rotate(10deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(2deg); }
+}
+
+@keyframes steamRise {
+  0% { transform: translateY(3px); opacity: 0; }
+  50% { opacity: 0.6; }
+  100% { transform: translateY(-10px); opacity: 0; }
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+@keyframes particlesMove {
+  from { background-position: 0 0, 10px 10px; }
+  to { background-position: 20px 40px, 30px 50px; }
 }
 
 .promo-indicators {
@@ -2154,22 +2261,17 @@ h1, h2, h3, h4, h5, h6 {
 .circle-icon-box {
   width: 58px;
   height: 58px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--border-color);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 6px 16px rgba(35, 31, 29, 0.02);
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
   transition: all 0.25s ease;
 }
 
 .category-circle-item:hover .circle-icon-box {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(var(--circle-accent), 0.15);
-  border-color: var(--circle-accent);
 }
 
 .circle-emoji {
@@ -2566,8 +2668,9 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: space-between;
   border-radius: 1.5rem;
-  padding: 1.75rem 1.5rem;
-  height: 165px;
+  padding: 1.5rem;
+  min-height: 165px;
+  height: auto;
   color: #FAF9F6;
   cursor: pointer;
   position: relative;
@@ -2604,7 +2707,7 @@ h1, h2, h3, h4, h5, h6 {
 .banner-subtitle {
   font-size: 0.8rem;
   opacity: 0.85;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   line-height: 1.35;
 }
 
@@ -2614,9 +2717,11 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   text-transform: uppercase;
   background-color: rgba(255, 255, 255, 0.18);
-  padding: 0.25rem 0.65rem;
-  border-radius: 9999px;
+  padding: 0.3rem 0.65rem;
+  border-radius: 0.75rem;
   letter-spacing: 0.05em;
+  line-height: 1.4;
+  display: inline-block;
 }
 
 .category-banner-img-frame {
@@ -2833,7 +2938,8 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 480px) {
   .category-banner-card {
-    height: 145px;
+    min-height: 145px;
+    height: auto;
     padding: 1.25rem;
   }
   .banner-title {
@@ -2858,7 +2964,7 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   gap: 1.5rem;
   max-width: 550px;
-  margin: 0 auto;
+  margin: -0.75rem auto 0;
   padding-bottom: 6rem;
 }
 
@@ -2866,7 +2972,7 @@ h1, h2, h3, h4, h5, h6 {
 .carwash-hero {
   position: relative;
   width: 100%;
-  height: 200px;
+  height: 145px;
   border-radius: 1.5rem;
   overflow: hidden;
   margin-bottom: 0.5rem;
@@ -2902,7 +3008,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 1.25rem 1.5rem;
+  padding: 0.85rem 1.15rem;
   color: #FAF9F6;
   z-index: 5;
 }
@@ -2965,14 +3071,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .carwash-promo-title {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   font-weight: 800;
   text-shadow: 0 2px 5px rgba(0,0,0,0.3);
   letter-spacing: -0.02em;
 }
 
 .carwash-promo-subtitle {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   opacity: 0.9;
   text-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
@@ -3112,31 +3218,32 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 1rem;
   background-color: var(--bg-card);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border: 1px solid var(--border-color);
-  border-radius: 1.5rem;
-  padding: 0.85rem 1.15rem;
+  border-radius: 1rem;
+  padding: 1rem;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 6px rgba(35, 31, 29, 0.02);
   position: relative;
+  width: 100%;
 }
 
 .carwash-service-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: 0 6px 16px rgba(35, 31, 29, 0.02);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(35, 31, 29, 0.06);
+  border-color: rgba(15, 110, 86, 0.4);
 }
 
 .carwash-service-card.selected {
   border: 2px solid #0F6E56;
   background-color: rgba(15, 110, 86, 0.04);
-  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.05);
+  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.06);
 }
 
 .carwash-service-img {
-  width: 65px;
-  height: 65px;
-  border-radius: 1rem;
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
   object-fit: cover;
   flex-shrink: 0;
   border: 1px solid var(--border-color);
@@ -3147,49 +3254,71 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   flex-grow: 1;
   min-width: 0;
-  gap: 0.2rem;
+  gap: 2px;
 }
 
 .carwash-service-header-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .carwash-service-name {
-  font-size: 0.95rem;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-main);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin: 0;
 }
 
 .popular-pill {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  color: #C9903F;
-  background-color: #F3D9A6;
+  color: #0F6E56;
+  background-color: rgba(15, 110, 86, 0.1);
   padding: 0.15rem 0.5rem;
   border-radius: 9999px;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   flex-shrink: 0;
 }
 
 .carwash-service-desc {
-  font-size: 0.75rem;
+  font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.35;
-  white-space: nowrap;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .carwash-service-duration {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.carwash-service-duration .duration-icon {
+  color: #999999;
+  flex-shrink: 0;
+}
+
+.carwash-service-duration .duration-text {
+  font-size: 11px;
+  color: #999999;
+  font-weight: 500;
+}
+
+.carwash-service-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  margin-left: 12px;
 }
 
 .carwash-service-price-box {
@@ -3279,11 +3408,8 @@ h1, h2, h3, h4, h5, h6 {
    ================================================================ */
 
 .carwash-confirm-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
   max-width: 550px;
-  margin: 0 auto;
+  margin: -0.75rem auto 0;
   padding-bottom: 6rem;
 }
 
@@ -3321,6 +3447,8 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 800;
   color: var(--text-main);
   letter-spacing: -0.015em;
+  margin: 0;
+  line-height: 1;
 }
 
 .confirm-success-card {

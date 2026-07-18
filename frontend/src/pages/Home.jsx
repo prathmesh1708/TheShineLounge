@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ShimmerCard } from '../common/components/Shimmer';
 import { servicesData } from '../common/data/servicesData';
 import useEntrance from '../common/hooks/useEntrance';
+import ServiceIcon from '../common/components/ServiceIcon';
 
 // Import local image assets for trending items
 import trendingToast from '../assets/images/gourmet_toast.png';
@@ -48,13 +49,27 @@ export default function Home() {
       title: 'BREAKFAST GOOD DEALS',
       subtitle: 'Discount up to 30% on freshly baked croissants & morning double lattes.',
       badge: 'Brunch Special',
-      link: '/cafe'
+      link: '/cafe',
+      floatingArt: (
+        <div className="floating-art">
+          <span className="steam">~ ~ ~</span>
+          <span className="cup">☕</span>
+          <span className="croissant">🥐</span>
+        </div>
+      )
     },
     {
       title: 'DELUXE CAR WASH OFFER',
       subtitle: 'Save 20% on all detailing and executive polish packages this week.',
       badge: 'Wash Special',
-      link: '/car-wash'
+      link: '/car-wash',
+      floatingArt: (
+        <div className="floating-art">
+          <span className="steam">~ ~ ~</span>
+          <span className="cup">🧼</span>
+          <span className="croissant">🚗</span>
+        </div>
+      )
     }
   ];
 
@@ -110,7 +125,7 @@ export default function Home() {
       id: 'toast',
       title: 'Sourdough Poached Egg Toast',
       category: 'Brunch Special',
-      price: '$11.00',
+      price: '₹11.00',
       rating: '⭐ 4.9 (124 reviews)',
       image: trendingToast,
       path: '/cafe'
@@ -119,7 +134,7 @@ export default function Home() {
       id: 'chicken',
       title: 'Herbed Chicken Skillet',
       category: 'Gourmet Mains',
-      price: '$14.00',
+      price: '₹14.00',
       rating: '⭐ 4.7 (86 reviews)',
       image: trendingChicken,
       path: '/cafe'
@@ -128,7 +143,7 @@ export default function Home() {
       id: 'pancakes',
       title: 'Signature Pancakes Stack',
       category: 'Sweet Plates',
-      price: '$9.50',
+      price: '₹9.50',
       rating: '⭐ 4.8 (98 reviews)',
       image: trendingHero,
       path: '/cafe'
@@ -158,16 +173,57 @@ export default function Home() {
 
   return (
     <div className="app-mobile-dashboard" ref={contentRef}>
+      
+      {/* Top Search & Bell Row */}
+      <div className="top-search-bell-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', marginBottom: '0.5rem' }}>
+        <div className="search-group-container" style={{ flexGrow: 1, width: 'auto' }}>
+          <div className="search-input-wrapper">
+            <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input 
+              type="text" 
+              placeholder="Search restaurants, salon..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-field"
+            />
+            <button className="search-filter-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="1" y1="14" x2="7" y2="14" />
+                <line x1="9" y1="8" x2="15" y2="8" />
+                <line x1="17" y1="16" x2="23" y2="16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
 
       {/* Promos Carousel Banners */}
       <div className="promo-carousel">
         <div className="promo-card" onClick={() => navigate(promos[activePromoIndex].link)}>
+          {/* Decorative background animations */}
+          <div className="gradient-glow"></div>
+          <div className="particle-stream"></div>
+
           <div className="promo-details">
             <span className="promo-badge">{promos[activePromoIndex].badge}</span>
             <h3 className="promo-title">{promos[activePromoIndex].title}</h3>
             <p className="promo-subtitle">{promos[activePromoIndex].subtitle}</p>
           </div>
-          <button className="promo-action-btn">Explore</button>
+
+          <div className="interactive-area">
+            {promos[activePromoIndex].floatingArt}
+            <button className="promo-action-btn pulse-glow-btn">Explore</button>
+          </div>
         </div>
         
         <div className="promo-indicators">
@@ -197,7 +253,7 @@ export default function Home() {
               }}
             >
               <div className="circle-icon-box" style={{ '--circle-accent': cat.color }}>
-                <span className="circle-emoji">{cat.icon}</span>
+                <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={38} />
               </div>
               <span className="circle-label">{cat.label}</span>
             </button>

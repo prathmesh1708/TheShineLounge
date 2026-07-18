@@ -294,7 +294,7 @@ export default function CafePage() {
                     </div>
 
                     <div className="grid-item-details">
-                      <span className="grid-item-price">${item.price.toFixed(2)}</span>
+                      <span className="grid-item-price">₹{item.price.toFixed(2)}</span>
                       <h4 className="grid-item-name">{item.name}</h4>
                       <span className="grid-item-weight">{item.weight}</span>
                     </div>

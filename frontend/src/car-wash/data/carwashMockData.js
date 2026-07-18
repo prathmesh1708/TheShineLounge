@@ -1,3 +1,8 @@
+import basicWashImg from '../../assets/images/basic_eco_wash.png';
+import premiumWashImg from '../../assets/images/premium_hydro_wash.png';
+import deluxeClayImg from '../../assets/images/deluxe_clay_polish.png';
+import rustGuardImg from '../../assets/images/rust_guard_underbody.png';
+
 export const carwashMockData = {
   vehicle: {
     name: 'Tesla Model 3',
@@ -11,7 +16,7 @@ export const carwashMockData = {
       description: 'Hand wash, basic wheel cleaning, and towel dry.',
       duration: '20 min',
       price: 149,
-      image: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=400&q=80',
+      image: basicWashImg,
       isPopular: false
     },
     {
@@ -20,7 +25,7 @@ export const carwashMockData = {
       description: 'Active foam bath, underbody spray, wax seal, and interior vacuum.',
       duration: '40 min',
       price: 299,
-      image: 'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&w=400&q=80',
+      image: premiumWashImg,
       isPopular: true
     },
     {
@@ -29,7 +34,7 @@ export const carwashMockData = {
       description: 'Decontamination clay bar treatment, hand polish, and leather conditioning.',
       duration: '90 min',
       price: 899,
-      image: 'https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=400&q=80',
+      image: deluxeClayImg,
       isPopular: false
     },
     {
@@ -38,7 +43,7 @@ export const carwashMockData = {
       description: 'High-pressure undercarriage wash and rust inhibitor coating.',
       duration: '15 min',
       price: 99,
-      image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=400&q=80',
+      image: rustGuardImg,
       isPopular: false
     }
   ],
