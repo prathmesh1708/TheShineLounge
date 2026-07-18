@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import gsap from 'gsap';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
@@ -19,24 +19,23 @@ import SearchPage from './pages/SearchPage';
 import BookingsPage from './pages/BookingsPage';
 import ProfilePage from './pages/ProfilePage';
 
-// Simple Page transition wrapper
+// Premium Framer Motion Page transition wrapper
 function PageTransition({ children }) {
-  const containerRef = useRef(null);
   const location = useLocation();
 
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return;
-
-    // Animate entering view
-    gsap.fromTo(
-      containerRef.current,
-      { opacity: 0, y: 15 },
-      { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }
-    );
-  }, [location.pathname]);
-
-  return <div ref={containerRef}>{children}</div>;
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -15 }}
+        transition={{ duration: 0.25, ease: 'easeInOut' }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
 }
 
 export default function App() {

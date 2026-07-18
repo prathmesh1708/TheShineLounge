@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { ShimmerCard } from '../common/components/Shimmer';
 import { servicesData } from '../common/data/servicesData';
 import useEntrance from '../common/hooks/useEntrance';
@@ -9,6 +10,19 @@ import ServiceIcon from '../common/components/ServiceIcon';
 import trendingToast from '../assets/images/gourmet_toast.png';
 import trendingChicken from '../assets/images/gourmet_chicken.png';
 import trendingHero from '../assets/images/gourmet_hero.png';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 22 } }
+};
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -239,10 +253,16 @@ export default function Home() {
 
       {/* Circular Service Categories Grid */}
       <div className="category-section">
-        <div className="category-circle-grid">
+        <motion.div 
+          className="category-circle-grid"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
           {categories.map((cat) => (
-            <button
+            <motion.button
               key={cat.id}
+              variants={itemVariants}
               className="category-circle-item"
               onClick={() => {
                 if (cat.isPlaceholder) {
@@ -256,9 +276,9 @@ export default function Home() {
                 <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={38} />
               </div>
               <span className="circle-label">{cat.label}</span>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* Trending Showcase Section */}
@@ -268,12 +288,18 @@ export default function Home() {
           <button className="see-all-link" onClick={() => navigate('/cafe')}>See all</button>
         </div>
 
-        <div className="trending-horizontal-scroll">
+        <motion.div 
+          className="trending-horizontal-scroll"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
           {trendingItems.map((item) => {
             const isSaved = savedItems.includes(item.id);
             return (
-              <div 
+              <motion.div 
                 key={item.id} 
+                variants={itemVariants}
                 className="trending-visual-card"
                 onClick={() => navigate(item.path)}
               >
@@ -300,10 +326,10 @@ export default function Home() {
                     <span className="trending-reviews">{item.rating.split(' (')[0]}</span>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
 
     </div>

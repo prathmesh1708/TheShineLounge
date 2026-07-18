@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { carwashMockData } from '../data/carwashMockData';
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 22 } }
+};
+
 export default function CarWashPage() {
   const navigate = useNavigate();
   const { vehicle, services, slots } = carwashMockData;
@@ -139,12 +152,18 @@ export default function CarWashPage() {
       {/* 3. Service Selection List */}
       <div className="carwash-section-block">
         <h2 className="carwash-section-title">Choose a service</h2>
-        <div className="carwash-services-list">
+        <motion.div 
+          className="carwash-services-list"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
           {services.map((service) => {
             const isSelected = selectedService.id === service.id;
             return (
-              <div 
+              <motion.div 
                 key={service.id}
+                variants={itemVariants}
                 className={`carwash-service-card ${isSelected ? 'selected' : ''}`}
                 onClick={() => setSelectedService(service)}
               >
@@ -174,10 +193,10 @@ export default function CarWashPage() {
                 <div className="carwash-service-price-box">
                   <span className="carwash-service-price">₹{service.price}</span>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
 
       {/* 4. Time Slot Picker */}

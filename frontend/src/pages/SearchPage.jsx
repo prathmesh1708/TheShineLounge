@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 // Import image assets
 import toastImg from '../assets/images/gourmet_toast.png';
@@ -7,6 +8,19 @@ import cappuccinoImg from '../assets/images/classic_cappuccino.png';
 import carWashImg from '../assets/images/car_wash_premium.png';
 import dogWashImg from '../assets/images/dog_wash_premium.png';
 import salonImg from '../assets/images/salon_haircut_premium.png';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 280, damping: 24 } }
+};
 
 export default function SearchPage() {
   const navigate = useNavigate();
@@ -64,10 +78,16 @@ export default function SearchPage() {
         <h3 className="form-label" style={{ marginBottom: '0.15rem' }}>Search Results ({filtered.length})</h3>
         
         {filtered.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <motion.div 
+            style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+          >
             {filtered.map((item, idx) => (
-              <div 
+              <motion.div 
                 key={idx} 
+                variants={itemVariants}
                 className="gourmet-item-row" 
                 onClick={() => navigate(item.path)}
                 style={{ cursor: 'pointer', padding: '0.85rem 1.15rem' }}
@@ -93,9 +113,9 @@ export default function SearchPage() {
                   <span className="gourmet-price-badge">{item.price}</span>
                   <span style={{ fontSize: '0.9rem', color: '#148F87', fontWeight: 600 }}>View →</span>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         ) : (
           <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', marginTop: '2rem' }}>
             No products or services match your search query.
