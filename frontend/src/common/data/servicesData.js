@@ -99,7 +99,7 @@ export const servicesData = {
   },
   'dog-wash': {
     id: 'dog-wash',
-    name: 'Dog Wash',
+    name: 'Dog Bath',
     tagline: 'Self-serve and full-care tubs for happy, clean pups.',
     accentColor: '#2E7D32', // forest green
     durations: [

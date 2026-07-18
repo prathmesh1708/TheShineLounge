@@ -16,6 +16,34 @@ export default function DogWashHomePage() {
   const [activeSlide, setActiveSlide] = useState(0);
   const scrollRef = useRef(null);
 
+  const pricingPlans = [
+    {
+      id: "basic-wash",
+      name: "Quick Rinse",
+      duration: "2 Minutes",
+      price: 100,
+      icon: "🛁",
+      desc: "Quick warm-water spray and towel pat dry, ideal for a fast refresh."
+    },
+    {
+      id: "premium-wash",
+      name: "Classic Bath",
+      duration: "5 Minutes",
+      price: 200,
+      icon: "🧴",
+      desc: "Deep coat warm-water shampoo scrub, towel dry + blow dry, and basic brush out.",
+      isPopular: true
+    },
+    {
+      id: "full-grooming",
+      name: "The Deluxe Groom",
+      duration: "12 Minutes",
+      price: 500,
+      icon: "✂",
+      desc: "Aloe conditioner, warm-water jacuzzi bubble massage, ear flush, and full brush out."
+    }
+  ];
+
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft } = scrollRef.current;
@@ -55,8 +83,7 @@ export default function DogWashHomePage() {
     { name: "Nail Trimming", label: "Nail Trimming", icon: "💅", cat: "Wellness" },
     { name: "Ear Cleaning", label: "Ear Cleaning", icon: "👂", cat: "Wellness" },
     { name: "Flea Treatment", label: "Flea Treatment", icon: "🐜", cat: "Therapy" },
-    { name: "Teeth Cleaning", label: "Teeth Cleaning", icon: "🪥", cat: "Wellness" },
-    { name: "Spa Therapy", label: "Spa Therapy", icon: "🫧", cat: "Therapy" }
+    { name: "Teeth Cleaning", label: "Teeth Cleaning", icon: "🪥", cat: "Wellness" }
   ];
 
   const steps = [
@@ -77,48 +104,53 @@ export default function DogWashHomePage() {
       {/* 1. Hero Slides Slider */}
       <DogWashHero />
 
-      {/* 3. Category Grid */}
-      <div className="space-y-3">
+
+      {/* Dog Bath Pricing Section */}
+      <div className="space-y-4 pt-2">
         <div className="text-center md:text-left">
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Spa Categories</h2>
-          <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Treatments engineered for skin hygiene and coat softness.</p>
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Dog Wash Pricing</h2>
+          <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Choose the perfect quick refresh or deep clean package.</p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {categories.map((cat, idx) => (
-            <motion.button
-              key={idx}
-              whileHover={{ y: -4, scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleCategoryClick(cat.cat)}
-              className="bg-white border border-zinc-200/80 hover:border-grooming-primary/45 rounded-24 p-5 text-center flex flex-col items-center gap-3 transition-all shadow-sm hover:shadow-md cursor-pointer"
+        <div className="flex flex-col gap-3">
+          {pricingPlans.map((plan) => (
+            <div 
+              key={plan.id}
+              className="flex items-center gap-4 bg-white border border-zinc-200/80 hover:border-grooming-primary/45 rounded-24 p-4.5 cursor-pointer transition-all shadow-sm hover:shadow-md"
+              onClick={() => navigate(`/dog-wash/booking?service=${plan.id}`)}
             >
-              <span className="text-3xl filter drop-shadow-sm select-none">{cat.icon}</span>
-              <span className="text-xs font-bold text-zinc-700 tracking-wide">{cat.label}</span>
-            </motion.button>
-          ))}
-        </div>
-      </div>
+              {/* Left icon badge */}
+              <div className="w-14 h-14 rounded-20 bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-center text-3xl flex-shrink-0">
+                {plan.icon}
+              </div>
+              
+              {/* Details middle */}
+              <div className="flex-grow min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-zinc-800 text-sm sm:text-base leading-snug">{plan.name}</h3>
+                  {plan.isPopular && (
+                    <span className="text-[9px] font-bold text-grooming-primary bg-grooming-primary/10 px-2 py-0.5 rounded-full">
+                      Popular
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-400 font-semibold leading-relaxed mt-0.5 sm:mt-1 hidden sm:block">
+                  {plan.desc}
+                </p>
+                <div className="flex items-center gap-1 mt-1 text-zinc-400">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-zinc-400">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <span className="text-[10px] sm:text-xs font-bold text-zinc-400">{plan.duration}</span>
+                </div>
+              </div>
 
-      {/* 4. Popular Services */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-end">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Popular Services</h2>
-            <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Highly requested washes and custom haircuts.</p>
-          </div>
-          <button
-            onClick={() => navigate("/dog-wash/services")}
-            className="text-xs md:text-sm font-bold text-grooming-primary hover:text-grooming-hover transition-colors flex items-center gap-1"
-          >
-            <span>View All</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-          {SERVICES.slice(0, 4).map((service) => (
-            <DogWashCard key={service.id} service={service} />
+              {/* Right price */}
+              <div className="text-right flex-shrink-0 px-2">
+                <span className="text-base sm:text-xl font-black text-zinc-800">₹{plan.price}</span>
+              </div>
+            </div>
           ))}
         </div>
       </div>

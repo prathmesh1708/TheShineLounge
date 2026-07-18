@@ -21,7 +21,7 @@ export default function SearchPage() {
     { name: 'Monthly Unlimited Membership', category: 'Car Wash', price: '₹39.00', path: '/car-wash', image: carWashImg },
     { name: 'Exterior Hand Polish', category: 'Detailing', price: '₹85.00', path: '/car-detailing', image: carWashImg },
     { name: 'Ceramic Coating Shield', category: 'Detailing', price: '₹299.00', path: '/car-detailing', image: carWashImg },
-    { name: 'Express Dog Wash (10 Min)', category: 'Dog Wash', price: '₹15.00', path: '/dog-wash', image: dogWashImg },
+    { name: 'Express Dog Bath (10 Min)', category: 'Dog Bath', price: '₹15.00', path: '/dog-wash', image: dogWashImg },
     { name: 'Executive Haircut & Shave', category: 'Men\'s Salon', price: '₹45.00', path: '/salon', image: salonImg }
   ];
 

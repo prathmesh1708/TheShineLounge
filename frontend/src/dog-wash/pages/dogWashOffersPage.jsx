@@ -61,7 +61,7 @@ export default function DogWashOffersPage() {
         <ul className="space-y-3 text-xs md:text-sm text-zinc-500 font-semibold list-disc list-inside leading-relaxed">
           <li>Copy code block above and paste it on Step 6 (Review & Checkout) of the booking form.</li>
           <li>Each coupon requires a minimum subtotal value (e.g. FIRSTPAW15 requires $20 minimum).</li>
-          <li>Only one coupon can be applied per dog wash slot.</li>
+          <li>Only one coupon can be applied per dog bath slot.</li>
           <li>All cashback/flat reductions are instantly calculated and adjusted before final tax receipt.</li>
         </ul>
       </div>

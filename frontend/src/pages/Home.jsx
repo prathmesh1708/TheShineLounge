@@ -105,7 +105,7 @@ export default function Home() {
     },
     { 
       id: 'dog-wash', 
-      label: 'Dog Wash', 
+      label: 'Dog Bath', 
       icon: '🐕', 
       path: '/dog-wash',
       color: '#2E7D32'
