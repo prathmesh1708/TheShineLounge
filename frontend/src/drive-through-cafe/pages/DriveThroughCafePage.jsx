@@ -306,14 +306,14 @@ export default function DriveThroughCafePage() {
             className="catalog-detail-flow"
           >
             {/* Header */}
-            <div className="catalog-detail-header">
-              <button className="back-btn-round" onClick={() => setShowCheckout(false)}>
+            <div className="catalog-detail-header" style={{ alignItems: 'center' }}>
+              <button className="confirm-back-btn" onClick={() => setShowCheckout(false)}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="19" y1="12" x2="5" y2="12" />
                   <polyline points="12 19 5 12 12 5" />
                 </svg>
               </button>
-              <h2 className="catalog-detail-title">Express Checkout</h2>
+              <h2 className="catalog-detail-title" style={{ margin: 0, lineHeight: 1 }}>Express Checkout</h2>
               <div style={{ width: '44px' }} /> {/* Spacer */}
             </div>
 
@@ -357,7 +357,9 @@ export default function DriveThroughCafePage() {
                         padding: '0.4rem', 
                         fontSize: '0.85rem',
                         fontWeight: 700,
-                        color: 'var(--text-main)'
+                        color: 'var(--text-main)',
+                        maxWidth: '175px',
+                        width: '100%'
                       }}
                     >
                       <option>Tesla Model 3 (TSL-3000)</option>
@@ -377,7 +379,9 @@ export default function DriveThroughCafePage() {
                         padding: '0.4rem', 
                         fontSize: '0.85rem',
                         fontWeight: 700,
-                        color: 'var(--text-main)'
+                        color: 'var(--text-main)',
+                        maxWidth: '175px',
+                        width: '100%'
                       }}
                     >
                       <option>Now (Ready in 2 min)</option>
@@ -488,14 +492,14 @@ export default function DriveThroughCafePage() {
             className="catalog-detail-flow"
           >
             {/* Header Row: Back button, Title, Filter icon */}
-            <div className="catalog-detail-header">
-              <button className="back-btn-round" onClick={() => setActiveCategory(null)}>
+            <div className="catalog-detail-header" style={{ alignItems: 'center' }}>
+              <button className="confirm-back-btn" onClick={() => setActiveCategory(null)}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="19" y1="12" x2="5" y2="12" />
                   <polyline points="12 19 5 12 12 5" />
                 </svg>
               </button>
-              <h2 className="catalog-detail-title">{activeCategory}</h2>
+              <h2 className="catalog-detail-title" style={{ margin: 0, lineHeight: 1 }}>{activeCategory}</h2>
               <div style={{ width: '44px' }} /> {/* Spacer */}
             </div>
 
