@@ -149,9 +149,15 @@ export default function DogWashBookingPage() {
       exit={{ opacity: 0 }}
       className="max-w-4xl mx-auto space-y-8 text-zinc-800"
     >
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-zinc-855">Book Grooming Slot</h1>
-        <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1">Configure your premium mobile dog wash appointment.</p>
+      {/* Back Button */}
+      <div className="flex items-center">
+        <button
+          onClick={() => navigate('/dog-wash')}
+          className="flex items-center justify-center w-10 h-10 bg-white border border-zinc-200/80 rounded-full text-zinc-650 hover:bg-zinc-50 shadow-sm transition-all"
+          aria-label="Back"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Desktop Indicator */}
@@ -176,12 +182,6 @@ export default function DogWashBookingPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* Mobile Indicator */}
-      <div className="flex md:hidden justify-between items-center bg-white border border-zinc-200/80 rounded-20 p-4 shadow-sm">
-        <span className="text-xs font-semibold text-zinc-400">Step {step} of 6</span>
-        <span className="text-sm font-bold text-grooming-primary">{stepsList[step - 1]}</span>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

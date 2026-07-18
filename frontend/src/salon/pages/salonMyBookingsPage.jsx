@@ -32,7 +32,7 @@ export default function SalonMyBookingsPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-8 text-zinc-800 pb-24"
+      className="space-y-4 pb-12 md:space-y-6 md:pb-16 text-zinc-800"
     >
       
       {/* Title */}

@@ -10,7 +10,7 @@ const SLIDES = [
     tag: "Premium Care",
     title: "Your Car Deserves The Best Care",
     desc: "Professional touchless washing & paint protection detailing services delivered at your doorstep in Indore.",
-    btnText: "Book Appointment",
+    btnText: "Book Now",
     image: "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&q=80&w=1200",
     color: "emerald"
   },
@@ -58,7 +58,7 @@ export default function CarDetailingHero() {
   };
 
   return (
-    <div className="relative w-full h-[460px] md:h-[500px] bg-luxury-black rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
+    <div className="relative w-full h-[180px] sm:h-[280px] md:h-[400px] bg-luxury-black rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
       <AnimatePresence mode="wait">
         <motion.div
           key={current}
@@ -82,7 +82,7 @@ export default function CarDetailingHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="flex items-center gap-1.5 mb-3 text-luxury-emerald text-sm uppercase tracking-widest font-extrabold"
+              className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-luxury-emerald text-xs sm:text-sm uppercase tracking-widest font-extrabold"
             >
               <Sparkles className="w-4.5 h-4.5 fill-current" />
               <span>{SLIDES[current].tag}</span>
@@ -92,7 +92,7 @@ export default function CarDetailingHero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-4"
+              className="text-lg sm:text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
             >
               {SLIDES[current].title.split(" ").map((word, i) => (
                 <span key={i} className={word === "Emerald" || word === "Best" || word === "9H" || word === "Ceramic" || word === "Steam" ? "text-luxury-emerald" : ""}>
@@ -105,7 +105,7 @@ export default function CarDetailingHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="text-white/70 text-sm md:text-base leading-relaxed mb-8 max-w-lg"
+              className="hidden sm:block text-white/70 text-xs sm:text-sm md:text-base leading-relaxed mb-4 sm:mb-8 max-w-lg"
             >
               {SLIDES[current].desc}
             </motion.p>
@@ -114,7 +114,7 @@ export default function CarDetailingHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="w-48"
+              className="w-fit sm:w-48"
             >
               <PrimaryButton onClick={handleAction} icon={<ArrowRight className="w-4 h-4" />}>
                 {SLIDES[current].btnText}

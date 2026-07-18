@@ -11,7 +11,7 @@ export function PrimaryButton({ children, onClick, type = "button", disabled = f
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`w-full py-4 px-6 bg-grooming-primary hover:bg-grooming-hover disabled:bg-zinc-300 text-white font-semibold rounded-24 shadow-premium hover:shadow-premium-hover transition-colors flex items-center justify-center gap-2 text-base ${className}`}
+      className={`w-full py-2.5 sm:py-3.5 px-4 sm:px-6 bg-grooming-primary hover:bg-grooming-hover disabled:bg-zinc-300 text-white font-semibold rounded-16 sm:rounded-20 md:rounded-24 shadow-premium hover:shadow-premium-hover transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base ${className}`}
     >
       {children}
       {icon && <span className="w-5 h-5 flex items-center justify-center">{icon}</span>}
@@ -28,7 +28,7 @@ export function SecondaryButton({ children, onClick, type = "button", disabled =
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`w-full py-4 px-6 bg-white hover:bg-grooming-cream border border-zinc-200 text-zinc-800 font-semibold rounded-24 transition-all shadow-sm flex items-center justify-center gap-2 text-base ${className}`}
+      className={`w-full py-2.5 sm:py-3.5 px-4 sm:px-6 bg-white hover:bg-grooming-cream border border-zinc-200 text-zinc-800 font-semibold rounded-16 sm:rounded-20 md:rounded-24 transition-all shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base ${className}`}
     >
       {children}
     </motion.button>

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Car, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle } from 'lucide-react';
+import { Car, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle, Lock, CreditCard, Smartphone, QrCode, Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 import { PrimaryButton, SecondaryButton, FormInput, FormSelect, DatePicker, Toast } from '../components/carDetailingUI';
@@ -19,6 +19,14 @@ export default function CarDetailingBookingPage() {
   const [searchParams] = useSearchParams();
 
   const [step, setStep] = useState(1);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [formData, setFormData] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("card"); // card, upi, pod
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [upiId, setUpiId] = useState("");
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm({
     defaultValues: {
       vehicleBrand: "",
@@ -133,22 +141,32 @@ export default function CarDetailingBookingPage() {
   const prevStep = () => setStep(prev => prev - 1);
 
   const onSubmit = (data) => {
-    // Navigate to success page with booking details
-    const selectedItem = watchedPackage !== "none"
-      ? PACKAGES.find(p => p.id === watchedPackage)?.name
-      : SERVICES.find(s => s.id === watchedService)?.name;
+    setFormData(data);
+    setShowPaymentModal(true);
+  };
 
-    navigate('/car-detailing/success', {
-      state: {
-        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-        vehicle: `${data.vehicleBrand} ${data.vehicleModel}`,
-        item: selectedItem,
-        date: data.bookingDate,
-        time: data.bookingTime,
-        price: getFinalTotal(),
-        address: `${data.address}, ${data.landmark || ''} (Pin: ${data.pincode})`
-      }
-    });
+  const handlePaymentSuccess = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      setIsProcessing(false);
+      setShowPaymentModal(false);
+      
+      const selectedItem = watchedPackage !== "none"
+        ? PACKAGES.find(p => p.id === watchedPackage)?.name
+        : SERVICES.find(s => s.id === watchedService)?.name;
+
+      navigate('/car-detailing/success', {
+        state: {
+          bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+          vehicle: `${formData.vehicleBrand} ${formData.vehicleModel}`,
+          item: selectedItem,
+          date: formData.bookingDate,
+          time: formData.bookingTime,
+          price: getFinalTotal(),
+          address: `${formData.address}, ${formData.landmark || ''} (Pin: ${formData.pincode})`
+        }
+      });
+    }, 1500);
   };
 
   const stepsList = ["Vehicle", "Service Selection", "Date & Slots", "Add-ons", "Address", "Checkout"];
@@ -160,10 +178,15 @@ export default function CarDetailingBookingPage() {
       exit={{ opacity: 0 }}
       className="max-w-4xl mx-auto space-y-8 text-zinc-800"
     >
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-zinc-850">Book Detailing</h1>
-        <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1">Configure your premium detailing appointment in a few clicks.</p>
+      {/* Back Button */}
+      <div className="flex items-center">
+        <button
+          onClick={() => navigate('/car-detailing')}
+          className="flex items-center justify-center w-10 h-10 bg-white border border-zinc-200/80 rounded-full text-zinc-650 hover:bg-zinc-50 shadow-sm transition-all"
+          aria-label="Back"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Steps Indicator Progress Bar */}
@@ -188,12 +211,6 @@ export default function CarDetailingBookingPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* Mobile Steps Tracker */}
-      <div className="flex md:hidden justify-between items-center bg-white border border-zinc-200/80 rounded-20 p-4 shadow-sm">
-        <span className="text-xs font-semibold text-zinc-400">Step {step} of 6</span>
-        <span className="text-sm font-bold text-luxury-emerald">{stepsList[step - 1]}</span>
       </div>
 
       {/* Main Multi-step Form Content */}
@@ -585,6 +602,208 @@ export default function CarDetailingBookingPage() {
         </div>
 
       </form>
+
+      {/* Secure Payment Modal */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white border border-zinc-200 rounded-24 p-6 sm:p-8 max-w-md w-full shadow-2xl relative overflow-hidden flex flex-col justify-between"
+            >
+              {isProcessing ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
+                  <Loader2 className="w-12 h-12 text-luxury-emerald animate-spin" />
+                  <h3 className="text-xl font-extrabold text-zinc-800">Processing Payment</h3>
+                  <p className="text-sm text-zinc-500 font-semibold max-w-xs">
+                    Please do not close this window or refresh the page while we authenticate your transaction with your bank...
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
+                      <Lock className="w-5 h-5 text-luxury-emerald" />
+                      <span>Secure Payment Gateway</span>
+                    </h3>
+                    <button
+                      onClick={() => setShowPaymentModal(false)}
+                      className="text-zinc-450 hover:text-zinc-600 text-sm font-bold p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Pricing summary */}
+                  <div className="bg-luxury-emerald/5 border border-luxury-emerald/10 rounded-20 p-4 flex justify-between items-center">
+                    <span className="text-sm text-zinc-600 font-bold">Total Amount (INR)</span>
+                    <span className="text-2xl font-extrabold text-luxury-emerald">₹{getFinalTotal()}</span>
+                  </div>
+
+                  {/* Payment Method Selector */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("card")}
+                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                        paymentMethod === "card"
+                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
+                          : "border-zinc-200 text-zinc-500 bg-white"
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span>Card</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("upi")}
+                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                        paymentMethod === "upi"
+                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
+                          : "border-zinc-200 text-zinc-500 bg-white"
+                      }`}
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>UPI / QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("pod")}
+                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                        paymentMethod === "pod"
+                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
+                          : "border-zinc-200 text-zinc-500 bg-white"
+                      }`}
+                    >
+                      <MapPin className="w-4 h-4" />
+                      <span>Pay Later</span>
+                    </button>
+                  </div>
+
+                  {/* Forms based on method */}
+                  <div className="space-y-4 pt-2 border-t border-zinc-100 min-h-[160px] flex flex-col justify-center">
+                    {paymentMethod === "card" && (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">Card Number</label>
+                          <input
+                            type="text"
+                            placeholder="4111 2222 3333 4444"
+                            maxLength={19}
+                            value={cardNumber}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+                              const matches = v.match(/\d{4,16}/g);
+                              const match = matches && matches[0] || '';
+                              const parts = [];
+                              for (let i=0, len=match.length; i<len; i+=4) {
+                                parts.push(match.substring(i, i+4));
+                              }
+                              if (parts.length > 0) {
+                                setCardNumber(parts.join(' '));
+                              } else {
+                                setCardNumber(v);
+                              }
+                            }}
+                            className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">Expiry Date</label>
+                            <input
+                              type="text"
+                              placeholder="MM/YY"
+                              maxLength={5}
+                              value={cardExpiry}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+                                if (v.length >= 2) {
+                                  setCardExpiry(v.substring(0,2) + '/' + v.substring(2,4));
+                                } else {
+                                  setCardExpiry(v);
+                                }
+                              }}
+                              className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">CVV</label>
+                            <input
+                              type="password"
+                              placeholder="123"
+                              maxLength={3}
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/gi, ''))}
+                              className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentMethod === "upi" && (
+                      <div className="space-y-4 flex flex-col items-center">
+                        <div className="space-y-1 w-full">
+                          <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">UPI ID</label>
+                          <input
+                            type="text"
+                            placeholder="username@upi"
+                            value={upiId}
+                            onChange={(e) => setUpiId(e.target.value)}
+                            className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
+                          />
+                        </div>
+                        <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-20 p-3 w-full">
+                          <QrCode className="w-10 h-10 text-luxury-emerald flex-shrink-0" />
+                          <div className="text-[10px] sm:text-xs font-semibold text-zinc-500">
+                            Or scan the dynamic QR code during checkout. Confirm booking after complete scanning.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentMethod === "pod" && (
+                      <div className="text-center p-4 bg-zinc-50 border border-zinc-200 rounded-20 space-y-1.5">
+                        <h4 className="font-bold text-sm text-zinc-800">Pay on Detailing (POD)</h4>
+                        <p className="text-xs text-zinc-500 leading-relaxed font-semibold">
+                          Book now and pay via UPI, Card, or Cash on site once the detailing is completed by our technician.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer CTAs */}
+                  <div className="flex gap-4 border-t border-zinc-150 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowPaymentModal(false)}
+                      className="w-1/2 py-3.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold rounded-20 text-xs sm:text-sm shadow-sm transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePaymentSuccess}
+                      className="w-1/2 py-3.5 bg-luxury-emerald hover:bg-luxury-emeraldHover text-white font-bold rounded-20 text-xs sm:text-sm shadow-premium transition-all"
+                    >
+                      {paymentMethod === "pod" ? "Confirm Booking" : "Pay & Confirm"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Feedback Toast */}
       <Toast

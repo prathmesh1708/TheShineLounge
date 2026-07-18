@@ -61,7 +61,7 @@ export default function CarDetailingServiceDetailsPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-12 text-zinc-800"
+      className="space-y-6 md:space-y-10 text-zinc-800"
     >
       {/* Back Button */}
       <button

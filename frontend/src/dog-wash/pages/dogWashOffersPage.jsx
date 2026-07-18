@@ -14,7 +14,7 @@ export default function DogWashOffersPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-12 max-w-4xl mx-auto text-zinc-800"
+      className="space-y-6 md:space-y-10 max-w-4xl mx-auto text-zinc-800"
     >
       <div>
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-zinc-855">Coupons & Offers</h1>

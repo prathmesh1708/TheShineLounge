@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 
 import CarDetailingSearchBar from '../components/carDetailingSearchBar';
 import CarDetailingFilterChips from '../components/carDetailingFilterChips';
@@ -21,6 +21,7 @@ const CATEGORIES = [
 ];
 
 export default function CarDetailingServicesPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSearch = searchParams.get("search") || "";
   const initialCategory = searchParams.get("category") || "All";
@@ -54,12 +55,15 @@ export default function CarDetailingServicesPage() {
       exit={{ opacity: 0 }}
       className="space-y-8 text-zinc-800"
     >
-      {/* Title Header */}
+      {/* Back Button */}
       <div>
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-zinc-850">Detailing Services</h1>
-        <p className="text-xs md:text-sm text-zinc-555 font-semibold mt-1.5">
-          Select from our precision detailing treatments, correction programs, and protective coatings.
-        </p>
+        <button
+          onClick={() => navigate('/car-detailing')}
+          className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-800 transition-colors font-bold"
+        >
+          <ArrowLeft className="w-4.5 h-4.5" />
+          <span>Back</span>
+        </button>
       </div>
 
       {/* Search & Filter controls */}

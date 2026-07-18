@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import SalonNavbar from '../components/salonNavbar';
 
 // Sub Pages
 import SalonHomePage from './salonHomePage';
@@ -31,11 +30,9 @@ export default function SalonPage() {
 
   return (
     <div className="bg-transparent min-h-screen text-zinc-800 flex flex-col justify-between selection:bg-primary selection:text-white salon-portal">
-      {/* Brand Header */}
-      <SalonNavbar />
 
       {/* Nested Route Outlets */}
-      <main className="flex-grow w-full py-4 space-y-12">
+      <main className="flex-grow w-full py-2.5 space-y-6 md:space-y-10">
         <Routes>
           <Route path="/" element={<SalonHomePage />} />
           <Route path="/services" element={<SalonServicesPage />} />

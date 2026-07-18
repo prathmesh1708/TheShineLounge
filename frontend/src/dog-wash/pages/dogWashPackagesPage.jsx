@@ -65,18 +65,18 @@ export default function DogWashPackagesPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-12 text-zinc-800"
+      className="space-y-6 text-zinc-800"
     >
       {/* Title Header */}
       <div>
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-zinc-855">Spa Packages</h1>
-        <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-855">Spa Packages</h1>
+        <p className="text-xs text-zinc-500 font-semibold mt-1.5">
           Select standard puppy care, breed scissor cuts, or deep de-shedding resets.
         </p>
       </div>
 
       {/* Pricing Component */}
-      <div className="bg-white border border-zinc-200/80 rounded-24 px-4 py-8 shadow-premium">
+      <div className="bg-white border border-zinc-200/80 rounded-24 px-3 py-2.5 shadow-premium">
         <Pricing
           plans={groomingPlans}
           title="Simple, Transparent Spa Pricing"

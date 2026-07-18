@@ -12,7 +12,7 @@ export default function SalonSettingsPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-10 text-zinc-800 pb-24 max-w-2xl"
+      className="space-y-5 pb-12 md:space-y-8 md:pb-16 text-zinc-800 max-w-2xl"
     >
       
       {/* Title */}

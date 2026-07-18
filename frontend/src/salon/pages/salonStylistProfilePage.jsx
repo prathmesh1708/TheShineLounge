@@ -47,7 +47,7 @@ export default function SalonStylistProfilePage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-12 pb-24 text-zinc-800"
+      className="space-y-6 pb-12 md:space-y-10 md:pb-16 text-zinc-800"
     >
       {/* Back Link */}
       <button

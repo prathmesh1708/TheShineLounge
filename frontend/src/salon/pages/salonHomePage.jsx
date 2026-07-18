@@ -3,13 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Sparkles, ArrowRight, Star, Clock, Heart } from 'lucide-react';
 
-import SalonStylistCard from '../components/salonStylistCard';
 import SalonServiceCard from '../components/salonServiceCard';
-import SalonOfferCard from '../components/salonOfferCard';
-import SalonReviewCard from '../components/salonReviewCard';
 import { PrimaryButton } from '../components/salonUI';
 
-import { SERVICES, CATEGORIES, STYLISTS, OFFERS, REVIEWS } from '../services/salonApi';
+import { SERVICES, CATEGORIES, OFFERS, REVIEWS } from '../services/salonApi';
 
 const HERO_SLIDES = [
   {
@@ -17,7 +14,7 @@ const HERO_SLIDES = [
     tag: "Exclusive Glow Up",
     title: "Pamper Yourself With Master Stylists",
     desc: "Precision haircuts, customized coloring, and luxurious head-to-toe beauty spas at Indore's premium lounge.",
-    btnText: "Book Appointment",
+    btnText: "Book Now",
     image: "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200",
   },
   {
@@ -65,11 +62,9 @@ export default function SalonHomePage() {
   };
 
   // Scroll Tracking for horizontal sliders (Premium swipe indicators)
-  const [stylistIndex, setStylistIndex] = useState(0);
   const [serviceIndex, setServiceIndex] = useState(0);
   const [offerIndex, setOfferIndex] = useState(0);
 
-  const stylistRef = useRef(null);
   const serviceRef = useRef(null);
   const offerRef = useRef(null);
 
@@ -97,11 +92,12 @@ export default function SalonHomePage() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="space-y-16 text-zinc-800"
+      className="space-y-6 md:space-y-10 text-zinc-800"
     >
       
+
       {/* 1. Auto-Sliding Hero Banner */}
-      <div className="relative w-full h-[400px] md:h-[460px] bg-zinc-900 rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
+      <div className="relative w-full h-[180px] sm:h-[280px] md:h-[400px] bg-zinc-900 rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
@@ -125,9 +121,9 @@ export default function SalonHomePage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex items-center gap-1.5 mb-3 text-primary text-xs md:text-sm uppercase tracking-widest font-extrabold"
+                className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-primary text-[10px] sm:text-xs md:text-sm uppercase tracking-widest font-extrabold"
               >
-                <Sparkles className="w-4.5 h-4.5 fill-current" />
+                <Sparkles className="w-4 h-4 fill-current" />
                 <span>{HERO_SLIDES[currentSlide].tag}</span>
               </motion.div>
               
@@ -135,7 +131,7 @@ export default function SalonHomePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="text-2xl md:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight mb-4"
+                className="text-lg sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
               >
                 {HERO_SLIDES[currentSlide].title}
               </motion.h1>
@@ -144,7 +140,7 @@ export default function SalonHomePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="text-xs md:text-sm text-zinc-300 font-medium leading-relaxed mb-8 max-w-lg"
+                className="hidden sm:block text-white/70 text-xs sm:text-sm md:text-base leading-relaxed mb-4 sm:mb-8 max-w-lg font-semibold"
               >
                 {HERO_SLIDES[currentSlide].desc}
               </motion.p>
@@ -153,13 +149,13 @@ export default function SalonHomePage() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.5 }}
-                className="w-fit"
+                className="w-fit sm:w-48"
               >
                 <PrimaryButton
                   onClick={() => navigate('/salon/booking')}
-                  className="py-3 px-6 text-xs md:text-sm tracking-wide font-extrabold"
+                  className="py-3 px-6 text-xs tracking-wide font-extrabold"
                 >
-                  {HERO_SLIDES[currentSlide].btnText}
+                  Book Now
                 </PrimaryButton>
               </motion.div>
             </div>
@@ -181,35 +177,8 @@ export default function SalonHomePage() {
         </div>
       </div>
 
-      {/* 2. Search & Categories Navigation Panel */}
-      <div className="bg-white border border-zinc-200/80 rounded-24 p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-premium">
-        <div className="w-full md:w-1/2">
-          <h2 className="text-xl md:text-2xl font-extrabold tracking-tight mb-2 text-zinc-850">Find Beauty Treatments</h2>
-          <p className="text-xs md:text-sm text-zinc-500 font-semibold">Search balayage highlights, charcoal cleanups, or hot stone massages.</p>
-        </div>
-
-        <form onSubmit={handleSearchSubmit} className="w-full md:w-1/2 flex gap-3">
-          <div className="relative flex-grow">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="e.g. Balayage, Facial, Pedicure..."
-              value={searchVal}
-              onChange={(e) => setSearchVal(e.target.value)}
-              className="w-full py-3.5 pl-12 pr-4 bg-zinc-50 border border-zinc-200 focus:border-primary text-zinc-800 placeholder-zinc-400 rounded-20 outline-none text-sm transition-all shadow-sm font-semibold"
-            />
-          </div>
-          <button
-            type="submit"
-            className="py-3.5 px-6 bg-primary hover:bg-primary/95 text-white text-sm font-semibold rounded-20 shadow-premium transition-all"
-          >
-            Search
-          </button>
-        </form>
-      </div>
-
       {/* 3. Categories Grid */}
-      <div className="space-y-6">
+      <div className="space-y-3">
         <div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Browse Categories</h2>
           <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Precision styling, spa treatments, and professional cosmetics.</p>
@@ -234,44 +203,9 @@ export default function SalonHomePage() {
         </div>
       </div>
 
-      {/* 4. Featured Stylists Slider */}
-      <div className="space-y-6">
-        <div className="flex justify-between items-end">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-855">Featured Artists</h2>
-            <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Indore's certified style consultants and therapists.</p>
-          </div>
-        </div>
-
-        <div
-          ref={stylistRef}
-          onScroll={() => handleScrollTracker(stylistRef, setStylistIndex, STYLISTS.length)}
-          className="flex md:grid md:grid-cols-3 gap-6 overflow-x-auto md:overflow-x-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0"
-        >
-          {STYLISTS.map((sty) => (
-            <div key={sty.id} className="w-[78vw] sm:w-[280px] md:w-auto flex-shrink-0 snap-start snap-always">
-              <SalonStylistCard stylist={sty} />
-            </div>
-          ))}
-        </div>
-
-        {/* Swipe Dots Indicator */}
-        <div className="flex justify-center gap-2 mt-2 md:hidden">
-          {STYLISTS.map((_, idx) => (
-            <button
-              key={idx}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                stylistIndex === idx ? 'w-6 bg-primary' : 'w-2 bg-zinc-200'
-              }`}
-              onClick={() => handleDotScroll(stylistRef, idx, STYLISTS.length)}
-              aria-label={`Go to stylist slide ${idx + 1}`}
-            />
-          ))}
-        </div>
-      </div>
 
       {/* 5. Popular Services */}
-      <div className="space-y-6">
+      <div className="space-y-3">
         <div className="flex justify-between items-end">
           <div>
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Popular Services</h2>
@@ -292,7 +226,7 @@ export default function SalonHomePage() {
           className="flex md:grid md:grid-cols-3 gap-6 overflow-x-auto md:overflow-x-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0"
         >
           {popularServices.map((service) => (
-            <div key={service.id} className="w-[85vw] sm:w-[350px] md:w-auto flex-shrink-0 snap-start snap-always">
+            <div key={service.id} className="w-[46vw] sm:w-[240px] md:w-auto flex-shrink-0 snap-start snap-always">
               <SalonServiceCard service={service} />
             </div>
           ))}
@@ -313,52 +247,6 @@ export default function SalonHomePage() {
         </div>
       </div>
 
-      {/* 6. Special Offers / Coupons */}
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Special Offers & Coupons</h2>
-          <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Claim referral credits, cashback discounts, or flat rate savings.</p>
-        </div>
-
-        <div
-          ref={offerRef}
-          onScroll={() => handleScrollTracker(offerRef, setOfferIndex, OFFERS.length)}
-          className="flex md:grid md:grid-cols-3 gap-6 overflow-x-auto md:overflow-x-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0"
-        >
-          {OFFERS.map((off) => (
-            <div key={off.id} className="w-[85vw] sm:w-[350px] md:w-auto flex-shrink-0 snap-start snap-always">
-              <SalonOfferCard offer={off} />
-            </div>
-          ))}
-        </div>
-
-        {/* Swipe Dots Indicator */}
-        <div className="flex justify-center gap-2 mt-2 md:hidden">
-          {OFFERS.map((_, idx) => (
-            <button
-              key={idx}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                offerIndex === idx ? 'w-6 bg-primary' : 'w-2 bg-zinc-200'
-              }`}
-              onClick={() => handleDotScroll(offerRef, idx, OFFERS.length)}
-              aria-label={`Go to offer slide ${idx + 1}`}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 7. Reviews Section */}
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Client Feedback</h2>
-          <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Hear from guests who visited the Shine Lounge Salon.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {REVIEWS.map((review) => (
-            <SalonReviewCard key={review.id} review={review} />
-          ))}
-        </div>
-      </div>
 
     </motion.div>
   );

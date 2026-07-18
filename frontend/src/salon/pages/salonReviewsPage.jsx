@@ -41,7 +41,7 @@ export default function SalonReviewsPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-12 text-zinc-800 pb-24"
+      className="space-y-6 pb-12 md:space-y-10 md:pb-16 text-zinc-800"
     >
       
       {/* Title */}

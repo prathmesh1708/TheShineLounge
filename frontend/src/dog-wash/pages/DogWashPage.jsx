@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import DogWashNavbar from '../components/dogWashNavbar';
 
 // Sub Pages
 import DogWashHomePage from './dogWashHomePage';
@@ -31,11 +30,8 @@ export default function DogWashPage() {
 
   return (
     <div className="bg-transparent min-h-screen text-zinc-800 flex flex-col justify-between selection:bg-grooming-primary selection:text-white dog-wash-portal">
-      {/* Friendly Brand Header */}
-      <DogWashNavbar />
-
       {/* Main Content Area */}
-      <main className="flex-grow w-full py-4 space-y-12">
+      <main className="flex-grow w-full py-2.5 space-y-6 md:space-y-10">
         <Routes>
           <Route path="/" element={<DogWashHomePage />} />
           <Route path="/services" element={<DogWashServicesPage />} />

@@ -28,12 +28,14 @@ interface PricingProps {
   plans: PricingPlan[];
   title?: string;
   description?: string;
+  currency?: string;
 }
 
 export function Pricing({
   plans,
   title = "Simple, Transparent Pricing",
   description = "Choose the plan that works for you\nAll plans include access to our platform, lead generation tools, and dedicated support.",
+  currency = "USD",
 }: PricingProps) {
   const [isMonthly, setIsMonthly] = useState(true);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -44,17 +46,23 @@ export function Pricing({
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft } = scrollRef.current;
-    const cardWidth = scrollRef.current.scrollWidth / plans.length;
-    const computedIndex = Math.round(scrollLeft / cardWidth);
+    const firstChild = scrollRef.current.firstElementChild;
+    if (!firstChild) return;
+    const cardWidth = firstChild.getBoundingClientRect().width;
+    const gap = 32; // gap-8 is 32px
+    const computedIndex = Math.round(scrollLeft / (cardWidth + gap));
     const finalIndex = Math.max(0, Math.min(plans.length - 1, computedIndex));
     setActiveSlide(finalIndex);
   };
 
   const handleDotClick = (idx: number) => {
     if (!scrollRef.current) return;
-    const cardWidth = scrollRef.current.scrollWidth / plans.length;
+    const firstChild = scrollRef.current.firstElementChild;
+    if (!firstChild) return;
+    const cardWidth = firstChild.getBoundingClientRect().width;
+    const gap = 32;
     scrollRef.current.scrollTo({
-      left: idx * cardWidth,
+      left: idx * (cardWidth + gap),
       behavior: 'smooth'
     });
     setActiveSlide(idx);
@@ -90,17 +98,17 @@ export function Pricing({
   };
 
   return (
-    <div className="w-full py-10 lg:py-20 px-4 md:px-6">
-      <div className="text-center space-y-4 mb-12">
-        <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight text-zinc-850">
+    <div className="w-full py-4 lg:py-8 px-2 md:px-4">
+      <div className="text-center space-y-2 mb-6">
+        <h2 className="text-2xl md:text-4xl font-extrabold tracking-tight text-zinc-855">
           {title}
         </h2>
-        <p className="text-zinc-500 text-sm md:text-lg whitespace-pre-line max-w-2xl mx-auto font-semibold">
+        <p className="text-zinc-500 text-xs md:text-sm whitespace-pre-line max-w-2xl mx-auto font-semibold">
           {description}
         </p>
       </div>
 
-      <div className="flex justify-center items-center mb-10">
+      <div className="flex justify-center items-center mb-6">
         <label className="relative inline-flex items-center cursor-pointer">
           <Label>
             <Switch
@@ -145,8 +153,14 @@ export function Pricing({
               opacity: { duration: 0.4 },
             }}
             className={cn(
-              `w-[85vw] sm:w-[380px] lg:w-auto flex-shrink-0 snap-start snap-always rounded-2xl border-[1px] p-6 bg-background text-center lg:flex lg:flex-col lg:justify-center relative transition-all duration-300`,
-              plan.isPopular ? "border-primary border-2 shadow-premium" : "border-zinc-200/85 hover:border-zinc-300 shadow-sm",
+              `w-[72vw] sm:w-[320px] lg:w-auto flex-shrink-0 snap-start snap-always rounded-2xl border-[1px] p-4 sm:p-6 bg-background text-center lg:flex lg:flex-col lg:justify-center relative transition-all duration-300`,
+              plan.isPopular
+                ? (currency === "INR"
+                    ? "border-luxury-emerald border-2 shadow-[0_12px_40px_-10px_rgba(22,163,74,0.25)] ring-1 ring-luxury-emerald/10"
+                    : "border-primary border-2 shadow-premium")
+                : (currency === "INR"
+                    ? "border-zinc-200/85 hover:border-zinc-300 hover:shadow-[0_12px_30px_-10px_rgba(22,163,74,0.15)] shadow-sm"
+                    : "border-zinc-200/85 hover:border-zinc-300 shadow-sm"),
               "flex flex-col",
               !plan.isPopular && "lg:mt-5",
               index === 0 || index === 2
@@ -176,11 +190,12 @@ export function Pricing({
                     }
                     format={{
                       style: "currency",
-                      currency: "USD",
+                      currency: currency,
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
                     }}
-                    formatter={(value) => `$${value}`}
+                    formatter={(value) => currency === "INR" ? `₹${value}` : `$${value}`}
+                    locales={currency === "INR" ? "en-IN" : "en-US"}
                     transformTiming={{
                       duration: 500,
                       easing: "ease-out",

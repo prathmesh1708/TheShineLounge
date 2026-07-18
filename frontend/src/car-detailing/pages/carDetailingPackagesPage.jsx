@@ -10,8 +10,8 @@ export default function CarDetailingPackagesPage() {
   const detailingPlans = [
     {
       name: "BASIC WASH",
-      price: "49",
-      yearlyPrice: "39",
+      price: "490",
+      yearlyPrice: "390",
       period: "per month",
       features: [
         "Exterior Snow Foam Wash",
@@ -27,8 +27,8 @@ export default function CarDetailingPackagesPage() {
     },
     {
       name: "PREMIUM DETAIL",
-      price: "149",
-      yearlyPrice: "119",
+      price: "1490",
+      yearlyPrice: "1190",
       period: "per month",
       features: [
         "Full Exterior Paint Decontamination",
@@ -46,8 +46,8 @@ export default function CarDetailingPackagesPage() {
     },
     {
       name: "ULTIMATE DETAIL",
-      price: "249",
-      yearlyPrice: "199",
+      price: "2490",
+      yearlyPrice: "1990",
       period: "per month",
       features: [
         "Everything in Premium Detail",
@@ -64,26 +64,26 @@ export default function CarDetailingPackagesPage() {
       isPopular: false
     }
   ];
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-12 text-zinc-800"
+      className="space-y-6 text-zinc-800"
     >
       {/* Title Header */}
       <div>
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-zinc-855">Detailing Packages</h1>
-        <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-855">Detailing Packages</h1>
+        <p className="text-xs text-zinc-500 font-semibold mt-1.5">
           Choose from basic express wash cycles to multi-stage correction & glass ceramic coatings.
         </p>
       </div>
 
       {/* Pricing Component */}
-      <div className="bg-white border border-zinc-200/80 rounded-24 px-4 py-8 shadow-premium">
+      <div className="bg-white border border-zinc-200/80 rounded-24 px-3 py-2.5 shadow-premium">
         <Pricing
           plans={detailingPlans}
+          currency="INR"
           title="Simple, Transparent Detailing Pricing"
           description="Choose the detailing package that works best for your vehicle. Annual billing saves 20% on weekly/monthly subscription washes."
         />
@@ -105,7 +105,7 @@ export default function CarDetailingPackagesPage() {
         <div className="z-10 flex flex-col items-center gap-2">
           <div className="text-center md:text-right">
             <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider block">One-time flat</span>
-            <span className="text-3xl font-extrabold text-zinc-850">$499</span>
+            <span className="text-3xl font-extrabold text-zinc-850">₹4990</span>
           </div>
           <Link
             to="/car-detailing/booking?package=luxury-protection"

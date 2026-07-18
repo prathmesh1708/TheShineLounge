@@ -7,10 +7,10 @@ import { PrimaryButton } from './dogWashUI';
 const SLIDES = [
   {
     id: 1,
-    tag: "Tearless Care",
-    title: "Pamper Your Pup With Warm Baths",
-    desc: "Eco-safe shampoo choices, deep mud conditioning, and soft-air drying right at your doorstep.",
-    btnText: "Book Appointment",
+    tag: "Premium Wash",
+    title: "Eco-Friendly Mobile Pet Spa",
+    desc: "Indore's luxury warm-water mobile pet grooming service equipped with temperature controls and professional stylists.",
+    btnText: "Book Now",
     image: "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=1200",
   },
   {
@@ -55,7 +55,7 @@ export default function DogWashHero() {
   };
 
   return (
-    <div className="relative w-full h-[440px] md:h-[480px] bg-zinc-900 rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
+    <div className="relative w-full h-[180px] sm:h-[280px] md:h-[400px] bg-zinc-900 rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
       <AnimatePresence mode="wait">
         <motion.div
           key={current}
@@ -79,9 +79,9 @@ export default function DogWashHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="flex items-center gap-1.5 mb-3 text-grooming-primary text-xs md:text-sm uppercase tracking-widest font-extrabold"
+              className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-grooming-primary text-xs md:text-sm uppercase tracking-widest font-extrabold"
             >
-              <Sparkles className="w-4.5 h-4.5 fill-current" />
+              <Sparkles className="w-4 h-4 fill-current" />
               <span>{SLIDES[current].tag}</span>
             </motion.div>
             
@@ -89,7 +89,7 @@ export default function DogWashHero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-4"
+              className="text-lg sm:text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
             >
               {SLIDES[current].title}
             </motion.h1>
@@ -98,7 +98,7 @@ export default function DogWashHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="text-white/80 text-xs md:text-sm leading-relaxed mb-8 max-w-lg font-medium"
+              className="hidden sm:block text-white/80 text-xs sm:text-sm md:text-base leading-relaxed mb-4 sm:mb-8 max-w-lg font-medium"
             >
               {SLIDES[current].desc}
             </motion.p>
@@ -107,7 +107,7 @@ export default function DogWashHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="w-48"
+              className="w-fit sm:w-48"
             >
               <PrimaryButton onClick={handleAction} icon={<ArrowRight className="w-4 h-4" />}>
                 {SLIDES[current].btnText}
