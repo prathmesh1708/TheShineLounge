@@ -108,7 +108,7 @@ export default function DogWashHomePage() {
       {/* Dog Bath Pricing Section */}
       <div className="space-y-4 pt-2">
         <div className="text-center md:text-left">
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Dog Wash Pricing</h2>
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Dog Bath Pricing</h2>
           <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Choose the perfect quick refresh or deep clean package.</p>
         </div>
 
