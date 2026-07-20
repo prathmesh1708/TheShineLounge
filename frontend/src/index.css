@@ -3494,32 +3494,20 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
-<<<<<<< HEAD
   background-color: #FF6B00;
-=======
-  background-color: #f38200;
->>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
-<<<<<<< HEAD
   box-shadow: 0 6px 20px rgba(255, 107, 0, 0.25);
-=======
-  box-shadow: 0 6px 20px rgba(243, 130, 0, 0.25);
->>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .carwash-book-btn:hover {
   transform: translateY(-1px);
-<<<<<<< HEAD
   background-color: #E66000;
   box-shadow: 0 8px 24px rgba(255, 107, 0, 0.35);
-=======
-  box-shadow: 0 8px 24px rgba(243, 130, 0, 0.35);
->>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .carwash-book-btn:active {
@@ -3704,7 +3692,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bill-row.promo {
-<<<<<<< HEAD
   color: #FF6B00;
 }
 
@@ -3714,17 +3701,6 @@ h1, h2, h3, h4, h5, h6 {
 
 .bill-row.promo .bill-val {
   color: #FF6B00;
-=======
-  color: #f38200;
-}
-
-.bill-row.promo .bill-label {
-  color: #f38200;
-}
-
-.bill-row.promo .bill-val {
-  color: #f38200;
->>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .bill-divider {
@@ -3750,11 +3726,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
-<<<<<<< HEAD
   background-color: #FF6B00;
-=======
-  background-color: #f38200;
->>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
