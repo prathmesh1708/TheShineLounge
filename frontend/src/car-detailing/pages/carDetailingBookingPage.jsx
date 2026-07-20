@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Car, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle, Lock, CreditCard, Smartphone, QrCode, Loader2 } from 'lucide-react';
+import { Car, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle, Lock, CreditCard, Smartphone, QrCode, Loader2, CheckCircle2, Check, Clock, Tag } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 import { PrimaryButton, SecondaryButton, FormInput, FormSelect, DatePicker, Toast } from '../components/carDetailingUI';
@@ -814,15 +814,5 @@ export default function CarDetailingBookingPage() {
       />
 
     </motion.div>
-  );
-}
-
-// Small mock check icon helper
-function CheckCircle2({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
   );
 }

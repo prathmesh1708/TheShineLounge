@@ -17,13 +17,13 @@ export default function CarDetailingPackageCard({ pack }) {
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
       className={`relative flex flex-col justify-between p-4 sm:p-6 md:p-8 rounded-24 border transition-all ${
         pack.popular
-          ? 'bg-gradient-to-b from-luxury-emerald/5 to-white border-luxury-emerald shadow-[0_12px_40px_-10px_rgba(22,163,74,0.25)] ring-1 ring-luxury-emerald/20'
-          : 'bg-white border-zinc-200/85 hover:border-zinc-300 hover:shadow-[0_12px_30px_-10px_rgba(22,163,74,0.15)] shadow-sm'
+          ? 'bg-gradient-to-b from-[#FF6B00]/5 to-white border-[#FF6B00] shadow-[0_12px_40px_-10px_rgba(255,107,0,0.25)] ring-1 ring-[#FF6B00]/20'
+          : 'bg-white border-zinc-200/85 hover:border-zinc-300 hover:shadow-[0_12px_30px_-10px_rgba(255,107,0,0.15)] shadow-sm'
       } text-zinc-800 h-full`}
     >
       {/* Popular Badge */}
       {pack.popular && (
-        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-luxury-emerald text-white text-[9px] sm:text-[10px] uppercase tracking-widest font-extrabold px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full shadow-premium border border-white/10 whitespace-nowrap">
+        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#FF6B00] text-white text-[9px] sm:text-[10px] uppercase tracking-widest font-extrabold px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full shadow-premium border border-white/10 whitespace-nowrap">
           {pack.badge}
         </span>
       )}
@@ -49,7 +49,7 @@ export default function CarDetailingPackageCard({ pack }) {
           <ul className="space-y-2 sm:space-y-3">
             {pack.features.slice(0, 4).map((feature, idx) => (
               <li key={idx} className="flex gap-2 sm:gap-3 items-start text-[10px] sm:text-xs md:text-sm text-zinc-650 font-medium">
-                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-luxury-emerald flex-shrink-0 mt-0.5" />
+                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FF6B00] flex-shrink-0 mt-0.5" />
                 <span className="truncate sm:whitespace-normal">{feature}</span>
               </li>
             ))}

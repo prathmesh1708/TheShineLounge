@@ -1,10 +1,9 @@
 import React from 'react';
 
 export default function TSLLogo({ accentColor, isService }) {
-  // If isService is true, we use the service's custom accent color.
-  // Otherwise, we use the classic logo colors (blue and orange) from the original image.
-  const color1 = isService ? accentColor : '#1e5396'; // Blue / Service Accent
-  const color2 = isService ? accentColor : '#f58025'; // Orange / Service Accent
+  // Always use the signature classic logo colors (blue and orange) from home dashboard
+  const color1 = '#1e5396'; // Blue
+  const color2 = '#f58025'; // Orange
 
   return (
     <svg 

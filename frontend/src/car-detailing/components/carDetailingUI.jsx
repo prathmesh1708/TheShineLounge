@@ -11,7 +11,7 @@ export function PrimaryButton({ children, onClick, type = "button", disabled = f
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`w-full py-2.5 sm:py-3.5 px-4 sm:px-6 bg-luxury-emerald hover:bg-luxury-emeraldHover disabled:bg-zinc-350 text-white font-semibold rounded-16 sm:rounded-20 md:rounded-24 shadow-premium hover:shadow-premium-hover transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base ${className}`}
+      className={`w-full py-2.5 sm:py-3.5 px-4 sm:px-6 bg-[#FF6B00] hover:bg-[#E66000] disabled:bg-zinc-350 text-white font-semibold rounded-16 sm:rounded-20 md:rounded-24 shadow-premium hover:shadow-premium-hover transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base ${className}`}
     >
       {children}
       {icon && <span className="w-5 h-5 flex items-center justify-center">{icon}</span>}

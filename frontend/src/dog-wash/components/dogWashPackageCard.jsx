@@ -8,7 +8,17 @@ export default function DogWashPackageCard({ pack }) {
   const navigate = useNavigate();
 
   const handleBook = () => {
-    navigate(`/dog-wash/booking?package=${pack.id}`);
+    navigate('/dog-wash/confirm', {
+      state: {
+        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle: `Max (Golden Retriever)`,
+        item: pack.name,
+        date: new Date().toISOString().split('T')[0],
+        time: "Today 4:30 PM",
+        price: pack.price,
+        address: "Palasia Main Rd, Scheme 54, Indore"
+      }
+    });
   };
 
   return (

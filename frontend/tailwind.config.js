@@ -25,9 +25,9 @@ export default {
         luxury: {
           white: "#FFFFFF",
           black: "#111111",
-          emerald: "#16A34A",
-          emeraldHover: "#15803d",
-          emeraldLight: "#D1FAE5",
+          emerald: "#FF6B00",
+          emeraldHover: "#E66000",
+          emeraldLight: "#FFF0E6",
           gray: "#F8F9FA",
           darkGray: "#1A1A1A",
           mutedGray: "#7E7873",
@@ -36,9 +36,9 @@ export default {
           glassBgDark: "rgba(17, 17, 17, 0.85)",
         },
         grooming: {
-          primary: "#00B8B0",
-          hover: "#00A19B",
-          light: "#E0F7F6",
+          primary: "#FF6B00",
+          hover: "#E66000",
+          light: "#FFF0E6",
           cream: "#F7F3EE",
           bg: "#FAFAFA"
         }

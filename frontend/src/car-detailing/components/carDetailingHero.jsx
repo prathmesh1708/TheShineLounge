@@ -82,7 +82,7 @@ export default function CarDetailingHero() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-luxury-emerald text-xs sm:text-sm uppercase tracking-widest font-extrabold"
+              className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-[#FF6B00] text-xs sm:text-sm uppercase tracking-widest font-extrabold"
             >
               <Sparkles className="w-4.5 h-4.5 fill-current" />
               <span>{SLIDES[current].tag}</span>
@@ -95,7 +95,7 @@ export default function CarDetailingHero() {
               className="text-lg sm:text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
             >
               {SLIDES[current].title.split(" ").map((word, i) => (
-                <span key={i} className={word === "Emerald" || word === "Best" || word === "9H" || word === "Ceramic" || word === "Steam" ? "text-luxury-emerald" : ""}>
+                <span key={i} className={word === "Emerald" || word === "Best" || word === "9H" || word === "Ceramic" || word === "Steam" ? "text-[#FF6B00]" : ""}>
                   {word}{" "}
                 </span>
               ))}
@@ -127,13 +127,13 @@ export default function CarDetailingHero() {
       {/* Navigation Arrows */}
       <button
         onClick={handlePrev}
-        className="absolute left-4 top-1/2 -translate-y-1/2 z-30 p-2.5 bg-black/40 hover:bg-luxury-emerald/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all border border-white/10"
+        className="absolute left-4 top-1/2 -translate-y-1/2 z-30 p-2.5 bg-black/40 hover:bg-[#FF6B00]/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all border border-white/10"
       >
         <ChevronLeft className="w-5 h-5" />
       </button>
       <button
         onClick={handleNext}
-        className="absolute right-4 top-1/2 -translate-y-1/2 z-30 p-2.5 bg-black/40 hover:bg-luxury-emerald/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all border border-white/10"
+        className="absolute right-4 top-1/2 -translate-y-1/2 z-30 p-2.5 bg-black/40 hover:bg-[#FF6B00]/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all border border-white/10"
       >
         <ChevronRight className="w-5 h-5" />
       </button>
@@ -145,7 +145,7 @@ export default function CarDetailingHero() {
             key={idx}
             onClick={() => setCurrent(idx)}
             className={`h-2 rounded-full transition-all duration-300 ${
-              current === idx ? 'w-6 bg-luxury-emerald' : 'w-2 bg-white/30'
+              current === idx ? 'w-6 bg-[#FF6B00]' : 'w-2 bg-white/30'
             }`}
           />
         ))}

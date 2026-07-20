@@ -13,13 +13,18 @@ export default function CarDetailingMyBookingsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getBookings().then(res => {
-      setBookings(res);
-      setLoading(false);
-    });
+    getBookings()
+      .then(res => {
+        setBookings(Array.isArray(res) ? res : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setBookings([]);
+        setLoading(false);
+      });
   }, []);
 
-  const filteredBookings = bookings.filter(b => b.status === activeTab);
+  const filteredBookings = (bookings || []).filter(b => b && b.status === activeTab);
   const tabs = ["Upcoming", "Completed", "Cancelled"];
 
   return (

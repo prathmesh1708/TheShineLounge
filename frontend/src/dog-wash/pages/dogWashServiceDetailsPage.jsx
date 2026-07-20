@@ -33,7 +33,17 @@ export default function DogWashServiceDetailsPage() {
   }, [id]);
 
   const handleBook = () => {
-    navigate(`/dog-wash/booking?service=${service.id}`);
+    navigate('/dog-wash/confirm', {
+      state: {
+        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle: `Max (Golden Retriever)`,
+        item: service.name,
+        date: new Date().toISOString().split('T')[0],
+        time: "Today 4:30 PM",
+        price: service.price,
+        address: "Palasia Main Rd, Scheme 54, Indore"
+      }
+    });
   };
 
   if (loading) {

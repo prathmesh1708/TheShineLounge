@@ -90,20 +90,6 @@ export default function Home() {
   // Circular Category Data (mapped to our 6 services)
   const categories = [
     { 
-      id: 'cafe', 
-      label: 'Cafe', 
-      icon: '☕', 
-      path: '/cafe',
-      color: '#8D5B28'
-    },
-    { 
-      id: 'drive-through', 
-      label: 'Drive-Through Cafe', 
-      icon: '⏱️', 
-      path: '/drive-through-cafe',
-      color: '#C17F19'
-    },
-    { 
       id: 'car-wash', 
       label: 'Car Wash', 
       icon: '🚗', 
@@ -123,6 +109,20 @@ export default function Home() {
       icon: '🐕', 
       path: '/dog-wash',
       color: '#2E7D32'
+    },
+    { 
+      id: 'cafe', 
+      label: 'Cafe', 
+      icon: '☕', 
+      path: '/cafe',
+      color: '#8D5B28'
+    },
+    { 
+      id: 'drive-through', 
+      label: 'Drive-Through Cafe', 
+      icon: '⏱️', 
+      path: '/drive-through-cafe',
+      color: '#C17F19'
     },
     { 
       id: 'salon', 

@@ -25,7 +25,7 @@ export default function DogWashBookingPage() {
       serviceSelection: searchParams.get("service") || SERVICES[0].id,
       packageSelection: searchParams.get("package") || "none",
       bookingDate: new Date().toISOString().split('T')[0],
-      bookingTime: "09:00 AM - 11:30 AM (Morning Slot)",
+      bookingTime: searchParams.get("slot") || "Today 4:30 PM",
       address: "",
       landmark: "",
       pincode: "",
@@ -292,22 +292,22 @@ export default function DogWashBookingPage() {
                 />
 
                 <div className="space-y-3.5">
-                  <label className="text-sm font-semibold text-zinc-500 ml-1">Choose Time Slot</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {["09:00 AM - 11:30 AM (Morning Slot)", "01:30 PM - 04:00 PM (Afternoon Slot)"].map((slot, idx) => {
-                      const isSelected = watchedTime === slot;
+                  <h4 className="text-sm font-extrabold text-zinc-800 ml-1">Pick a slot</h4>
+                  <div className="carwash-slots-row">
+                    {[
+                      { id: 'slot-1', label: 'Today 4:30 PM' },
+                      { id: 'slot-2', label: 'Today 6:00 PM' },
+                      { id: 'slot-3', label: 'Tomorrow 9 AM' }
+                    ].map((slot) => {
+                      const isSelected = watchedTime === slot.label;
                       return (
                         <button
-                          key={idx}
+                          key={slot.id}
                           type="button"
-                          onClick={() => setValue("bookingTime", slot)}
-                          className={`py-3.5 px-4 text-xs font-bold rounded-20 border transition-all ${
-                            isSelected
-                              ? 'bg-grooming-primary border-grooming-primary text-white'
-                              : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 shadow-sm'
-                          }`}
+                          className={`carwash-slot-chip ${isSelected ? 'selected' : ''}`}
+                          onClick={() => setValue("bookingTime", slot.label)}
                         >
-                          {slot}
+                          <span className="slot-chip-label">{slot.label}</span>
                         </button>
                       );
                     })}

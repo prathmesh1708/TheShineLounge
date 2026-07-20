@@ -6,6 +6,7 @@ import DogWashHomePage from './dogWashHomePage';
 import DogWashServicesPage from './dogWashServicesPage';
 import DogWashServiceDetailsPage from './dogWashServiceDetailsPage';
 import DogWashBookingPage from './dogWashBookingPage';
+import DogWashConfirmPage from './DogWashConfirmPage';
 import DogWashSuccessPage from './dogWashSuccessPage';
 import DogWashMyBookingsPage from './dogWashMyBookingsPage';
 import DogWashTrackingPage from './dogWashTrackingPage';
@@ -38,6 +39,7 @@ export default function DogWashPage() {
           <Route path="/service/:id" element={<DogWashServiceDetailsPage />} />
           <Route path="/packages" element={<DogWashPackagesPage />} />
           <Route path="/booking" element={<DogWashBookingPage />} />
+          <Route path="/confirm" element={<DogWashConfirmPage />} />
           <Route path="/success" element={<DogWashSuccessPage />} />
           <Route path="/my-bookings" element={<DogWashMyBookingsPage />} />
           <Route path="/tracking" element={<DogWashTrackingPage />} />

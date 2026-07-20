@@ -12,7 +12,17 @@ export default function CarDetailingCard({ service }) {
 
   const handleBook = (e) => {
     e.stopPropagation();
-    navigate(`/car-detailing/booking?service=${service.id}`);
+    navigate('/car-detailing/confirm', {
+      state: {
+        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle: `Tesla Model 3 (TSL-3000)`,
+        item: service.name,
+        date: new Date().toISOString().split('T')[0],
+        time: "Today 4:30 PM",
+        price: service.price * 10,
+        address: "Palasia Main Rd, Scheme 54, Indore"
+      }
+    });
   };
 
   return (
@@ -29,7 +39,7 @@ export default function CarDetailingCard({ service }) {
           alt={service.name}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 py-1 px-2 sm:py-1.5 sm:px-3 bg-zinc-900/90 backdrop-blur-md text-[9px] sm:text-xs font-bold text-luxury-emerald border border-white/10 rounded-full shadow-sm">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 py-1 px-2 sm:py-1.5 sm:px-3 bg-zinc-900/90 backdrop-blur-md text-[9px] sm:text-xs font-bold text-[#FF6B00] border border-white/10 rounded-full shadow-sm">
           {service.category}
         </div>
       </div>
@@ -38,7 +48,7 @@ export default function CarDetailingCard({ service }) {
       <div className="p-3 sm:p-5 flex-grow flex flex-col justify-between">
         <div className="space-y-1.5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <h3 className="text-xs sm:text-sm md:text-lg font-bold text-zinc-855 group-hover:text-luxury-emerald transition-colors leading-snug truncate">
+            <h3 className="text-xs sm:text-sm md:text-lg font-bold text-zinc-855 group-hover:text-[#FF6B00] transition-colors leading-snug truncate">
               {service.name}
             </h3>
             <div className="flex items-center gap-1 text-[9px] sm:text-xs font-bold text-yellow-600 bg-yellow-400/10 px-1.5 py-0.5 rounded-md border border-yellow-400/20 w-fit">
@@ -66,7 +76,7 @@ export default function CarDetailingCard({ service }) {
 
           <button
             onClick={handleBook}
-            className="py-1.5 px-2.5 sm:py-2.5 sm:px-3 bg-luxury-emerald hover:bg-luxury-emeraldHover text-white rounded-15 sm:rounded-20 shadow-premium transition-all flex items-center justify-center gap-1 text-[9px] sm:text-xs font-bold"
+            className="py-1.5 px-2.5 sm:py-2.5 sm:px-3 bg-[#FF6B00] hover:bg-[#E66000] text-white rounded-15 sm:rounded-20 shadow-premium transition-all flex items-center justify-center gap-1 text-[9px] sm:text-xs font-bold"
           >
             <span>Book</span>
             <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />

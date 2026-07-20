@@ -64,7 +64,7 @@ export const servicesData = {
     id: 'car-wash',
     name: 'Car Wash',
     tagline: 'Eco-friendly touchless washing for a flawless shine.',
-    accentColor: '#148F87', // deep teal
+    accentColor: '#FF6B00', // vibrant orange
     plans: [
       { id: 'single-wash', name: 'Express Wash', price: 19.00, features: ['Exterior Foam Bath', 'Spot-Free Rinse', 'Express Air Dry'], isPopular: false },
       { id: 'monthly', name: 'Shine Monthly Pass', price: 39.00, features: ['Unlimited Express Washes', 'Underbody Spray', 'Wheel Cleaning'], isPopular: true },
@@ -85,7 +85,7 @@ export const servicesData = {
     id: 'car-detailing',
     name: 'Car Detailing',
     tagline: 'Deep interior restoration and professional paint correction.',
-    accentColor: '#4A5568', // slate/graphite grey
+    accentColor: '#FF6B00', // vibrant orange
     services: [
       { name: 'Interior Deep Clean & Steam', startPrice: 120.00 },
       { name: 'Exterior Ceramic Coating Protection', startPrice: 250.00 },
@@ -101,7 +101,7 @@ export const servicesData = {
     id: 'dog-wash',
     name: 'Dog Bath',
     tagline: 'Self-serve and full-care tubs for happy, clean pups.',
-    accentColor: '#2E7D32', // forest green
+    accentColor: '#FF6B00', // vibrant orange
     durations: [
       { id: '2-min', name: 'Quick Rinse (2 Minutes)', price: 5.00 },
       { id: '5-min', name: 'Classic Bath (5 Minutes)', price: 10.00 },
@@ -122,7 +122,7 @@ export const servicesData = {
     id: 'salon',
     name: "Men's Salon",
     tagline: 'Expert precision haircuts, hot towels, and grooming rituals.',
-    accentColor: '#7B1FA2', // plum purple
+    accentColor: '#FF6B00', // vibrant orange
     services: [
       { name: 'Classic Scissors Cut', duration: '30 mins', price: 35.00 },
       { name: 'Signature Fade & Beard Trim', duration: '45 mins', price: 50.00 },

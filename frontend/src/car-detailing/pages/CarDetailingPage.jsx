@@ -7,6 +7,7 @@ import CarDetailingServicesPage from './carDetailingServicesPage';
 import CarDetailingServiceDetailsPage from './carDetailingServiceDetailsPage';
 import CarDetailingPackagesPage from './carDetailingPackagesPage';
 import CarDetailingBookingPage from './carDetailingBookingPage';
+import CarDetailingConfirmPage from './CarDetailingConfirmPage';
 import CarDetailingSuccessPage from './carDetailingSuccessPage';
 import CarDetailingMyBookingsPage from './carDetailingMyBookingsPage';
 import CarDetailingTrackingPage from './carDetailingTrackingPage';
@@ -32,7 +33,7 @@ export default function CarDetailingPage() {
   }, []);
 
   return (
-    <div className="bg-transparent min-h-screen text-zinc-800 flex flex-col justify-between selection:bg-luxury-emerald selection:text-white car-detailing-portal">
+    <div className="bg-transparent min-h-screen text-zinc-800 flex flex-col justify-between selection:bg-[#FF6B00] selection:text-white car-detailing-portal">
       {/* Main Content Area */}
       <main className="flex-grow w-full py-2.5 space-y-6 md:space-y-10">
         <Routes>
@@ -41,6 +42,7 @@ export default function CarDetailingPage() {
           <Route path="/service/:id" element={<CarDetailingServiceDetailsPage />} />
           <Route path="/packages" element={<CarDetailingPackagesPage />} />
           <Route path="/booking" element={<CarDetailingBookingPage />} />
+          <Route path="/confirm" element={<CarDetailingConfirmPage />} />
           <Route path="/success" element={<CarDetailingSuccessPage />} />
           <Route path="/my-bookings" element={<CarDetailingMyBookingsPage />} />
           <Route path="/tracking" element={<CarDetailingTrackingPage />} />

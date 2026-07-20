@@ -36,7 +36,7 @@
 }
 
 .car-detailing-portal {
-  --primary: 142.1 76.2% 36.3%; /* Emerald Green #16A34A */
+  --primary: 25.2 100% 50%; /* Vibrant Orange #FF6B00 */
   --primary-foreground: 355.7 100% 97.3%;
   --border: 240 5.9% 90%;
   --background: 0 0% 100%;
@@ -48,7 +48,7 @@
 }
 
 .dog-wash-portal {
-  --primary: 177.4 100% 36.1%; /* Grooming Teal #00B8B0 */
+  --primary: 25.2 100% 50%; /* Vibrant Orange #FF6B00 */
   --primary-foreground: 355.7 100% 97.3%;
   --border: 240 5.9% 90%;
   --background: 0 0% 100%;
@@ -60,7 +60,7 @@
 }
 
 .salon-portal {
-  --primary: 177.4 100% 36.1%; /* Salon Teal #00B8B0 */
+  --primary: 25.2 100% 50%; /* Vibrant Orange #FF6B00 */
   --primary-foreground: 355.7 100% 97.3%;
   --border: 240 5.9% 90%;
   --background: 0 0% 100%;
@@ -69,9 +69,9 @@
   --muted: 240 4.8% 95.9%;
   --muted-foreground: 240 3.8% 46.1%;
   --accent: 240 4.8% 95.9%;
-  /* Service Accents (mapped globally to Terracotta) */
-  --accent-color: #D49A7F;
-  --accent-color-rgb: 212, 154, 127;
+  /* Service Accents */
+  --accent-color: #FF6B00;
+  --accent-color-rgb: 255, 107, 0;
 }
 
 /* --- Base Resets & Global Styles --- */
@@ -3491,19 +3491,20 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
-  background-color: #0F6E56;
+  background-color: #FF6B00;
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 6px 20px rgba(15, 110, 86, 0.2);
+  box-shadow: 0 6px 20px rgba(255, 107, 0, 0.25);
 }
 
 .carwash-book-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.28);
+  background-color: #E66000;
+  box-shadow: 0 8px 24px rgba(255, 107, 0, 0.35);
 }
 
 .carwash-book-btn:active {
@@ -3688,15 +3689,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bill-row.promo {
-  color: #0F6E56;
+  color: #FF6B00;
 }
 
 .bill-row.promo .bill-label {
-  color: #0F6E56;
+  color: #FF6B00;
 }
 
 .bill-row.promo .bill-val {
-  color: #0F6E56;
+  color: #FF6B00;
 }
 
 .bill-divider {
@@ -3722,20 +3723,21 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
-  background-color: #0F6E56;
+  background-color: #FF6B00;
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 6px 20px rgba(15, 110, 86, 0.2);
+  box-shadow: 0 6px 20px rgba(255, 107, 0, 0.25);
   margin-top: 0.75rem;
 }
 
 .confirm-final-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.28);
+  background-color: #E66000;
+  box-shadow: 0 8px 24px rgba(255, 107, 0, 0.35);
 }
 
 .confirm-final-btn:active {

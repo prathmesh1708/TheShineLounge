@@ -47,17 +47,17 @@ export default function CarDetailingHomePage() {
   // Why choose us items
   const whyChooseUs = [
     {
-      icon: <Award className="w-8 h-8 text-luxury-emerald" />,
+      icon: <Award className="w-8 h-8 text-[#FF6B00]" />,
       title: "Master Certified Detailers",
       desc: "Our technicians undergo rigorous 120-hour certifications in paint correction and liquid 9H nanoshield coatings."
     },
     {
-      icon: <Shield className="w-8 h-8 text-luxury-emerald" />,
+      icon: <Shield className="w-8 h-8 text-[#FF6B00]" />,
       title: "Eco-Safe Deionized Care",
       desc: "We wash exclusively using deionized water and organic, pH-balanced luxury snow foams to eliminate scratches."
     },
     {
-      icon: <Zap className="w-8 h-8 text-luxury-emerald" />,
+      icon: <Zap className="w-8 h-8 text-[#FF6B00]" />,
       title: "100% Fully Self-Contained",
       desc: "Our bespoke detailing vans carry their own purified water supply, silent power generators, and high-temp steamers."
     }
@@ -107,7 +107,7 @@ export default function CarDetailingHomePage() {
           </div>
           <button
             onClick={() => navigate("/car-detailing/services")}
-            className="text-xs md:text-sm font-bold text-luxury-emerald hover:text-luxury-emeraldHover transition-colors flex items-center gap-1"
+            className="text-xs md:text-sm font-bold text-[#FF6B00] hover:text-[#E66000] transition-colors flex items-center gap-1"
           >
             <span>View All</span>
             <ArrowRight className="w-4 h-4" />
@@ -131,7 +131,7 @@ export default function CarDetailingHomePage() {
           </div>
           <button
             onClick={() => navigate("/car-detailing/packages")}
-            className="text-xs md:text-sm font-bold text-luxury-emerald hover:text-luxury-emeraldHover transition-colors flex items-center gap-1"
+            className="text-xs md:text-sm font-bold text-[#FF6B00] hover:text-[#E66000] transition-colors flex items-center gap-1"
           >
             <span>Compare Packages</span>
             <ArrowRight className="w-4 h-4" />
@@ -156,7 +156,7 @@ export default function CarDetailingHomePage() {
             <button
               key={idx}
               className={`h-2 rounded-full transition-all duration-300 ${
-                activeSlide === idx ? 'w-6 bg-luxury-emerald' : 'w-2 bg-zinc-200'
+                activeSlide === idx ? 'w-6 bg-[#FF6B00]' : 'w-2 bg-zinc-200'
               }`}
               onClick={() => handleDotClick(idx)}
               aria-label={`Go to package ${idx + 1}`}
@@ -169,7 +169,7 @@ export default function CarDetailingHomePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {whyChooseUs.map((item, idx) => (
           <div key={idx} className="bg-white border border-zinc-200 rounded-24 p-8 space-y-4 hover:border-zinc-300 transition-colors shadow-sm">
-            <div className="p-3 bg-luxury-emerald/10 rounded-20 w-fit">
+            <div className="p-3 bg-[#FF6B00]/10 rounded-20 w-fit">
               {item.icon}
             </div>
             <h3 className="text-lg font-bold text-zinc-800">{item.title}</h3>

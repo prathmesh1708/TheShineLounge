@@ -44,6 +44,15 @@ export default function DogWashHomePage() {
     }
   ];
 
+  const slots = [
+    { id: 'slot-1', label: 'Today 4:30 PM', date: 'Today', time: '4:30 PM' },
+    { id: 'slot-2', label: 'Today 6:00 PM', date: 'Today', time: '6:00 PM' },
+    { id: 'slot-3', label: 'Tomorrow 9 AM', date: 'Tomorrow', time: '9:00 AM' }
+  ];
+
+  const [selectedPlan, setSelectedPlan] = useState(pricingPlans[0]);
+  const [selectedSlot, setSelectedSlot] = useState(slots[0]);
+
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft } = scrollRef.current;
@@ -93,6 +102,20 @@ export default function DogWashHomePage() {
     { num: "4", title: "Fresh & Fluffy", desc: "Your dog is returned showroom-clean, blow-dried, and brushed out." }
   ];
 
+  const handleBook = () => {
+    navigate('/dog-wash/confirm', {
+      state: {
+        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle: `Max (Golden Retriever)`,
+        item: selectedPlan.name,
+        date: selectedSlot.date === 'Today' ? new Date().toISOString().split('T')[0] : 'Tomorrow',
+        time: selectedSlot.label,
+        price: selectedPlan.price,
+        address: "Palasia Main Rd, Scheme 54, Indore"
+      }
+    });
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -116,8 +139,10 @@ export default function DogWashHomePage() {
           {pricingPlans.map((plan) => (
             <div 
               key={plan.id}
-              className="flex items-center gap-4 bg-white border border-zinc-200/80 hover:border-grooming-primary/45 rounded-24 p-4.5 cursor-pointer transition-all shadow-sm hover:shadow-md"
-              onClick={() => navigate(`/dog-wash/booking?service=${plan.id}`)}
+              className={`flex items-center gap-4 bg-white border rounded-24 p-4.5 cursor-pointer transition-all shadow-sm hover:shadow-md ${
+                selectedPlan.id === plan.id ? 'border-grooming-primary ring-2 ring-grooming-primary/20 bg-grooming-primary/5' : 'border-zinc-200/80 hover:border-grooming-primary/45'
+              }`}
+              onClick={() => setSelectedPlan(plan)}
             >
               {/* Left icon badge */}
               <div className="w-14 h-14 rounded-20 bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-center text-3xl flex-shrink-0">
@@ -155,50 +180,36 @@ export default function DogWashHomePage() {
         </div>
       </div>
 
-      {/* 7. Spa Packages */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-end">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-855">Spa Packages</h2>
-            <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Specialized deshedding blowout bundles and styling cuts.</p>
-          </div>
-          <button
-            onClick={() => navigate("/dog-wash/packages")}
-            className="text-xs md:text-sm font-bold text-grooming-primary hover:text-grooming-hover transition-colors flex items-center gap-1"
-          >
-            <span>Compare Spa Matrix</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="flex md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-x-auto md:overflow-x-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0"
-        >
-          {PACKAGES.map((pack) => (
-            <div key={pack.id} className="w-[72vw] sm:w-[280px] md:w-auto flex-shrink-0 snap-start snap-always">
-              <DogWashPackageCard pack={pack} />
-            </div>
-          ))}
-        </div>
-
-        {/* Custom Mobile Slider Progress Dots */}
-        <div className="flex justify-center gap-2 mt-2 md:hidden">
-          {PACKAGES.map((_, idx) => (
-            <button
-              key={idx}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                activeSlide === idx ? 'w-6 bg-grooming-primary' : 'w-2 bg-zinc-200'
-              }`}
-              onClick={() => handleDotClick(idx)}
-              aria-label={`Go to package ${idx + 1}`}
-            />
-          ))}
+      {/* 5. Pick a Slot Section */}
+      <div className="space-y-3 pt-2">
+        <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-zinc-850">Pick a slot</h2>
+        <div className="carwash-slots-row">
+          {slots.map((slot) => {
+            const isSelected = selectedSlot.id === slot.id;
+            return (
+              <button
+                key={slot.id}
+                type="button"
+                className={`carwash-slot-chip ${isSelected ? 'selected' : ''}`}
+                onClick={() => setSelectedSlot(slot)}
+              >
+                <span className="slot-chip-label">{slot.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-
+      {/* 6. Sticky Booking CTA Button */}
+      <div className="carwash-cta-wrapper pt-1">
+        <button 
+          className="carwash-book-btn"
+          style={{ backgroundColor: '#FF6B00' }}
+          onClick={handleBook}
+        >
+          Book {selectedPlan.name} · ₹{selectedPlan.price}
+        </button>
+      </div>
 
     </motion.div>
   );

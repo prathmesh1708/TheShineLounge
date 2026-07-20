@@ -14,7 +14,7 @@ export default function CarDetailingFilterChips({ categories = [], selectedCateg
             onClick={() => onSelect(category)}
             className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-semibold border transition-all ${
               isSelected
-                ? 'bg-luxury-emerald border-luxury-emerald text-white shadow-premium'
+                ? 'bg-[#FF6B00] border-[#FF6B00] text-white shadow-premium'
                 : 'bg-white border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-855 shadow-sm'
             }`}
           >

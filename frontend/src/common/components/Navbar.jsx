@@ -14,7 +14,6 @@ export default function Navbar() {
   const accentColor = currentService?.accentColor || '#D49A7F';
 
   const [showNavbar, setShowNavbar] = useState(true);
-  const [isCompact, setIsCompact] = useState(false);
   const [navSearchQuery, setNavSearchQuery] = useState("");
   const lastScrollY = useRef(0);
   const navRef = useRef(null);
@@ -25,7 +24,6 @@ export default function Navbar() {
   // Reset states on path change
   useEffect(() => {
     setShowNavbar(true);
-    setIsCompact(false);
     setNavSearchQuery("");
     
     // Defer height measurement to ensure DOM is updated
@@ -43,48 +41,24 @@ export default function Navbar() {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       const scrollDiff = currentScrollY - lastScrollY.current;
-      
-      if (navRef.current) {
-        const height = navRef.current.offsetHeight;
-        document.documentElement.style.setProperty('--navbar-height', `${height}px`);
-      }
 
-      if (currentScrollY <= 80) {
-        // Near the top: always expand navbar
-        setIsCompact(false);
+      if (currentScrollY <= 60) {
         setShowNavbar(true);
-        document.documentElement.style.setProperty('--navbar-offset', hasSearch ? '120px' : '72px');
-      } else {
-        // Only trigger changes if the scroll difference is meaningful (e.g., > 15px) to prevent shuffling/jitter
-        if (Math.abs(scrollDiff) > 15) {
-          if (scrollDiff > 0) {
-            // Scrolling down
-            if (hasSearch) {
-              setIsCompact(true);
-              setShowNavbar(true);
-              document.documentElement.style.setProperty('--navbar-offset', '72px');
-            } else {
-              setShowNavbar(false);
-              document.documentElement.style.setProperty('--navbar-offset', '0px');
-            }
-          } else {
-            // Scrolling up
-            setIsCompact(false);
-            setShowNavbar(true);
-            document.documentElement.style.setProperty('--navbar-offset', hasSearch ? '120px' : '72px');
-          }
+      } else if (Math.abs(scrollDiff) > 10) {
+        if (scrollDiff > 0) {
+          // Scrolling down - hide navbar smoothly with CSS transform (no layout shift)
+          setShowNavbar(false);
+        } else {
+          // Scrolling up - reveal navbar
+          setShowNavbar(true);
         }
-      }
-      
-      // Update lastScrollY only if it's a meaningful change or we are near top
-      if (currentScrollY <= 80 || Math.abs(scrollDiff) > 15) {
         lastScrollY.current = currentScrollY;
       }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [hasSearch]);
+  }, []);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -119,7 +93,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav ref={navRef} className={`navbar ${showNavbar ? 'navbar-visible' : 'navbar-hidden'} ${isCompact ? 'navbar-compact' : ''}`}>
+    <nav ref={navRef} className={`navbar ${showNavbar ? 'navbar-visible' : 'navbar-hidden'}`}>
       <div className="navbar-container flex flex-col">
         
         {/* Row 1: Logo & Actions */}
