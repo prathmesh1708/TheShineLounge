@@ -4,35 +4,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- Theme Variables & Root Setup (Apple Glassmorphism Light Mode) --- */
+/* --- Theme Variables & Root Setup --- */
 :root {
   --font-display: 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'Inter', sans-serif;
 
-  /* Luxurious Palette: Warm Cream, Terracotta, Warm Taupe, and Chocolate Brown */
-  --bg-main: #FDFDF5; /* Warm Cream / Off-White */
-  --bg-card: rgba(255, 253, 249, 0.7); /* Warm off-white frosted glass card base */
-  --bg-card-hover: rgba(255, 253, 249, 0.85);
-  --text-main: #2C1B18; /* Soft Dark Chocolate-Brown */
-  --text-muted: #8E7E76; /* Comforting Warm Taupe */
-  --border-color: #EEE0D6; /* Warm Taupe Border */
-  --border-hover: #D4BFA7;
+  /* New Global Palette */
+  --bg-main: #e2e2e2; /* Light Grey Background */
+  --bg-card: rgba(255, 255, 255, 0.75); /* White frosted glass card */
+  --bg-card-hover: rgba(255, 255, 255, 0.9);
+  --text-main: #070707; /* Near-Black Text */
+  --text-muted: #5a5a5a; /* Medium Grey Muted Text */
+  --border-color: #c9c9c9; /* Grey Border */
+  --border-hover: #a8a8a8;
+
+  /* Primary & Sub-Header Accents */
+  --primary-header: #f38200; /* Orange Primary Header */
+  --sub-header: #014785; /* Blue Sub Header */
 
   /* Service Accents */
-  --accent-color: #148F87;
-  --accent-color-rgb: 20, 143, 135;
+  --accent-color: #f38200;
+  --accent-color-rgb: 243, 130, 0;
 
   /* Fallback shadcn variables */
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
+  --background: 0 0% 89%;
+  --foreground: 0 0% 3%;
+  --primary: 32 100% 48%;
+  --primary-foreground: 0 0% 100%;
+  --border: 0 0% 79%;
+  --input: 0 0% 79%;
+  --muted: 0 0% 90%;
+  --muted-foreground: 0 0% 35%;
+  --accent: 0 0% 90%;
 }
 
 .car-detailing-portal {
@@ -87,7 +91,7 @@ html, body {
 }
 
 body {
-  background: linear-gradient(135deg, #FAF9F6 0%, #F5F2EB 100%);
+  background: #e2e2e2;
   background-attachment: fixed;
   color: var(--text-main);
   font-family: var(--font-body);
@@ -120,7 +124,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* --- Shared Navigation Header --- */
 .navbar {
-  background-color: rgba(250, 249, 246, 0.95);
+  background-color: rgba(226, 226, 226, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-color);
@@ -222,9 +226,8 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 800;
   font-size: 1.25rem;
   letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #2C2A29 30%, #7E7873 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #f38200;
+  -webkit-text-fill-color: #f38200;
 }
 
 .nav-home-btn {
@@ -1017,14 +1020,14 @@ h1, h2, h3, h4, h5, h6 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(253, 253, 245, 0.85); /* Matches warm off-white cream bg */
+    background: rgba(226, 226, 226, 0.9); /* Matches light grey bg */
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     padding: 8px 12px;
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.5);
     /* Tinted soft shadow for the premium floating aesthetic */
-    box-shadow: 0 10px 30px rgba(212, 154, 127, 0.15); 
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); 
     z-index: 1000;
   }
 
@@ -1048,10 +1051,10 @@ h1, h2, h3, h4, h5, h6 {
     left: 4px;
     right: 4px;
     bottom: 0;
-    background: #ecdcc9; /* Muted contrast active pill background */
-    border: 1px solid rgba(212, 154, 127, 0.25);
+    background: rgba(243, 130, 0, 0.12); /* Orange accent active pill */
+    border: 1px solid rgba(243, 130, 0, 0.25);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(212, 154, 127, 0.2);
+    box-shadow: 0 4px 12px rgba(243, 130, 0, 0.15);
     z-index: 1;
   }
 
@@ -1068,7 +1071,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .nav-item.active .nav-content {
-    color: #a0522d; /* Premium terracotta accent text */
+    color: #f38200; /* Orange accent text */
   }
 
   .bottom-nav-icon {
@@ -1103,9 +1106,9 @@ h1, h2, h3, h4, h5, h6 {
 .shimmer-placeholder {
   background: linear-gradient(
     90deg,
-    #efebe4 25%,
-    #e5ded4 37%,
-    #efebe4 63%
+    #d4d4d4 25%,
+    #c9c9c9 37%,
+    #d4d4d4 63%
   );
   background-size: 200% 100%;
   animation: shimmerSweep 1.5s ease-in-out infinite;
@@ -2046,8 +2049,8 @@ h1, h2, h3, h4, h5, h6 {
   position: relative;
   width: 100%;
   height: 175px;
-  background: linear-gradient(135deg, #1e1612 0%, #2d2019 50%, #1a110e 100%);
-  border: 1px solid rgba(197, 160, 124, 0.25);
+  background: linear-gradient(135deg, #014785 0%, #01335f 50%, #012a4d 100%);
+  border: 1px solid rgba(1, 71, 133, 0.3);
   border-radius: 1.5rem;
   padding: 1.25rem 1.5rem;
   display: flex;
@@ -2109,7 +2112,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 2px;
-  color: #c5a07c;
+  color: #f38200;
   font-weight: 600;
   display: block;
   margin-bottom: 6px;
@@ -2259,8 +2262,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .circle-icon-box {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2311,7 +2314,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 0.9rem;
-  color: #148F87;
+  color: #f38200;
   cursor: pointer;
   transition: opacity 0.2s;
 }
@@ -2409,7 +2412,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: #c19a5b;
+  color: #f38200;
   letter-spacing: 0.05em;
 }
 
@@ -3242,8 +3245,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .carwash-plan-card.selected {
-  border-color: #0F6E56;
-  box-shadow: 0 8px 24px rgba(15, 110, 86, 0.12);
+  border-color: #f38200;
+  box-shadow: 0 8px 24px rgba(243, 130, 0, 0.2);
 }
 
 /* Single Wash — warm amber background */
@@ -3491,20 +3494,32 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
+<<<<<<< HEAD
   background-color: #FF6B00;
+=======
+  background-color: #f38200;
+>>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
+<<<<<<< HEAD
   box-shadow: 0 6px 20px rgba(255, 107, 0, 0.25);
+=======
+  box-shadow: 0 6px 20px rgba(243, 130, 0, 0.25);
+>>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .carwash-book-btn:hover {
   transform: translateY(-1px);
+<<<<<<< HEAD
   background-color: #E66000;
   box-shadow: 0 8px 24px rgba(255, 107, 0, 0.35);
+=======
+  box-shadow: 0 8px 24px rgba(243, 130, 0, 0.35);
+>>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .carwash-book-btn:active {
@@ -3689,6 +3704,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bill-row.promo {
+<<<<<<< HEAD
   color: #FF6B00;
 }
 
@@ -3698,6 +3714,17 @@ h1, h2, h3, h4, h5, h6 {
 
 .bill-row.promo .bill-val {
   color: #FF6B00;
+=======
+  color: #f38200;
+}
+
+.bill-row.promo .bill-label {
+  color: #f38200;
+}
+
+.bill-row.promo .bill-val {
+  color: #f38200;
+>>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
 }
 
 .bill-divider {
@@ -3723,7 +3750,11 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
+<<<<<<< HEAD
   background-color: #FF6B00;
+=======
+  background-color: #f38200;
+>>>>>>> 173f40c5f5e9c0874b820195dac9fc4cea464662
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;

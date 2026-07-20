@@ -170,11 +170,11 @@ export default function Home() {
         {/* Shimmer header & search */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#efebe4', animation: 'shimmerSweep 1.5s infinite' }} />
-            <div style={{ width: '120px', height: '28px', borderRadius: '9999px', backgroundColor: '#efebe4', animation: 'shimmerSweep 1.5s infinite' }} />
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#efebe4', animation: 'shimmerSweep 1.5s infinite' }} />
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
+            <div style={{ width: '120px', height: '28px', borderRadius: '9999px', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
           </div>
-          <div style={{ width: '100%', height: '54px', borderRadius: '0.75rem', backgroundColor: '#efebe4', animation: 'shimmerSweep 1.5s infinite' }} />
+          <div style={{ width: '100%', height: '54px', borderRadius: '0.75rem', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
         </div>
         <div className="services-grid">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -273,7 +273,7 @@ export default function Home() {
               }}
             >
               <div className="circle-icon-box" style={{ '--circle-accent': cat.color }}>
-                <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={38} />
+                <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={50} />
               </div>
               <span className="circle-label">{cat.label}</span>
             </motion.button>
