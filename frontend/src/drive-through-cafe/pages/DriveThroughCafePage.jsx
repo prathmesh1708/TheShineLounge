@@ -289,7 +289,7 @@ export default function DriveThroughCafePage() {
                 <button 
                   className="confirm-final-btn"
                   onClick={handleCompleteOrder}
-                  style={{ background: '#0F6E56', marginTop: '1.5rem' }}
+                  style={{ background: '#f38200', marginTop: '1.5rem' }}
                 >
                   Done & Back to Menu
                 </button>
@@ -403,7 +403,7 @@ export default function DriveThroughCafePage() {
                   </div>
                   <div className="bill-row">
                     <span className="bill-label">Express Pickup Fee</span>
-                    <span className="bill-val" style={{ color: '#0F6E56', fontWeight: 700 }}>FREE</span>
+                    <span className="bill-val" style={{ color: '#f38200', fontWeight: 700 }}>FREE</span>
                   </div>
                   <hr className="bill-divider" />
                   <div className="bill-row total">
@@ -417,7 +417,7 @@ export default function DriveThroughCafePage() {
               <button 
                 className="confirm-final-btn"
                 onClick={handlePlaceOrder}
-                style={{ background: '#0F6E56' }}
+                style={{ background: '#f38200' }}
               >
                 Transmit Order · ₹{getCartTotal().toFixed(2)}
               </button>
@@ -503,17 +503,7 @@ export default function DriveThroughCafePage() {
               <div style={{ width: '44px' }} /> {/* Spacer */}
             </div>
 
-            {/* Quick Stats Banner */}
-            <div className="detail-quick-stats-row">
-              <div className="quick-stat-pill">
-                <span className="stat-pill-icon">⏱️</span>
-                <span className="stat-pill-text">90s Prep Target</span>
-              </div>
-              <div className="quick-stat-pill">
-                <span className="stat-pill-icon">🚗</span>
-                <span className="stat-pill-text">Cup-Holder Ready</span>
-              </div>
-            </div>
+
 
             {/* Horizontal sub-category pills scrolling bar */}
             <div className="subcat-scroll-bar">
@@ -553,7 +543,7 @@ export default function DriveThroughCafePage() {
                       <button 
                         className={`grid-item-save-btn ${cartQty > 0 ? 'saved' : ''}`}
                         onClick={(e) => addToCart(item, e)}
-                        style={{ background: cartQty > 0 ? '#0F6E56' : 'rgba(255,255,255,0.7)', color: cartQty > 0 ? '#ffffff' : 'var(--text-main)', border: 'none' }}
+                        style={{ background: cartQty > 0 ? '#f38200' : 'rgba(255,255,255,0.7)', color: cartQty > 0 ? '#ffffff' : 'var(--text-main)', border: 'none' }}
                       >
                         {cartQty > 0 ? (
                           <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>+{cartQty}</span>
@@ -571,7 +561,7 @@ export default function DriveThroughCafePage() {
                       <h4 className="grid-item-name">{item.name}</h4>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <span className="grid-item-weight">{item.weight}</span>
-                        <span style={{ fontSize: '0.75rem', color: '#0F6E56', fontWeight: 700 }}>+ Add</span>
+                        <span style={{ fontSize: '0.75rem', color: '#f38200', fontWeight: 700 }}>+ Add</span>
                       </div>
                     </div>
                   </motion.div>
@@ -617,7 +607,7 @@ export default function DriveThroughCafePage() {
             <button 
               onClick={() => setShowCheckout(true)}
               style={{ 
-                background: '#0F6E56', 
+                background: '#f38200', 
                 color: '#FAF9F6', 
                 border: 'none', 
                 borderRadius: '0.75rem', 
