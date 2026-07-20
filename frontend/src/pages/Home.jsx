@@ -7,6 +7,8 @@ import useEntrance from '../common/hooks/useEntrance';
 import ServiceIcon from '../common/components/ServiceIcon';
 
 // Import local image assets for trending items
+import trendingCarWash from '../assets/images/trending_car_wash.png';
+import trendingDogBath from '../assets/images/trending_dog_bath.png';
 import trendingToast from '../assets/images/gourmet_toast.png';
 import trendingChicken from '../assets/images/gourmet_chicken.png';
 import trendingHero from '../assets/images/gourmet_hero.png';
@@ -135,6 +137,24 @@ export default function Home() {
 
   // Trending showcase items using our custom data and assets
   const trendingItems = [
+    {
+      id: 'car-wash-trending',
+      title: 'Single Wash Package',
+      category: 'Car Wash',
+      price: '₹699',
+      rating: '⭐ 4.9 (210 reviews)',
+      image: trendingCarWash,
+      path: '/car-wash'
+    },
+    {
+      id: 'dog-bath-trending',
+      title: 'Full Dog Spa & Bath',
+      category: 'Dog Bath',
+      price: '₹499',
+      rating: '⭐ 4.8 (184 reviews)',
+      image: trendingDogBath,
+      path: '/dog-wash'
+    },
     {
       id: 'toast',
       title: 'Sourdough Poached Egg Toast',
