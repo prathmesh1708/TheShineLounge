@@ -6,6 +6,7 @@
 
 /* --- Theme Variables & Root Setup --- */
 :root {
+  color-scheme: light !important;
   --font-display: 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'Inter', sans-serif;
