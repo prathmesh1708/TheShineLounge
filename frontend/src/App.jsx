@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { ThemeProvider } from './common/context/ThemeContext';
+
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
 import BottomNavbar from './common/components/BottomNavbar';
@@ -127,8 +129,10 @@ function MainAppContent() {
 
 export default function App() {
   return (
-    <Router>
-      <MainAppContent />
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <MainAppContent />
+      </Router>
+    </ThemeProvider>
   );
 }

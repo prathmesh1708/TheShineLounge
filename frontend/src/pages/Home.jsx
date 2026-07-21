@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShimmerCard } from '../common/components/Shimmer';
-import { servicesData } from '../common/data/servicesData';
-import useEntrance from '../common/hooks/useEntrance';
+
+// Import Theme Context
+import { useTheme } from '../common/context/ThemeContext';
+
+// Import Dark UI Modular Components
+import Header from '../common/components/Header';
+import SearchBar from '../common/components/SearchBar';
+import HeroBanner from '../common/components/HeroBanner';
+import CarouselIndicator from '../common/components/CarouselIndicator';
+import SectionHeader from '../common/components/SectionHeader';
+import ServiceGrid from '../common/components/ServiceGrid';
+import TrendingSection from '../common/components/TrendingSection';
 import ServiceIcon from '../common/components/ServiceIcon';
+import { ShimmerCard } from '../common/components/Shimmer';
 
 // Import local image assets for trending items
 import trendingCarWash from '../assets/images/trending_car_wash.png';
@@ -27,10 +37,10 @@ const itemVariants = {
 };
 
 export default function Home() {
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  
-  // Custom states for interactive elements
+  const { isDark } = useTheme();
+
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activePromoIndex, setActivePromoIndex] = useState(0);
   const [savedItems, setSavedItems] = useState([]);
@@ -38,19 +48,9 @@ export default function Home() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(false);
-    }, 850);
+    }, 450);
     return () => clearTimeout(timer);
   }, []);
-
-  // Stagger animate sections on mount
-  const contentRef = useEntrance({
-    y: 25,
-    opacity: 0,
-    duration: 0.8,
-    stagger: 0.12,
-    ease: 'power3.out',
-    delay: loading ? 0 : 0.05
-  });
 
   const toggleSaveItem = (itemId, e) => {
     e.stopPropagation();
@@ -59,7 +59,68 @@ export default function Home() {
     );
   };
 
-  // Promo deals list
+  // 6 Services list (identical to Light Theme)
+  const darkServices = [
+    { id: 'car-wash', label: 'Car Wash', path: '/car-wash' },
+    { id: 'detailing', label: 'Car Detailing', path: '/car-detailing' },
+    { id: 'dog-wash', label: 'Dog Bath', path: '/dog-wash' },
+    { id: 'cafe', label: 'Cafe', path: '/cafe' },
+    { id: 'drive-through', label: 'Drive-Through Cafe', path: '/drive-through-cafe' },
+    { id: 'salon', label: 'Salon', path: '/salon' }
+  ];
+
+  const lightCategories = [
+    { id: 'car-wash', label: 'Car Wash', icon: '🚗', path: '/car-wash', color: '#148F87' },
+    { id: 'detailing', label: 'Car Detailing', icon: '🛡️', path: '/car-detailing', color: '#4A5568' },
+    { id: 'dog-wash', label: 'Dog Bath', icon: '🐕', path: '/dog-wash', color: '#2E7D32' },
+    { id: 'cafe', label: 'Cafe', icon: '☕', path: '/cafe', color: '#8D5B28' },
+    { id: 'drive-through', label: 'Drive-Through Cafe', icon: '⏱️', path: '/drive-through-cafe', color: '#C17F19' },
+    { id: 'salon', label: 'Salon', icon: '✂️', path: '/salon', color: '#7B1FA2' }
+  ];
+
+  const trendingItems = [
+    {
+      id: 'car-wash-trending',
+      title: 'Single Wash Package',
+      category: 'Car Wash',
+      price: '₹699',
+      rating: '4.9',
+      distance: '1.2 km',
+      image: trendingCarWash,
+      path: '/car-wash'
+    },
+    {
+      id: 'dog-bath-trending',
+      title: 'Full Dog Spa & Bath',
+      category: 'Dog Bath',
+      price: '₹499',
+      rating: '4.8',
+      distance: '0.8 km',
+      image: trendingDogBath,
+      path: '/dog-wash'
+    },
+    {
+      id: 'toast-trending',
+      title: 'Sourdough Poached Egg Toast',
+      category: 'Brunch Special',
+      price: '₹350',
+      rating: '4.9',
+      distance: '0.5 km',
+      image: trendingToast,
+      path: '/cafe'
+    },
+    {
+      id: 'chicken-trending',
+      title: 'Herbed Chicken Skillet',
+      category: 'Gourmet Mains',
+      price: '₹550',
+      rating: '4.7',
+      distance: '0.5 km',
+      image: trendingChicken,
+      path: '/cafe'
+    }
+  ];
+
   const promos = [
     {
       title: 'BREAKFAST GOOD DEALS',
@@ -89,114 +150,14 @@ export default function Home() {
     }
   ];
 
-  // Circular Category Data (mapped to our 6 services)
-  const categories = [
-    { 
-      id: 'car-wash', 
-      label: 'Car Wash', 
-      icon: '🚗', 
-      path: '/car-wash',
-      color: '#148F87'
-    },
-    { 
-      id: 'detailing', 
-      label: 'Car Detailing', 
-      icon: '🛡️', 
-      path: '/car-detailing',
-      color: '#4A5568'
-    },
-    { 
-      id: 'dog-wash', 
-      label: 'Dog Bath', 
-      icon: '🐕', 
-      path: '/dog-wash',
-      color: '#2E7D32'
-    },
-    { 
-      id: 'cafe', 
-      label: 'Cafe', 
-      icon: '☕', 
-      path: '/cafe',
-      color: '#8D5B28'
-    },
-    { 
-      id: 'drive-through', 
-      label: 'Drive-Through Cafe', 
-      icon: '⏱️', 
-      path: '/drive-through-cafe',
-      color: '#C17F19'
-    },
-    { 
-      id: 'salon', 
-      label: 'Salon', 
-      icon: '✂️', 
-      path: '/salon',
-      color: '#7B1FA2'
-    }
-  ];
-
-  // Trending showcase items using our custom data and assets
-  const trendingItems = [
-    {
-      id: 'car-wash-trending',
-      title: 'Single Wash Package',
-      category: 'Car Wash',
-      price: '₹699',
-      rating: '⭐ 4.9 (210 reviews)',
-      image: trendingCarWash,
-      path: '/car-wash'
-    },
-    {
-      id: 'dog-bath-trending',
-      title: 'Full Dog Spa & Bath',
-      category: 'Dog Bath',
-      price: '₹499',
-      rating: '⭐ 4.8 (184 reviews)',
-      image: trendingDogBath,
-      path: '/dog-wash'
-    },
-    {
-      id: 'toast',
-      title: 'Sourdough Poached Egg Toast',
-      category: 'Brunch Special',
-      price: '₹11.00',
-      rating: '⭐ 4.9 (124 reviews)',
-      image: trendingToast,
-      path: '/cafe'
-    },
-    {
-      id: 'chicken',
-      title: 'Herbed Chicken Skillet',
-      category: 'Gourmet Mains',
-      price: '₹14.00',
-      rating: '⭐ 4.7 (86 reviews)',
-      image: trendingChicken,
-      path: '/cafe'
-    },
-    {
-      id: 'pancakes',
-      title: 'Signature Pancakes Stack',
-      category: 'Sweet Plates',
-      price: '₹9.50',
-      rating: '⭐ 4.8 (98 reviews)',
-      image: trendingHero,
-      path: '/cafe'
-    }
-  ];
-
   if (loading) {
     return (
-      <div className="home-container">
-        {/* Shimmer header & search */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
-            <div style={{ width: '120px', height: '28px', borderRadius: '9999px', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
-          </div>
-          <div style={{ width: '100%', height: '54px', borderRadius: '0.75rem', backgroundColor: '#d4d4d4', animation: 'shimmerSweep 1.5s infinite' }} />
+      <div className="w-full max-w-[550px] mx-auto p-4">
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="w-full h-14 rounded-2xl bg-gray-800/20 animate-pulse" />
+          <div className="w-full h-44 rounded-3xl bg-gray-800/20 animate-pulse" />
         </div>
-        <div className="services-grid">
+        <div className="grid grid-cols-3 gap-3">
           {Array.from({ length: 6 }).map((_, idx) => (
             <ShimmerCard key={idx} />
           ))}
@@ -205,26 +166,74 @@ export default function Home() {
     );
   }
 
+  // --- 1. DARK THEME UI VIEW ---
+  if (isDark) {
+    return (
+      <div className="w-full max-w-[550px] mx-auto min-h-screen flex flex-col pb-24 px-1 bg-black">
+        {/* Header */}
+        <Header />
+
+        {/* 56px Glass Search Bar */}
+        <SearchBar 
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onFilterClick={() => navigate('/search')}
+        />
+
+        {/* Dark Blue Gradient Hero Banner */}
+        <HeroBanner 
+          promo={promos[activePromoIndex]}
+          onExplore={() => navigate(promos[activePromoIndex].link)}
+        />
+
+        {/* Carousel Indicator */}
+        <CarouselIndicator 
+          total={promos.length} 
+          activeIndex={activePromoIndex} 
+          onSelect={setActivePromoIndex} 
+        />
+
+        {/* Our Services 3-Column Grid */}
+        <SectionHeader 
+          title="Our Services" 
+          onViewAll={() => navigate('/car-wash')} 
+        />
+        <ServiceGrid 
+          services={darkServices} 
+          onServiceClick={(s) => navigate(s.path)} 
+        />
+
+        {/* Trending Near You Horizontal Scroll */}
+        <TrendingSection 
+          items={trendingItems} 
+          onItemClick={(item) => navigate(item.path)}
+          onViewAll={() => navigate('/cafe')}
+        />
+      </div>
+    );
+  }
+
+  // --- 2. LIGHT THEME UI VIEW ---
   return (
-    <div className="app-mobile-dashboard" ref={contentRef}>
+    <div className="app-mobile-dashboard">
       
-      {/* Top Search & Bell Row */}
+      {/* Top Search Bar */}
       <div className="top-search-bell-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', marginBottom: '0.5rem' }}>
         <div className="search-group-container" style={{ flexGrow: 1, width: 'auto' }}>
           <div className="search-input-wrapper">
-            <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input 
               type="text" 
-              placeholder="Search restaurants, salon..." 
+              placeholder="Search car wash, detailing, cafe, salon..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-field"
             />
-            <button className="search-filter-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <button className="search-filter-btn" onClick={() => navigate('/search')}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="4" y1="21" x2="4" y2="14" />
                 <line x1="4" y1="10" x2="4" y2="3" />
                 <line x1="12" y1="21" x2="12" y2="12" />
@@ -238,22 +247,18 @@ export default function Home() {
             </button>
           </div>
         </div>
-
       </div>
 
-      {/* Promos Carousel Banners */}
+      {/* Light Promo Banner */}
       <div className="promo-carousel">
         <div className="promo-card" onClick={() => navigate(promos[activePromoIndex].link)}>
-          {/* Decorative background animations */}
           <div className="gradient-glow"></div>
           <div className="particle-stream"></div>
-
           <div className="promo-details">
             <span className="promo-badge">{promos[activePromoIndex].badge}</span>
             <h3 className="promo-title">{promos[activePromoIndex].title}</h3>
             <p className="promo-subtitle">{promos[activePromoIndex].subtitle}</p>
           </div>
-
           <div className="interactive-area">
             {promos[activePromoIndex].floatingArt}
             <button className="promo-action-btn pulse-glow-btn">Explore</button>
@@ -271,7 +276,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Circular Service Categories Grid */}
+      {/* Light Service Categories Circle Grid */}
       <div className="category-section">
         <motion.div 
           className="category-circle-grid"
@@ -279,18 +284,12 @@ export default function Home() {
           initial="hidden"
           animate="show"
         >
-          {categories.map((cat) => (
+          {lightCategories.map((cat) => (
             <motion.button
               key={cat.id}
               variants={itemVariants}
               className="category-circle-item"
-              onClick={() => {
-                if (cat.isPlaceholder) {
-                  alert(`You clicked ${cat.label}! This is placeholder module demonstration.`);
-                } else {
-                  navigate(cat.path);
-                }
-              }}
+              onClick={() => navigate(cat.path)}
             >
               <div className="circle-icon-box" style={{ '--circle-accent': cat.color }}>
                 <ServiceIcon name={cat.id === 'drive-through' ? 'drive-through-cafe' : cat.id} size={50} />
@@ -301,7 +300,7 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {/* Trending Showcase Section */}
+      {/* Light Trending Showcase Section */}
       <div className="trending-section">
         <div className="trending-header">
           <h2 className="trending-title">Trending</h2>
@@ -325,8 +324,6 @@ export default function Home() {
               >
                 <div className="trending-card-image-box">
                   <img src={item.image} alt={item.title} className="trending-card-img" />
-                  
-                  {/* Floating save/bookmark button */}
                   <button 
                     className={`bookmark-btn ${isSaved ? 'saved' : ''}`}
                     onClick={(e) => toggleSaveItem(item.id, e)}
@@ -340,10 +337,9 @@ export default function Home() {
                 <div className="trending-card-body">
                   <span className="trending-card-category">{item.category}</span>
                   <h4 className="trending-card-title">{item.title}</h4>
-                  
                   <div className="trending-card-footer">
                     <span className="trending-price">{item.price}</span>
-                    <span className="trending-reviews">{item.rating.split(' (')[0]}</span>
+                    <span className="trending-reviews">⭐ {item.rating}</span>
                   </div>
                 </div>
               </motion.div>

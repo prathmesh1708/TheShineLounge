@@ -5,39 +5,260 @@
 @tailwind utilities;
 
 /* --- Theme Variables & Root Setup --- */
-:root {
-  color-scheme: light !important;
+:root, [data-theme="dark"] {
+  color-scheme: dark !important;
   --font-display: 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'Inter', sans-serif;
 
-  /* New Global Palette */
-  --bg-main: #e2e2e2; /* Light Grey Background */
-  --bg-card: rgba(255, 255, 255, 0.75); /* White frosted glass card */
-  --bg-card-hover: rgba(255, 255, 255, 0.9);
-  --text-main: #070707; /* Near-Black Text */
-  --text-muted: #5a5a5a; /* Medium Grey Muted Text */
-  --border-color: #c9c9c9; /* Grey Border */
-  --border-hover: #a8a8a8;
+  /* Premium Dark Theme Palette (Pure Black Background) */
+  --bg-main: #000000;          /* Whole Black Background */
+  --bg-card: #15171D;          /* Primary Card Surface */
+  --bg-card-secondary: #1D2027;/* Secondary Card Surface */
+  --bg-card-hover: #222630;
+  --text-main: #FFFFFF;        /* Crisp White Text */
+  --text-muted: #9CA3AF;       /* Muted Slate Gray Text */
+  --border-color: #2A2E36;     /* Dark Slate Border */
+  --border-hover: #3F4452;
 
-  /* Primary & Sub-Header Accents */
-  --primary-header: #f38200; /* Orange Primary Header */
-  --sub-header: #014785; /* Blue Sub Header */
-
-  /* Service Accents */
-  --accent-color: #f38200;
-  --accent-color-rgb: 243, 130, 0;
+  /* Brand Accents */
+  --primary-orange: #FF8C1A;   /* Shine Orange Accent */
+  --primary-blue: #1F5AA8;     /* Deep Blue Accent */
+  --primary-header: #FF8C1A;
+  --sub-header: #1F5AA8;
+  --accent-color: #FF8C1A;
+  --accent-color-rgb: 255, 140, 26;
 
   /* Fallback shadcn variables */
-  --background: 0 0% 89%;
-  --foreground: 0 0% 3%;
-  --primary: 32 100% 48%;
+  --background: 240 10% 4%;
+  --foreground: 0 0% 100%;
+  --primary: 32 100% 55%;
   --primary-foreground: 0 0% 100%;
-  --border: 0 0% 79%;
-  --input: 0 0% 79%;
-  --muted: 0 0% 90%;
-  --muted-foreground: 0 0% 35%;
-  --accent: 0 0% 90%;
+  --border: 220 12% 19%;
+  --input: 220 12% 19%;
+  --muted: 220 12% 14%;
+  --muted-foreground: 220 9% 65%;
+}
+
+[data-theme="light"] {
+  color-scheme: light !important;
+  --bg-main: #F8FAFC;          /* Light Background */
+  --bg-card: #FFFFFF;          /* Light Card Surface */
+  --bg-card-secondary: #F1F5F9;/* Light Secondary Surface */
+  --bg-card-hover: #E2E8F0;
+  --text-main: #0F172A;        /* Dark Slate Text */
+  --text-muted: #64748B;       /* Muted Gray Text */
+  --border-color: #E2E8F0;     /* Border */
+  --border-hover: #CBD5E1;
+
+  --primary-orange: #FF8C1A;
+  --primary-blue: #1F5AA8;
+  --primary-header: #FF8C1A;
+  --sub-header: #1F5AA8;
+  --accent-color: #FF8C1A;
+
+  --background: 210 40% 98%;
+  --foreground: 222.2 84% 4.9%;
+  --primary: 32 100% 55%;
+  --primary-foreground: 0 0% 100%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] #root,
+[data-theme="dark"] .app-container,
+[data-theme="dark"] .main-content,
+[data-theme="dark"] .carwash-booking-container,
+[data-theme="dark"] .car-detailing-portal,
+[data-theme="dark"] .dog-wash-portal,
+[data-theme="dark"] .salon-portal,
+[data-theme="dark"] .cafe-page-container,
+[data-theme="dark"] .drive-through-container,
+[data-theme="dark"] .search-page-container,
+[data-theme="dark"] .bookings-page-container,
+[data-theme="dark"] .profile-container {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-zinc-50,
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] .bg-gray-100 {
+  background-color: #15171D !important;
+  color: #FFFFFF !important;
+  border-color: #2A2E36 !important;
+}
+
+[data-theme="dark"] .text-zinc-800,
+[data-theme="dark"] .text-zinc-900,
+[data-theme="dark"] .text-slate-800,
+[data-theme="dark"] .text-slate-900,
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800 {
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .text-zinc-500,
+[data-theme="dark"] .text-slate-500,
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-600 {
+  color: #9CA3AF !important;
+}
+
+[data-theme="dark"] .border-zinc-200,
+[data-theme="dark"] .border-slate-200,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-100 {
+  border-color: #2A2E36 !important;
+}
+
+/* Service Card Overrides across Detailing, Dog Wash, Salon, Cafe, Drive-Through */
+[data-theme="dark"] .service-card,
+[data-theme="dark"] .detailing-card,
+[data-theme="dark"] .grooming-card,
+[data-theme="dark"] .salon-card,
+[data-theme="dark"] .cafe-card,
+[data-theme="dark"] .booking-card,
+[data-theme="dark"] .search-card,
+[data-theme="dark"] .confirm-section-card {
+  background: #15171D !important;
+  border: 1px solid #2A2E36 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .service-card:hover,
+[data-theme="dark"] .detailing-card:hover,
+[data-theme="dark"] .grooming-card:hover,
+[data-theme="dark"] .salon-card:hover,
+[data-theme="dark"] .cafe-card:hover,
+[data-theme="dark"] .booking-card:hover {
+  background: #1D2027 !important;
+  border-color: rgba(255, 140, 26, 0.4) !important;
+}
+
+/* --- Dark Theme Navbar Overrides (Matches User Panel Header) --- */
+[data-theme="dark"] .navbar {
+  background-color: rgba(9, 9, 11, 0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid #2A2E36 !important;
+}
+
+[data-theme="dark"] .navbar .logo-text {
+  color: #FF8C1A !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.05em !important;
+}
+
+[data-theme="dark"] .navbar-action-btn {
+  background-color: #15171D !important;
+  border: 1px solid #2A2E36 !important;
+  color: #FFFFFF !important;
+  border-radius: 9999px !important;
+  width: 40px !important;
+  height: 40px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .navbar-action-btn:hover {
+  background-color: #1D2027 !important;
+  border-color: #FF8C1A !important;
+  color: #FF8C1A !important;
+}
+
+/* --- Dark Theme Car Wash Page Card Overrides --- */
+[data-theme="dark"] .carwash-plan-card,
+[data-theme="dark"] .carwash-plan-single,
+[data-theme="dark"] .carwash-plan-monthly {
+  background: #15171D !important;
+  border: 1px solid #2A2E36 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .carwash-plan-card:hover {
+  background: #1D2027 !important;
+  border-color: rgba(255, 140, 26, 0.4) !important;
+}
+
+[data-theme="dark"] .carwash-plan-card.selected {
+  border: 2px solid #FF8C1A !important;
+  box-shadow: 0 8px 24px rgba(255, 140, 26, 0.25) !important;
+  background: #15171D !important;
+}
+
+[data-theme="dark"] .carwash-plan-name,
+[data-theme="dark"] .carwash-plan-price,
+[data-theme="dark"] .carwash-section-title {
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .carwash-plan-desc,
+[data-theme="dark"] .carwash-plan-price-sub {
+  color: #9CA3AF !important;
+}
+
+[data-theme="dark"] .carwash-vehicle-card {
+  background: #15171D !important;
+  border: 1px solid #2A2E36 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .carwash-vehicle-name {
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .carwash-vehicle-plate {
+  color: #9CA3AF !important;
+}
+
+[data-theme="dark"] .carwash-vehicle-dropdown {
+  background: #1D2027 !important;
+  border: 1px solid #2A2E36 !important;
+}
+
+[data-theme="dark"] .carwash-dropdown-item {
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .carwash-dropdown-item:hover {
+  background-color: #2A2E36 !important;
+}
+
+[data-theme="dark"] .carwash-book-btn {
+  background-color: #FF8C1A !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  box-shadow: 0 8px 24px rgba(255, 140, 26, 0.3) !important;
+}
+
+.best-value-badge {
+  background-color: #FFF3E0;
+  color: #E65100;
+  border: 1px solid #FFE0B2;
+  border-radius: 9999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+[data-theme="dark"] .best-value-badge {
+  background-color: rgba(255, 140, 26, 0.2) !important;
+  color: #FF8C1A !important;
+  border: 1px solid rgba(255, 140, 26, 0.4) !important;
+}
+
+[data-theme="light"] body,
+[data-theme="light"] #root,
+[data-theme="light"] .app-container,
+[data-theme="light"] .main-content {
+  background-color: #F8FAFC !important;
 }
 
 .car-detailing-portal {
@@ -125,7 +346,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* --- Shared Navigation Header --- */
 .navbar {
-  background-color: rgba(226, 226, 226, 0.95);
+  background-color: var(--bg-card);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-color);
@@ -214,8 +435,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .logo-badge {
-  width: 50px;
-  height: 50px;
+  width: 58px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1021,14 +1242,14 @@ h1, h2, h3, h4, h5, h6 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(226, 226, 226, 0.9); /* Matches light grey bg */
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(21, 23, 29, 0.9); /* Dark card glass */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     padding: 8px 12px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 24px;
+    border: 1px solid rgba(42, 46, 54, 0.8);
     /* Tinted soft shadow for the premium floating aesthetic */
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); 
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); 
     z-index: 1000;
   }
 
@@ -1052,10 +1273,10 @@ h1, h2, h3, h4, h5, h6 {
     left: 4px;
     right: 4px;
     bottom: 0;
-    background: rgba(243, 130, 0, 0.12); /* Orange accent active pill */
-    border: 1px solid rgba(243, 130, 0, 0.25);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(243, 130, 0, 0.15);
+    background: rgba(255, 140, 26, 0.15); /* #FF8C1A active pill */
+    border: 1px solid rgba(255, 140, 26, 0.3);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(255, 140, 26, 0.2);
     z-index: 1;
   }
 
@@ -1072,7 +1293,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .nav-item.active .nav-content {
-    color: #f38200; /* Orange accent text */
+    color: #FF8C1A; /* Shine Orange active text & icon */
   }
 
   .bottom-nav-icon {

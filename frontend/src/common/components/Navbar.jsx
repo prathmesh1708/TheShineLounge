@@ -4,19 +4,22 @@ import TSLLogo from './TSLLogo';
 import { servicesData } from '../data/servicesData';
 import { Search } from 'lucide-react';
 
+import { useTheme } from '../context/ThemeContext';
+
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const path = location.pathname.substring(1); // Get service ID from path
-  
-  const currentService = servicesData[path];
-  const isService = !!currentService;
-  const accentColor = currentService?.accentColor || '#D49A7F';
+  const { isDark } = useTheme();
 
   const [showNavbar, setShowNavbar] = useState(true);
   const [navSearchQuery, setNavSearchQuery] = useState("");
   const lastScrollY = useRef(0);
   const navRef = useRef(null);
+
+  const path = location.pathname.substring(1); // Get service ID from path
+  const currentService = servicesData[path];
+  const isService = !!currentService;
+  const accentColor = currentService?.accentColor || '#D49A7F';
 
   const searchPages = ['/car-detailing', '/dog-wash', '/salon'];
   const hasSearch = searchPages.includes(location.pathname);
@@ -36,6 +39,11 @@ export default function Navbar() {
     }, 50);
     return () => clearTimeout(timer);
   }, [location.pathname]);
+
+  // Hide top Navbar on Home page in Dark Mode because Home.jsx renders its own dark Header
+  if (isDark && location.pathname === '/') {
+    return null;
+  }
 
   useEffect(() => {
     const handleScroll = () => {
