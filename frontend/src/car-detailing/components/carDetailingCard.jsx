@@ -12,17 +12,7 @@ export default function CarDetailingCard({ service }) {
 
   const handleBook = (e) => {
     e.stopPropagation();
-    navigate('/car-detailing/confirm', {
-      state: {
-        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-        vehicle: `Tesla Model 3 (TSL-3000)`,
-        item: service.name,
-        date: new Date().toISOString().split('T')[0],
-        time: "Today 4:30 PM",
-        price: service.price * 10,
-        address: "Palasia Main Rd, Scheme 54, Indore"
-      }
-    });
+    navigate(`/car-detailing/booking?service=${service.id}`);
   };
 
   return (

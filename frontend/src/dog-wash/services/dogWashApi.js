@@ -3,7 +3,7 @@
 export const SERVICES = [
   {
     id: "basic-wash",
-    name: "Quick Rinse",
+    name: "Quick Bath",
     category: "Washing",
     price: 100,
     duration: "2 mins",
@@ -53,8 +53,8 @@ export const SERVICES = [
   },
   {
     id: "full-grooming",
-    name: "The Deluxe Groom",
-    category: "Grooming",
+    name: "Deluxe Bath",
+    category: "Washing",
     price: 500,
     duration: "12 mins",
     rating: 5.0,

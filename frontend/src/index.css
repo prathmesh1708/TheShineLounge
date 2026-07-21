@@ -3716,7 +3716,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.1rem;
   border-radius: 1rem;
   border: none;
-  background-color: #f38200;
+  background-color: #FF6B00;
   color: #FAF9F6;
   font-family: var(--font-display);
   font-weight: 800;
@@ -3728,7 +3728,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .carwash-book-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(243, 130, 0, 0.35);
+  background-color: #E66000;
+  box-shadow: 0 8px 24px rgba(255, 107, 0, 0.35);
 }
 
 .carwash-book-btn:active {
@@ -3913,15 +3914,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bill-row.promo {
-  color: #f38200;
+  color: #FF6B00;
 }
 
 .bill-row.promo .bill-label {
-  color: #f38200;
+  color: #FF6B00;
 }
 
 .bill-row.promo .bill-val {
-  color: #f38200;
+  color: #FF6B00;
 }
 
 .bill-divider {

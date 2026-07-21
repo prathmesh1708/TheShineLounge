@@ -8,7 +8,7 @@ export default function DogWashConfirmPage() {
   // Retrieve booking details from state or fallback defaults
   const stateData = location.state || {};
   const service = {
-    name: stateData.item || stateData.service?.name || 'Quick Rinse',
+    name: stateData.item || stateData.service?.name || 'Quick Bath',
     price: stateData.price || stateData.service?.price || 100,
     duration: stateData.duration || stateData.service?.duration || '2 Minutes'
   };

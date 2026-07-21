@@ -9,7 +9,7 @@ const SLIDES = [
     id: 1,
     tag: "Premium Care",
     title: "Your Car Deserves The Best Care",
-    desc: "Professional touchless washing & paint protection detailing services delivered at your doorstep in Indore.",
+    desc: "Professional paint protection & luxury detailing services delivered at your doorstep in Indore.",
     btnText: "Book Now",
     image: "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&q=80&w=1200",
     color: "emerald"

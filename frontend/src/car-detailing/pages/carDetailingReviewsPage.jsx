@@ -157,7 +157,7 @@ export default function CarDetailingReviewsPage() {
             label="Service Booked"
             name="service"
             register={register}
-            options={["Full Detailing", "Ceramic Coating", "Exterior Wash", "Interior Cleaning", "Engine Bay Cleaning", "Paint Protection (PPF)", "Steam Cleaning", "Headlight Restoration"]}
+            options={["Paint Protection (PPF)", "9H Ceramic Coating", "Paint Correction", "Showroom Full Detailing", "Engine Bay Detailing", "Interior Steam Detailing", "Headlight Restoration", "Leather Restoration"]}
             required
           />
 

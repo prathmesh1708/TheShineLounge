@@ -140,7 +140,7 @@ export default function DogWashBookingPage() {
   const watchedTime = watch("bookingTime");
   const watchedCoupon = watch("couponCode");
 
-  const stepsList = ["Select Pet", "Service Selection", "Date & Slots", "Add-ons", "Address", "Checkout"];
+  const stepsList = ["Select Pet", "Service Selection", "Date", "Add-ons", "Address", "Checkout"];
 
   return (
     <motion.div
@@ -272,7 +272,7 @@ export default function DogWashBookingPage() {
               </motion.div>
             )}
 
-            {/* Step 3: Date & Slots */}
+            {/* Step 3: Date */}
             {step === 3 && (
               <motion.div
                 key="step3"
@@ -283,36 +283,13 @@ export default function DogWashBookingPage() {
               >
                 <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
                   <Calendar className="w-5 h-5 text-grooming-primary" />
-                  <span>3. Booking Date & Slot</span>
+                  <span>3. Booking Date</span>
                 </h3>
 
                 <DatePicker
                   value={watchedDate}
                   onChange={(dateStr) => setValue("bookingDate", dateStr)}
                 />
-
-                <div className="space-y-3.5">
-                  <h4 className="text-sm font-extrabold text-zinc-800 ml-1">Pick a slot</h4>
-                  <div className="carwash-slots-row">
-                    {[
-                      { id: 'slot-1', label: 'Today 4:30 PM' },
-                      { id: 'slot-2', label: 'Today 6:00 PM' },
-                      { id: 'slot-3', label: 'Tomorrow 9 AM' }
-                    ].map((slot) => {
-                      const isSelected = watchedTime === slot.label;
-                      return (
-                        <button
-                          key={slot.id}
-                          type="button"
-                          className={`carwash-slot-chip ${isSelected ? 'selected' : ''}`}
-                          onClick={() => setValue("bookingTime", slot.label)}
-                        >
-                          <span className="slot-chip-label">{slot.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
               </motion.div>
             )}
 

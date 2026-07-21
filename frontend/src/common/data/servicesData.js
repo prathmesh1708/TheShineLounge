@@ -103,9 +103,9 @@ export const servicesData = {
     tagline: 'Self-serve and full-care tubs for happy, clean pups.',
     accentColor: '#FF6B00', // vibrant orange
     durations: [
-      { id: '2-min', name: 'Quick Rinse (2 Minutes)', price: 5.00 },
+      { id: '2-min', name: 'Quick Bath (2 Minutes)', price: 5.00 },
       { id: '5-min', name: 'Classic Bath (5 Minutes)', price: 10.00 },
-      { id: '12-min', name: 'The Deluxe Groom (12 Minutes)', price: 20.00 }
+      { id: '12-min', name: 'Deluxe Bath (12 Minutes)', price: 20.00 }
     ],
     timeSlots: [
       '09:00 AM - 10:00 AM',
