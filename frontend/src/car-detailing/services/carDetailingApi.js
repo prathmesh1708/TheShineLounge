@@ -2,86 +2,34 @@
 
 export const SERVICES = [
   {
-    id: "exterior-wash",
-    name: "Exterior Wash",
-    category: "Exterior Wash",
-    price: 49,
-    duration: "45 mins",
-    rating: 4.8,
-    reviewsCount: 128,
-    tagline: "Eco-friendly, touchless foam wash for a pristine, spot-free exterior.",
-    description: "Our signature touchless exterior wash uses specialized pH-neutral snow foam and filtered deionized water. This process completely eliminates road grime and dust without creating microscratches or swirl marks on your paintwork. Finished with hand blow-drying and a hybrid ceramic detailer spray.",
-    image: "https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&q=80&w=800",
+    id: "paint-protection",
+    name: "Paint Protection Film (PPF)",
+    category: "Paint Protection",
+    price: 899,
+    duration: "480 mins",
+    rating: 4.98,
+    reviewsCount: 64,
+    tagline: "Self-healing thermoplastic urethane shield against rock chips and scratches.",
+    description: "Premium Paint Protection Film (PPF) application on high-impact zones. Our military-grade clear bra protects your paint from rock chips, deep scratches, road debris, and winter salt. The film features self-healing technology where micro-scratches fade away under direct sunlight or heat.",
+    image: "https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800",
     features: [
-      "pH-neutral active snow foam bath",
-      "Deionized spot-free water rinse",
-      "Heated air-blow dry to prevent water spots",
-      "Tire cleaning and luxury dressing",
-      "Premium glass clarity spray"
+      "Full front bumper, hood, and mirror computer-cut wrap",
+      "Self-healing surface technology",
+      "Non-yellowing, high-clarity adhesive formula",
+      "Seamless edge wrapping",
+      "10-year manufacturer warranty"
     ],
     inclusions: [
-      "Wheel barrel deep cleaning",
-      "Fender well flush",
-      "Exhaust tip polish",
-      "Microfiber hand dry finish",
-      "Sill and door jamb wipe down"
-    ]
-  },
-  {
-    id: "interior-cleaning",
-    name: "Interior Cleaning",
-    category: "Interior Cleaning",
-    price: 99,
-    duration: "90 mins",
-    rating: 4.9,
-    reviewsCount: 245,
-    tagline: "Total cabin disinfection and fabric revitalization.",
-    description: "An intensive cabin restoration covering every corner. We vacuum, clean, and sanitize all surfaces, using specialized non-greasy dressings for dashboard protection and fine brush detailing for vents and buttons. Upholstery is vacuumed and treated with premium fabric protectants.",
-    image: "https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&q=80&w=800",
-    features: [
-      "Deep interior vacuuming (carpets, seats, boot)",
-      "Dashboard, console, and door panel sanitization",
-      "Fine detailing of air vents, dials, and creases",
-      "Streak-free interior glass cleaning",
-      "Premium interior scent treatment"
-    ],
-    inclusions: [
-      "Leather cleaning & conditioning",
-      "Pedal box deep wash",
-      "Floor mat hot-water extraction",
-      "Odour neutralizer treatment",
-      "UV protection application on plastics"
-    ]
-  },
-  {
-    id: "full-detailing",
-    name: "Full Detailing",
-    category: "Full Detailing",
-    price: 249,
-    duration: "240 mins",
-    rating: 4.95,
-    reviewsCount: 382,
-    tagline: "The ultimate bumper-to-bumper reset to showroom state.",
-    description: "Our flagship service combining advanced exterior correction and deep interior steam cleaning. It restores your vehicle's gloss while leaving the interior completely sanitized. Perfect for premium vehicles and owners seeking a factory-fresh return.",
-    image: "https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=800",
-    features: [
-      "All services in Exterior Wash & Interior Cleaning",
-      "Engine bay cleaning & dressing",
-      "Single-stage paint machine polish (enhancement)",
-      "Full steam cabin extraction and disinfection",
-      "Clay bar paint decontamination treatment"
-    ],
-    inclusions: [
-      "Iron deposit remover application",
-      "Leather nourishment massage",
-      "Headlight clarity correction",
-      "Wheel sealant treatment",
-      "12-month synthetic sealant paint shield"
+      "Pre-install multi-stage clay bar clean",
+      "Sill and edge heating & tucking",
+      "Full wrap curing validation",
+      "Trim restoration check",
+      "Micro-fiber PPF care kit"
     ]
   },
   {
     id: "ceramic-coating",
-    name: "Ceramic Coating",
+    name: "9H Ceramic Coating",
     category: "Ceramic Coating",
     price: 499,
     duration: "360 mins",
@@ -106,9 +54,61 @@ export const SERVICES = [
     ]
   },
   {
+    id: "paint-correction",
+    name: "Paint Correction & Swirl Fix",
+    category: "Paint Correction",
+    price: 199,
+    duration: "180 mins",
+    rating: 4.92,
+    reviewsCount: 178,
+    tagline: "Multi-stage machine polishing to erase swirl marks, oxidation, and scratches.",
+    description: "A multi-stage machine polishing service using heavy cut compound and micro-finishing polish. Restores reflection depth and removes up to 90% of sub-surface defects, micro-swirls, and haze prior to ceramic or sealant application.",
+    image: "https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=800",
+    features: [
+      "Paint thickness gauge inspection",
+      "Dual-action rotary machine polishing",
+      "Clay bar surface decontamination",
+      "Swirl, haze, and light scratch elimination",
+      "Gloss depth enhancement seal"
+    ],
+    inclusions: [
+      "Iron deposit chemical wash",
+      "Trim masking prep",
+      "IPA panel wipe down",
+      "Synthetic sealant finish",
+      "Microfiber buffing"
+    ]
+  },
+  {
+    id: "full-detailing",
+    name: "Showroom Full Detailing",
+    category: "Full Detailing",
+    price: 249,
+    duration: "240 mins",
+    rating: 4.95,
+    reviewsCount: 382,
+    tagline: "The ultimate bumper-to-bumper reset to showroom state.",
+    description: "Our flagship detailing service combining advanced exterior correction and deep interior steam cleaning. It restores your vehicle's gloss while leaving the interior completely sanitized. Perfect for premium vehicles and owners seeking a factory-fresh return.",
+    image: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800",
+    features: [
+      "Full exterior machine polish & glaze",
+      "Engine bay detailing & dressing",
+      "Single-stage paint correction enhancement",
+      "Full steam cabin extraction and disinfection",
+      "Clay bar paint decontamination treatment"
+    ],
+    inclusions: [
+      "Iron deposit remover application",
+      "Leather nourishment massage",
+      "Headlight clarity correction",
+      "Wheel sealant treatment",
+      "12-month synthetic sealant paint shield"
+    ]
+  },
+  {
     id: "engine-bay-cleaning",
-    name: "Engine Bay Cleaning",
-    category: "Engine Bay Cleaning",
+    name: "Engine Bay Detailing",
+    category: "Engine Bay Detailing",
     price: 79,
     duration: "60 mins",
     rating: 4.7,
@@ -131,35 +131,9 @@ export const SERVICES = [
     ]
   },
   {
-    id: "paint-protection",
-    name: "Paint Protection (PPF)",
-    category: "Paint Protection",
-    price: 899,
-    duration: "480 mins",
-    rating: 4.98,
-    reviewsCount: 64,
-    tagline: "Self-healing thermoplastic urethane shield against rock chips.",
-    description: "Premium Paint Protection Film (PPF) application on high-impact zones. Our military-grade clear bra protects your paint from rock chips, deep scratches, road debris, and winter salt. The film features self-healing technology where micro-scratches fade away under direct sunlight or hot water.",
-    image: "https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800",
-    features: [
-      "Full front bumper, hood, and mirror computer-cut wrap",
-      "Self-healing surface technology",
-      "Non-yellowing, high-clarity adhesive formula",
-      "Seamless edge wrapping",
-      "10-year manufacturer warranty"
-    ],
-    inclusions: [
-      "Pre-install multi-stage clay bar clean",
-      "Sill and edge heating & tucking",
-      "Full wrap curing validation",
-      "Trim restoration check",
-      "Micro-fiber PPF care kit"
-    ]
-  },
-  {
     id: "steam-cleaning",
-    name: "Steam Cleaning",
-    category: "Steam Cleaning",
+    name: "Interior Steam Detailing",
+    category: "Steam Detailing",
     price: 119,
     duration: "75 mins",
     rating: 4.85,
@@ -184,7 +158,7 @@ export const SERVICES = [
   },
   {
     id: "headlight-restoration",
-    name: "Headlight Restoration",
+    name: "Headlight Ceramic Restoration",
     category: "Headlight Restoration",
     price: 69,
     duration: "50 mins",
@@ -207,23 +181,49 @@ export const SERVICES = [
       "Finished UV cure light seal",
       "12-month non-fading guarantee"
     ]
+  },
+  {
+    id: "leather-restoration",
+    name: "Leather & Trim Restoration",
+    category: "Leather Restoration",
+    price: 129,
+    duration: "90 mins",
+    rating: 4.9,
+    reviewsCount: 134,
+    tagline: "Deep hide nourishment, crack prevention, and satin matte UV seal.",
+    description: "An intensive leather care treatment. We deep-clean organic hide pores, extract oils and dirt, and apply pH-balanced leather conditioners and UV sealants that keep leather soft and supple without greasy residue.",
+    image: "https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&q=80&w=800",
+    features: [
+      "pH-neutral gentle hide steam cleanser",
+      "Horsehair brush crevice detailing",
+      "Essential oils & conditioner massage",
+      "Satin non-slip matte finish dressing",
+      "UV barrier shield against cracking"
+    ],
+    inclusions: [
+      "Steering wheel deep debrowning",
+      "Door armrest trim conditioning",
+      "Perforated leather ventilation flush",
+      "Matte finish validation",
+      "Anti-bacterial leather scent"
+    ]
   }
 ];
 
 export const PACKAGES = [
   {
-    id: "basic-wash",
-    name: "Basic Wash",
-    price: 49,
-    duration: "45 mins",
+    id: "express-detail",
+    name: "Express Paint Detail",
+    price: 79,
+    duration: "60 mins",
     popular: false,
     image: "https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=800",
     features: [
-      "Exterior Snow Foam Wash",
-      "Tyre & Rim Cleaning",
-      "Interior Vacuuming & Dusting",
-      "Window Glass Cleaning (Out)",
-      "Microfiber Hand Dry"
+      "Clay Bar Paint Decontamination",
+      "Hand Wax & Synthetic Sealant",
+      "Tyre Dressing & Wheel Polish",
+      "Interior Dusting & Vacuuming",
+      "Microfiber Hand Buffing"
     ]
   },
   {
@@ -233,7 +233,7 @@ export const PACKAGES = [
     duration: "180 mins",
     popular: true,
     badge: "Most Popular",
-    image: "https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&q=80&w=800",
+    image: "https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800",
     features: [
       "Full Exterior Paint Decontamination",
       "Interior Deep Steam Clean & Sanitize",
@@ -353,11 +353,11 @@ export const REVIEWS = [
     id: 3,
     name: "Rohan Mehta",
     avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=100",
-    rating: 4,
+    rating: 5,
     date: "2026-07-05",
-    service: "Exterior Wash",
+    service: "Paint Correction",
     vehicle: "Tesla Model 3",
-    comment: "Great touchless wash. No swirls. The air-blow dry makes sure there are no water runs in the door mirrors. I wish they had a subscription monthly pack."
+    comment: "Great paint correction work. Removed all swirl marks and light scratches from my bonnet. Looks mirror-glossy now."
   },
   {
     id: 4,
@@ -373,8 +373,8 @@ export const REVIEWS = [
 
 export const FAQS = [
   {
-    q: "What is touchless car washing, and is it safe?",
-    a: "Touchless washing uses pH-neutral chemicals and pressurized deionized water to clean the car without physical brushes or mitts contacting the paint. This completely prevents swirl marks and micro-scratches, which are common in automated brush washes. It is 100% safe for all factory paints, wraps, and coatings."
+    q: "What is the difference between Paint Protection Film (PPF) and Ceramic Coating?",
+    a: "Paint Protection Film (PPF) is a physical, self-healing urethane shield that absorbs rock chips, stone impacts, and deep scratches. Ceramic Coating is a liquid nanoshield that cures over paint to deliver extreme hydrophobicity, UV block, and mirror gloss. Many owners combine both for maximum protection."
   },
   {
     q: "How long does a Full Detailing service take?",

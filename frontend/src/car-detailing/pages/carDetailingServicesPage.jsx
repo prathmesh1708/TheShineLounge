@@ -10,14 +10,14 @@ import { SERVICES } from '../services/carDetailingApi';
 
 const CATEGORIES = [
   "All",
-  "Exterior Wash",
-  "Interior Cleaning",
-  "Full Detailing",
-  "Ceramic Coating",
-  "Engine Bay Cleaning",
   "Paint Protection",
-  "Steam Cleaning",
-  "Headlight Restoration"
+  "Ceramic Coating",
+  "Paint Correction",
+  "Full Detailing",
+  "Engine Bay Detailing",
+  "Steam Detailing",
+  "Headlight Restoration",
+  "Leather Restoration"
 ];
 
 export default function CarDetailingServicesPage() {
@@ -87,15 +87,13 @@ export default function CarDetailingServicesPage() {
 
       {/* Services Grid */}
       <div className="pt-4">
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence>
           {filteredServices.length > 0 ? (
             <motion.div
-              layout
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
               {filteredServices.map(service => (
                 <motion.div
-                  layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}

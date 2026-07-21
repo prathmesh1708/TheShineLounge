@@ -8,7 +8,7 @@ export default function CarDetailingConfirmPage() {
   // Retrieve booking details from state or fallback defaults
   const stateData = location.state || {};
   const service = {
-    name: stateData.item || stateData.service?.name || 'Exterior Wash',
+    name: stateData.item || stateData.service?.name || 'Paint Protection Film (PPF)',
     price: stateData.price || stateData.service?.price || 490,
     duration: stateData.duration || stateData.service?.duration || '45 mins'
   };

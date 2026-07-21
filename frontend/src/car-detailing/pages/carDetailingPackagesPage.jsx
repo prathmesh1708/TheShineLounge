@@ -9,20 +9,20 @@ import { buttonVariants } from '@/components/ui/button';
 export default function CarDetailingPackagesPage() {
   const detailingPlans = [
     {
-      name: "BASIC WASH",
-      price: "490",
-      yearlyPrice: "390",
+      name: "EXPRESS DETAIL",
+      price: "790",
+      yearlyPrice: "590",
       period: "per month",
       features: [
-        "Exterior Snow Foam Wash",
-        "Tyre & Rim Cleaning",
-        "Interior Vacuuming & Dusting",
-        "Window Glass Cleaning (Out)",
-        "Microfiber Hand Dry"
+        "Clay Bar Paint Decontamination",
+        "Hand Wax & Synthetic Sealant",
+        "Tyre Dressing & Wheel Polish",
+        "Interior Dusting & Vacuuming",
+        "Microfiber Hand Buffing"
       ],
-      description: "Perfect for quick weekly refreshes and standard dirt removal",
-      buttonText: "Book Wash Slot",
-      href: "/car-detailing/booking?package=basic-wash",
+      description: "Perfect for quick gloss enhancement & surface decontamination",
+      buttonText: "Book Express Slot",
+      href: "/car-detailing/booking?package=express-detail",
       isPopular: false
     },
     {
@@ -202,7 +202,7 @@ export default function CarDetailingPackagesPage() {
         <div className="space-y-1.5 text-center md:text-left">
           <h4 className="font-extrabold text-lg text-zinc-850">Our Premium Guarantee</h4>
           <p className="text-xs md:text-sm text-zinc-500 leading-relaxed font-semibold">
-            All details are handled using soft-touch microfiber equipment, pH-neutral luxury materials, and dry steam extraction machines. We promise a factory-fresh reset or we'll re-wash for free immediately.
+            All details are handled using soft-touch microfiber equipment, pH-neutral luxury materials, and dry steam extraction machines. We promise a factory-fresh reset or we'll re-detail for free immediately.
           </p>
         </div>
       </div>

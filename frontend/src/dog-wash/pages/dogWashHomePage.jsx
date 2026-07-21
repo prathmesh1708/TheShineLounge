@@ -19,7 +19,7 @@ export default function DogWashHomePage() {
   const pricingPlans = [
     {
       id: "basic-wash",
-      name: "Quick Rinse",
+      name: "Quick Bath",
       duration: "2 Minutes",
       price: 100,
       icon: "🛁",
@@ -36,22 +36,15 @@ export default function DogWashHomePage() {
     },
     {
       id: "full-grooming",
-      name: "The Deluxe Groom",
+      name: "Deluxe Bath",
       duration: "12 Minutes",
       price: 500,
-      icon: "✂",
+      icon: "🛁",
       desc: "Aloe conditioner, warm-water jacuzzi bubble massage, ear flush, and full brush out."
     }
   ];
 
-  const slots = [
-    { id: 'slot-1', label: 'Today 4:30 PM', date: 'Today', time: '4:30 PM' },
-    { id: 'slot-2', label: 'Today 6:00 PM', date: 'Today', time: '6:00 PM' },
-    { id: 'slot-3', label: 'Tomorrow 9 AM', date: 'Tomorrow', time: '9:00 AM' }
-  ];
-
   const [selectedPlan, setSelectedPlan] = useState(pricingPlans[0]);
-  const [selectedSlot, setSelectedSlot] = useState(slots[0]);
 
   const handleScroll = () => {
     if (!scrollRef.current) return;
@@ -108,8 +101,8 @@ export default function DogWashHomePage() {
         bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
         vehicle: `Max (Golden Retriever)`,
         item: selectedPlan.name,
-        date: selectedSlot.date === 'Today' ? new Date().toISOString().split('T')[0] : 'Tomorrow',
-        time: selectedSlot.label,
+        date: new Date().toISOString().split('T')[0],
+        time: "Flexible Arrival",
         price: selectedPlan.price,
         address: "Palasia Main Rd, Scheme 54, Indore"
       }
@@ -177,25 +170,6 @@ export default function DogWashHomePage() {
         </div>
       </div>
 
-      {/* 5. Pick a Slot Section */}
-      <div className="space-y-3 pt-2">
-        <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-zinc-850">Pick a slot</h2>
-        <div className="carwash-slots-row">
-          {slots.map((slot) => {
-            const isSelected = selectedSlot.id === slot.id;
-            return (
-              <button
-                key={slot.id}
-                type="button"
-                className={`carwash-slot-chip ${isSelected ? 'selected' : ''}`}
-                onClick={() => setSelectedSlot(slot)}
-              >
-                <span className="slot-chip-label">{slot.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* 6. Sticky Booking CTA Button */}
       <div className="carwash-cta-wrapper pt-1">

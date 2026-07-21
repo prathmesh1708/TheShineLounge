@@ -43,7 +43,7 @@ export default function CarDetailingFooter() {
         <div className="space-y-4">
           <h4 className="font-bold text-base tracking-wide text-zinc-800">Services</h4>
           <ul className="space-y-2 text-sm text-zinc-550">
-            <li><button onClick={() => handleLink("/car-detailing/services")} className="hover:text-luxury-emerald transition-colors">Exterior Foam Wash</button></li>
+            <li><button onClick={() => handleLink("/car-detailing/services")} className="hover:text-luxury-emerald transition-colors">Paint Correction & Swirl Fix</button></li>
             <li><button onClick={() => handleLink("/car-detailing/services")} className="hover:text-luxury-emerald transition-colors">Interior Cabin Steam Clean</button></li>
             <li><button onClick={() => handleLink("/car-detailing/services")} className="hover:text-luxury-emerald transition-colors">Full Bumper-to-Bumper Detail</button></li>
             <li><button onClick={() => handleLink("/car-detailing/services")} className="hover:text-luxury-emerald transition-colors">9H Nano Ceramic Coating</button></li>

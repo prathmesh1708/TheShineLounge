@@ -19,18 +19,22 @@ import SearchPage from './pages/SearchPage';
 import BookingsPage from './pages/BookingsPage';
 import ProfilePage from './pages/ProfilePage';
 
+import ErrorBoundary from './common/components/ErrorBoundary';
+
 // Premium Framer Motion Page transition wrapper
 function PageTransition({ children }) {
   const location = useLocation();
+  // Group by primary route section so sub-navigation doesn't trigger parent-child AnimatePresence DOM collisions
+  const sectionKey = location.pathname.split('/')[1] || 'root';
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={location.pathname}
-        initial={{ opacity: 0, y: 15 }}
+        key={sectionKey}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -15 }}
-        transition={{ duration: 0.25, ease: 'easeInOut' }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.2, ease: 'easeInOut' }}
       >
         {children}
       </motion.div>
@@ -45,24 +49,23 @@ export default function App() {
         <Navbar />
         
         <main className="main-content">
-          <PageTransition>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/cafe" element={<CafePage />} />
-              <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
-              <Route path="/car-wash" element={<CarWashPage />} />
-              <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-              <Route path="/dog-wash/*" element={<DogWashPage />} />
-              <Route path="/salon/*" element={<SalonPage />} />
-              <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
-              <Route path="/car-detailing" element={<CarDetailingPage />} />
-              <Route path="/dog-wash" element={<DogWashPage />} />
-              <Route path="/salon" element={<SalonPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/bookings" element={<BookingsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-            </Routes>
-          </PageTransition>
+          <ErrorBoundary>
+            <PageTransition>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/cafe" element={<CafePage />} />
+                <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
+                <Route path="/car-wash" element={<CarWashPage />} />
+                <Route path="/car-detailing/*" element={<CarDetailingPage />} />
+                <Route path="/dog-wash/*" element={<DogWashPage />} />
+                <Route path="/salon/*" element={<SalonPage />} />
+                <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/bookings" element={<BookingsPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+              </Routes>
+            </PageTransition>
+          </ErrorBoundary>
         </main>
 
 
