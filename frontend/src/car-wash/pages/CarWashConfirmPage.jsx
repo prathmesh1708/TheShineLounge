@@ -79,10 +79,12 @@ export default function CarWashConfirmPage() {
                   {vehicle.icon} {vehicle.name} ({vehicle.plate})
                 </span>
               </div>
-              <div className="confirm-detail-item">
-                <span className="confirm-detail-label">Schedule Slot</span>
-                <span className="confirm-detail-value">{slot.label}</span>
-              </div>
+              {slot?.label && (
+                <div className="confirm-detail-item">
+                  <span className="confirm-detail-label">Schedule Slot</span>
+                  <span className="confirm-detail-value">{slot.label}</span>
+                </div>
+              )}
             </div>
           </div>
 

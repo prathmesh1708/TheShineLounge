@@ -26,7 +26,7 @@ function StaffLayoutInner() {
         <StaffHeader />
 
         {/* Scrollable Page Body */}
-        <main className="flex-1 pb-20 p-4 bg-white overflow-y-auto">
+        <main className="flex-1 pb-24 px-4 pt-4 bg-gray-50/60 overflow-y-auto">
           <Outlet />
         </main>
 

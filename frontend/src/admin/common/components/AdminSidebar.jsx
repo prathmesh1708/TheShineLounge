@@ -27,6 +27,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import TSLLogo from '../../../common/components/TSLLogo';
 
 export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   const location = useLocation();
@@ -114,8 +115,8 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
         <div className="h-16 px-4 flex items-center justify-between border-b border-blue-800/60">
           {!isCollapsed && (
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white shadow-sm" style={{ backgroundColor: '#e07b2a' }}>
-                <Sparkles className="w-5 h-5 text-white" />
+              <div className="w-11 h-11 flex items-center justify-center">
+                <TSLLogo className="w-11 h-11" />
               </div>
               <div>
                 <h1 className="font-extrabold text-sm text-white tracking-wide uppercase">THE SHINE LOUNGE</h1>

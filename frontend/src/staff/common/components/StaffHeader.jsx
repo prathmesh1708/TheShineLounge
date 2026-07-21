@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Bell, Sparkles, Camera, ShieldCheck } from 'lucide-react';
+import TSLLogo from '../../../common/components/TSLLogo';
 import { useStaff } from '../context/StaffContext';
 
 export default function StaffHeader({ title }) {
@@ -22,8 +23,8 @@ export default function StaffHeader({ title }) {
             <ArrowLeft className="w-5 h-5" />
           </button>
         ) : (
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white text-xs shadow-sm" style={{ backgroundColor: '#e07b2a' }}>
-            <Sparkles className="w-4 h-4 text-white" />
+          <div className="w-10 h-10 flex items-center justify-center">
+            <TSLLogo className="w-10 h-10" />
           </div>
         )}
 

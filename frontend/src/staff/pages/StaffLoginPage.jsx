@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Fingerprint, Lock, UserCheck, ShieldCheck } from 'lucide-react';
+import TSLLogo from '../../common/components/TSLLogo';
 import { useStaff } from '../common/context/StaffContext';
 import { mockStaffMembers } from '../common/data/staffMockData';
 
@@ -27,8 +28,8 @@ export default function StaffLoginPage() {
     <div className="min-h-screen bg-white flex flex-col justify-between p-6">
       {/* Top Branding */}
       <div className="pt-8 text-center space-y-3">
-        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl animate-bounce" style={{ backgroundColor: '#e07b2a' }}>
-          <Sparkles className="w-9 h-9" />
+        <div className="w-20 h-20 mx-auto flex items-center justify-center">
+          <TSLLogo className="w-20 h-20" />
         </div>
         <div>
           <h1 className="text-xl font-black text-gray-900 tracking-wider">THE SHINE LOUNGE</h1>

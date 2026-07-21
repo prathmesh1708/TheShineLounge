@@ -3,28 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { carwashMockData } from '../data/carwashMockData';
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 15 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 22 } }
-};
-
 export default function CarWashPage() {
   const navigate = useNavigate();
-  const { vehicle, services, slots } = carwashMockData;
+  const { vehicle } = carwashMockData;
 
-  // Selected states
+  // Selected plan state
   const [selectedService, setSelectedService] = useState(
     { id: 'single', name: 'Single Wash', price: 699 }
   );
-  const [selectedSlot, setSelectedSlot] = useState(slots[0]);
   const [showVehicleSwitcher, setShowVehicleSwitcher] = useState(false);
 
   // Video fallback and media checks
@@ -46,7 +32,6 @@ export default function CarWashPage() {
     navigate('/car-wash/confirm', {
       state: {
         service: selectedService,
-        slot: selectedSlot,
         vehicle: vehicle
       }
     });
@@ -77,8 +62,6 @@ export default function CarWashPage() {
             className="carwash-hero-fallback-img"
           />
         )}
-        
-
       </div>
 
       {/* 2. Vehicle Selector Card */}
@@ -144,7 +127,7 @@ export default function CarWashPage() {
           >
             <div className="carwash-plan-details">
               <h3 className="carwash-plan-name">Single Wash</h3>
-              <p className="carwash-plan-desc">Complimentary – vacuum, polish, matt cleaning</p>
+              <p className="carwash-plan-desc">Complimentary – vacuum, polish, mat cleaning</p>
             </div>
             <div className="carwash-plan-price-box">
               <span className="carwash-plan-price">₹699</span>
@@ -159,7 +142,7 @@ export default function CarWashPage() {
           >
             <div className="carwash-plan-details">
               <h3 className="carwash-plan-name">Monthly Membership</h3>
-              <p className="carwash-plan-desc">1–3 times car fragrance</p>
+              <p className="carwash-plan-desc">Up to 4 washes/month + interior car fragrance</p>
             </div>
             <div className="carwash-plan-price-box">
               <span className="carwash-plan-price">₹2,499</span>
@@ -167,29 +150,40 @@ export default function CarWashPage() {
             </div>
           </div>
 
+          {/* Yearly Membership Row */}
+          <div 
+            className={`carwash-plan-card carwash-plan-monthly ${selectedService.id === 'yearly' ? 'selected' : ''}`}
+            onClick={() => setSelectedService({ id: 'yearly', name: 'Yearly Membership', price: 19999 })}
+            style={{ position: 'relative' }}
+          >
+            <div className="carwash-plan-details">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                <h3 className="carwash-plan-name" style={{ margin: 0 }}>Yearly Membership</h3>
+                <span style={{ 
+                  backgroundColor: '#FFF3E0', 
+                  color: '#E65100', 
+                  border: '1px solid #FFE0B2', 
+                  borderRadius: '9999px', 
+                  padding: '0.15rem 0.6rem', 
+                  fontSize: '0.7rem', 
+                  fontWeight: 800,
+                  letterSpacing: '0.03em'
+                }}>
+                  BEST VALUE
+                </span>
+              </div>
+              <p className="carwash-plan-desc">Unlimited washes + ceramic coating & 5x car fragrance</p>
+            </div>
+            <div className="carwash-plan-price-box">
+              <span className="carwash-plan-price">₹19,999</span>
+              <span className="carwash-plan-price-sub">+ GST / year</span>
+            </div>
+          </div>
+
         </div>
       </div>
 
-      {/* 4. Time Slot Picker */}
-      <div className="carwash-section-block">
-        <h2 className="carwash-section-title">Pick a slot</h2>
-        <div className="carwash-slots-row">
-          {slots.map((slot) => {
-            const isSelected = selectedSlot.id === slot.id;
-            return (
-              <button
-                key={slot.id}
-                className={`carwash-slot-chip ${isSelected ? 'selected' : ''}`}
-                onClick={() => setSelectedSlot(slot)}
-              >
-                <span className="slot-chip-label">{slot.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 5. Sticky Booking Button */}
+      {/* Sticky Booking Button */}
       <div className="carwash-cta-wrapper">
         <button 
           className="carwash-book-btn"
