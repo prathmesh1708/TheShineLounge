@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const ThemeContext = createContext();
 
@@ -7,8 +8,15 @@ export function ThemeProvider({ children }) {
     return localStorage.getItem('tsl_theme') || 'dark';
   });
 
+  const location = useLocation();
+  const isAdminOrStaff = location.pathname.startsWith('/admin') || location.pathname.startsWith('/staff');
+  const effectiveTheme = isAdminOrStaff ? 'light' : theme;
+
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+  }, [effectiveTheme]);
+
+  useEffect(() => {
     localStorage.setItem('tsl_theme', theme);
   }, [theme]);
 
@@ -16,7 +24,7 @@ export function ThemeProvider({ children }) {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  const isDark = theme === 'dark';
+  const isDark = effectiveTheme === 'dark';
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, isDark }}>

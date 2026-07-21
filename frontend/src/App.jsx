@@ -135,10 +135,10 @@ function MainAppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <Router>
+    <Router>
+      <ThemeProvider>
         <MainAppContent />
-      </Router>
-    </ThemeProvider>
+      </ThemeProvider>
+    </Router>
   );
 }
