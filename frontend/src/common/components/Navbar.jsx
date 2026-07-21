@@ -40,11 +40,6 @@ export default function Navbar() {
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
-  // Hide top Navbar on Home page in Dark Mode because Home.jsx renders its own dark Header
-  if (isDark && location.pathname === '/') {
-    return null;
-  }
-
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
@@ -67,6 +62,11 @@ export default function Navbar() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Hide top Navbar on Home page in Dark Mode because Home.jsx renders its own dark Header (Placed AFTER all hooks)
+  if (isDark && location.pathname === '/') {
+    return null;
+  }
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();

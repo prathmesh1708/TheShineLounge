@@ -96,55 +96,31 @@ function MainAppContent() {
   }
 
   return (
-<<<<<<< HEAD
-    <Router>
-      <div className="app-container">
-        <Navbar />
-        
-        <main className="main-content">
-          <ErrorBoundary>
-            <PageTransition>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/cafe" element={<CafePage />} />
-                <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
-                <Route path="/car-wash" element={<CarWashPage />} />
-                <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-                <Route path="/dog-wash/*" element={<DogWashPage />} />
-                <Route path="/salon/*" element={<SalonPage />} />
-                <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/bookings" element={<BookingsPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-              </Routes>
-            </PageTransition>
-          </ErrorBoundary>
-        </main>
-=======
     <div className="app-container">
       <Navbar />
       
       <main className="main-content">
-        <PageTransition>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/cafe" element={<CafePage />} />
-            <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
-            <Route path="/car-wash" element={<CarWashPage />} />
-            <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
-            <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-            <Route path="/car-detailing" element={<CarDetailingPage />} />
-            <Route path="/dog-wash/*" element={<DogWashPage />} />
-            <Route path="/dog-wash" element={<DogWashPage />} />
-            <Route path="/salon/*" element={<SalonPage />} />
-            <Route path="/salon" element={<SalonPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/bookings" element={<BookingsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-          </Routes>
-        </PageTransition>
+        <ErrorBoundary>
+          <PageTransition>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/cafe" element={<CafePage />} />
+              <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
+              <Route path="/car-wash" element={<CarWashPage />} />
+              <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
+              <Route path="/car-detailing/*" element={<CarDetailingPage />} />
+              <Route path="/car-detailing" element={<CarDetailingPage />} />
+              <Route path="/dog-wash/*" element={<DogWashPage />} />
+              <Route path="/dog-wash" element={<DogWashPage />} />
+              <Route path="/salon/*" element={<SalonPage />} />
+              <Route path="/salon" element={<SalonPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Routes>
+          </PageTransition>
+        </ErrorBoundary>
       </main>
->>>>>>> c766bbba876d4009b422582b2e0ee3f9ab809cfd
 
       <footer className="footer">
         <p className="footer-text">

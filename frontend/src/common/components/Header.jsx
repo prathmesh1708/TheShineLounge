@@ -19,7 +19,7 @@ export default function Header() {
         <div className="w-11 h-11 flex items-center justify-center transition-transform group-hover:scale-105">
           <TSLLogo className="w-11 h-11 object-contain" />
         </div>
-        <span className="font-extrabold text-sm sm:text-base tracking-wider text-[#FF8C1A] uppercase font-display leading-none">
+        <span className="font-extrabold text-sm sm:text-base tracking-wider text-white uppercase font-display leading-none">
           THE SHINE LOUNGE
         </span>
       </Link>

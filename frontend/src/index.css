@@ -150,10 +150,20 @@
   border-bottom: 1px solid #2A2E36 !important;
 }
 
-[data-theme="dark"] .navbar .logo-text {
-  color: #FF8C1A !important;
-  font-weight: 900 !important;
+[data-theme="dark"] .navbar .logo-badge {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+[data-theme="dark"] .navbar .logo-text,
+[data-theme="dark"] .logo-text {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  font-weight: 800 !important;
+  font-size: 0.95rem !important;
   letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  line-height: 1 !important;
 }
 
 [data-theme="dark"] .navbar-action-btn {
@@ -435,8 +445,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .logo-badge {
-  width: 58px;
-  height: 58px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -446,10 +456,11 @@ h1, h2, h3, h4, h5, h6 {
 .logo-text {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.25rem;
-  letter-spacing: -0.03em;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
   color: #f38200;
-  -webkit-text-fill-color: #f38200;
 }
 
 .nav-home-btn {
