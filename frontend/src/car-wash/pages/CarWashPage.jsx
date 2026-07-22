@@ -15,7 +15,6 @@ export default function CarWashPage() {
 
   // Video fallback and media checks
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -30,7 +29,7 @@ export default function CarWashPage() {
   // Programmatically trigger play and ensure muted properties are bound directly to the DOM node.
   // This bypasses browser autoplay blocking policies and React route transition issues.
   useEffect(() => {
-    if (!prefersReducedMotion && !videoError && videoRef.current) {
+    if (!prefersReducedMotion && videoRef.current) {
       const video = videoRef.current;
       video.defaultMuted = true;
       video.muted = true;
@@ -42,7 +41,7 @@ export default function CarWashPage() {
         });
       }
     }
-  }, [prefersReducedMotion, videoError]);
+  }, [prefersReducedMotion]);
 
   const handleBook = () => {
     // Navigate to confirm page with booking data in router state
@@ -59,7 +58,7 @@ export default function CarWashPage() {
       
       {/* 1. Hero Section with Looped Video & Overlay */}
       <div className="carwash-hero">
-        {!prefersReducedMotion && !videoError ? (
+        {!prefersReducedMotion ? (
           <video 
             ref={videoRef}
             src="/videos/car-tunnel.mp4"
@@ -67,12 +66,6 @@ export default function CarWashPage() {
             muted 
             loop 
             playsInline 
-            onError={(e) => {
-              if (videoRef.current && videoRef.current.error) {
-                console.error("Car wash video failed to load:", videoRef.current.error);
-                setVideoError(true);
-              }
-            }}
             className="carwash-hero-video"
             poster="https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80"
           />
