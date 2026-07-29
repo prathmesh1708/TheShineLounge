@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { carwashMockData } from '../data/carwashMockData';
+import serviceApi from '../../common/services/serviceApi';
 
 export default function CarWashPage() {
   const navigate = useNavigate();
   const { vehicle } = carwashMockData;
 
-  // Selected plan state
+  const [dbService, setDbService] = useState(null);
   const [selectedService, setSelectedService] = useState(
     { id: 'single', name: 'Single Wash', price: 699 }
   );
@@ -16,6 +17,28 @@ export default function CarWashPage() {
   // Video fallback and media checks
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const videoRef = useRef(null);
+
+  // Fetch dynamic service details from backend API
+  useEffect(() => {
+    const fetchServiceData = async () => {
+      try {
+        const res = await serviceApi.getServiceBySlug('car-wash');
+        if (res.success && res.service) {
+          setDbService(res.service);
+          if (res.service.pricing && res.service.pricing.length > 0) {
+            setSelectedService({
+              id: res.service.pricing[0]._id || 'single',
+              name: res.service.pricing[0].title,
+              price: res.service.pricing[0].price
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Using default car-wash layout data');
+      }
+    };
+    fetchServiceData();
+  }, []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -26,8 +49,6 @@ export default function CarWashPage() {
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // Programmatically trigger play and ensure muted properties are bound directly to the DOM node.
-  // This bypasses browser autoplay blocking policies and React route transition issues.
   useEffect(() => {
     if (!prefersReducedMotion && videoRef.current) {
       const video = videoRef.current;
@@ -44,7 +65,6 @@ export default function CarWashPage() {
   }, [prefersReducedMotion]);
 
   const handleBook = () => {
-    // Navigate to confirm page with booking data in router state
     navigate('/car-wash/confirm', {
       state: {
         service: selectedService,
@@ -53,10 +73,25 @@ export default function CarWashPage() {
     });
   };
 
+  // Pricing list: fallback to default if db pricing empty
+  const pricingItems = dbService?.pricing && dbService.pricing.length > 0
+    ? dbService.pricing
+    : [
+        { _id: 'single', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' },
+        { _id: 'super', title: 'Super Shine Wash', price: 999, description: 'Triple foam conditioner & tire shine' }
+      ];
+
+  const membershipItems = dbService?.memberships && dbService.memberships.length > 0
+    ? dbService.memberships
+    : [
+        { _id: 'monthly', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior fragrance'] },
+        { _id: 'yearly', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating'], badge: 'BEST VALUE' }
+      ];
+
   return (
     <div className="carwash-booking-container">
       
-      {/* 1. Hero Section with Looped Video & Overlay */}
+      {/* 1. Hero Section */}
       <div className="carwash-hero">
         {!prefersReducedMotion ? (
           <video 
@@ -67,11 +102,11 @@ export default function CarWashPage() {
             loop 
             playsInline 
             className="carwash-hero-video"
-            poster="https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80"
+            poster={dbService?.bannerImage || "https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80"}
           />
         ) : (
           <img 
-            src="https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80" 
+            src={dbService?.bannerImage || "https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80"} 
             alt="Car wash fallback"
             className="carwash-hero-fallback-img"
           />
@@ -116,74 +151,58 @@ export default function CarWashPage() {
               <span>🚗 {vehicle.name} ({vehicle.plate})</span>
               <span className="active-tag">Active</span>
             </div>
-            <div 
-              className="carwash-dropdown-item add-vehicle"
-              onClick={(e) => {
-                e.stopPropagation();
-                alert('Add vehicle dialog (mock demonstration).');
-              }}
-            >
-              <span>➕ Add new vehicle</span>
-            </div>
           </div>
         )}
       </div>
 
-      {/* 3. Pricing Plans */}
+      {/* 3. Dynamic Pricing Plans */}
       <div className="carwash-section-block">
         <h2 className="carwash-section-title">Choose a plan</h2>
         <div className="carwash-plans-list">
 
-          {/* Single Wash Row */}
-          <div 
-            className={`carwash-plan-card carwash-plan-single ${selectedService.id === 'single' ? 'selected' : ''}`}
-            onClick={() => setSelectedService({ id: 'single', name: 'Single Wash', price: 699 })}
-          >
-            <div className="carwash-plan-details">
-              <h3 className="carwash-plan-name">Single Wash</h3>
-              <p className="carwash-plan-desc">Complimentary – vacuum, polish, mat cleaning</p>
-            </div>
-            <div className="carwash-plan-price-box">
-              <span className="carwash-plan-price">₹699</span>
-              <span className="carwash-plan-price-sub">+ GST / wash</span>
-            </div>
-          </div>
-
-          {/* Monthly Membership Row */}
-          <div 
-            className={`carwash-plan-card carwash-plan-monthly ${selectedService.id === 'monthly' ? 'selected' : ''}`}
-            onClick={() => setSelectedService({ id: 'monthly', name: 'Monthly Membership', price: 2499 })}
-          >
-            <div className="carwash-plan-details">
-              <h3 className="carwash-plan-name">Monthly Membership</h3>
-              <p className="carwash-plan-desc">Up to 4 washes/month + interior car fragrance</p>
-            </div>
-            <div className="carwash-plan-price-box">
-              <span className="carwash-plan-price">₹2,499</span>
-              <span className="carwash-plan-price-sub">+ GST / month</span>
-            </div>
-          </div>
-
-          {/* Yearly Membership Row */}
-          <div 
-            className={`carwash-plan-card carwash-plan-monthly ${selectedService.id === 'yearly' ? 'selected' : ''}`}
-            onClick={() => setSelectedService({ id: 'yearly', name: 'Yearly Membership', price: 19999 })}
-            style={{ position: 'relative' }}
-          >
-            <div className="carwash-plan-details">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                <h3 className="carwash-plan-name" style={{ margin: 0 }}>Yearly Membership</h3>
-                <span className="best-value-badge">
-                  BEST VALUE
-                </span>
+          {/* Pricing Options */}
+          {pricingItems.map((p) => (
+            <div 
+              key={p._id || p.title}
+              className={`carwash-plan-card carwash-plan-single ${selectedService.id === p._id ? 'selected' : ''}`}
+              onClick={() => setSelectedService({ id: p._id, name: p.title, price: p.price })}
+            >
+              <div className="carwash-plan-details">
+                <h3 className="carwash-plan-name">{p.title}</h3>
+                <p className="carwash-plan-desc">{p.description || 'Includes complete wash and interior dry'}</p>
               </div>
-              <p className="carwash-plan-desc">Unlimited washes + ceramic coating & 5x car fragrance</p>
+              <div className="carwash-plan-price-box">
+                <span className="carwash-plan-price">₹{p.price}</span>
+                <span className="carwash-plan-price-sub">+ GST / wash</span>
+              </div>
             </div>
-            <div className="carwash-plan-price-box">
-              <span className="carwash-plan-price">₹19,999</span>
-              <span className="carwash-plan-price-sub">+ GST / year</span>
+          ))}
+
+          {/* Memberships Options */}
+          {membershipItems.map((m) => (
+            <div 
+              key={m._id || m.name}
+              className={`carwash-plan-card carwash-plan-monthly ${selectedService.id === m._id ? 'selected' : ''}`}
+              onClick={() => setSelectedService({ id: m._id, name: m.name, price: m.price })}
+              style={{ position: 'relative' }}
+            >
+              <div className="carwash-plan-details">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                  <h3 className="carwash-plan-name" style={{ margin: 0 }}>{m.name}</h3>
+                  {m.badge && (
+                    <span className="best-value-badge">
+                      {m.badge}
+                    </span>
+                  )}
+                </div>
+                <p className="carwash-plan-desc">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
+              </div>
+              <div className="carwash-plan-price-box">
+                <span className="carwash-plan-price">₹{m.price.toLocaleString()}</span>
+                <span className="carwash-plan-price-sub">+ GST / pass</span>
+              </div>
             </div>
-          </div>
+          ))}
 
         </div>
       </div>
@@ -193,6 +212,7 @@ export default function CarWashPage() {
         <button 
           className="carwash-book-btn"
           onClick={handleBook}
+          style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
         >
           Book {selectedService.name} · ₹{selectedService.price}
         </button>

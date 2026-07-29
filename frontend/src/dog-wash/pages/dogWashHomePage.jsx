@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Sparkles, ArrowRight, ShieldCheck, Heart, Bath, Scissors, ScissorsLineDashed, ShieldAlert } from 'lucide-react';
@@ -9,14 +9,16 @@ import DogWashPackageCard from '../components/dogWashPackageCard';
 import { PrimaryButton } from '../components/dogWashUI';
 
 import { SERVICES, PACKAGES, FAQS, REVIEWS } from '../services/dogWashApi';
+import serviceApi from '../../common/services/serviceApi';
 
 export default function DogWashHomePage() {
   const navigate = useNavigate();
   const [searchVal, setSearchVal] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
   const scrollRef = useRef(null);
+  const [dbService, setDbService] = useState(null);
 
-  const pricingPlans = [
+  const defaultPlans = [
     {
       id: "basic-wash",
       name: "Quick Bath",
@@ -44,7 +46,46 @@ export default function DogWashHomePage() {
     }
   ];
 
-  const [selectedPlan, setSelectedPlan] = useState(pricingPlans[0]);
+  const [selectedPlan, setSelectedPlan] = useState(defaultPlans[0]);
+
+  // Fetch dynamic dog wash service data from API
+  useEffect(() => {
+    const fetchDogWashData = async () => {
+      try {
+        const res = await serviceApi.getServiceBySlug('dog-wash');
+        if (res.success && res.service) {
+          setDbService(res.service);
+          if (res.service.plans && res.service.plans.length > 0) {
+            const mapped = res.service.plans.map(p => ({
+              id: p._id,
+              name: p.name,
+              duration: p.duration || '5 Minutes',
+              price: p.price,
+              icon: '🛁',
+              desc: p.description || p.features?.join(', ') || 'Professional dog wash spa session',
+              isPopular: p.recommended
+            }));
+            setSelectedPlan(mapped[0]);
+          }
+        }
+      } catch (err) {
+        console.warn('Using default dog-wash layout data');
+      }
+    };
+    fetchDogWashData();
+  }, []);
+
+  const activePlans = dbService?.plans && dbService.plans.length > 0
+    ? dbService.plans.map(p => ({
+        id: p._id,
+        name: p.name,
+        duration: p.duration || '5 Mins',
+        price: p.price,
+        icon: '🛁',
+        desc: p.description || (p.features && p.features.join(', ')) || 'Complete warm hydrobath wash',
+        isPopular: p.recommended
+      }))
+    : defaultPlans;
 
   const handleScroll = () => {
     if (!scrollRef.current) return;
@@ -65,123 +106,157 @@ export default function DogWashHomePage() {
     setActiveSlide(idx);
   };
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchVal.trim()) {
-      navigate(`/dog-wash/services?search=${encodeURIComponent(searchVal)}`);
-    } else {
-      navigate('/dog-wash/services');
-    }
-  };
-
-  const handleCategoryClick = (catName) => {
-    navigate(`/dog-wash/services?category=${encodeURIComponent(catName)}`);
-  };
-
-  const categories = [
-    { name: "Basic Wash", label: "Basic Wash", icon: "🛁", cat: "Washing" },
-    { name: "Premium Wash", label: "Premium Wash", icon: "🧴", cat: "Washing" },
-    { name: "Full Grooming", label: "Full Grooming", icon: "✂", cat: "Grooming" },
-    { name: "Nail Trimming", label: "Nail Trimming", icon: "💅", cat: "Wellness" },
-    { name: "Ear Cleaning", label: "Ear Cleaning", icon: "👂", cat: "Wellness" },
-    { name: "Flea Treatment", label: "Flea Treatment", icon: "🐜", cat: "Therapy" },
-    { name: "Teeth Cleaning", label: "Teeth Cleaning", icon: "🪥", cat: "Wellness" }
-  ];
-
-  const steps = [
-    { num: "1", title: "Select Pet & Service", desc: "Choose your pet profile and select standard baths or breed haircuts." },
-    { num: "2", title: "Schedule Slot", desc: "Pick your preferred date and mobile van arrival time window." },
-    { num: "3", title: "Groomer Arrives", desc: "Our certified specialist sets up the silent, warm-water wash bay." },
-    { num: "4", title: "Fresh & Fluffy", desc: "Your dog is returned showroom-clean, blow-dried, and brushed out." }
-  ];
-
-  const handleBook = () => {
-    navigate('/dog-wash/confirm', {
-      state: {
-        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-        vehicle: `Max (Golden Retriever)`,
-        item: selectedPlan.name,
-        date: new Date().toISOString().split('T')[0],
-        time: "Flexible Arrival",
-        price: selectedPlan.price,
-        address: "Palasia Main Rd, Scheme 54, Indore"
-      }
-    });
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="space-y-6 md:space-y-10 text-zinc-800"
-    >
-
-      {/* 1. Hero Slides Slider */}
+    <div className="space-y-6 md:space-y-10 pb-16">
+      {/* Hero Section */}
       <DogWashHero />
 
+      {/* Dynamic Duration Pricing Selector */}
+      <section className="px-4 max-w-7xl mx-auto">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-zinc-200/80 shadow-xl space-y-6">
+          <div className="text-center space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+              <Sparkles className="w-3.5 h-3.5" /> Self-Serve Hydrobath Options
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-zinc-900">Choose Wash Duration & Tier</h2>
+            <p className="text-xs sm:text-sm text-zinc-600 max-w-xl mx-auto font-medium">
+              Select warm hydrobath duration suited for your dog’s coat size and bath requirements.
+            </p>
+          </div>
 
-      {/* Dog Bath Pricing Section */}
-      <div className="space-y-4 pt-2">
-
-
-        <div className="flex flex-col gap-3">
-          {pricingPlans.map((plan) => (
-            <div 
-              key={plan.id}
-              className={`flex items-center gap-4 bg-white border rounded-24 p-4.5 cursor-pointer transition-all shadow-sm hover:shadow-md ${
-                selectedPlan.id === plan.id ? 'border-grooming-primary ring-2 ring-grooming-primary/20 bg-grooming-primary/5' : 'border-zinc-200/80 hover:border-grooming-primary/45'
-              }`}
-              onClick={() => setSelectedPlan(plan)}
-            >
-              {/* Left icon badge */}
-              <div className="w-14 h-14 rounded-20 bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-center text-3xl flex-shrink-0">
-                {plan.icon}
-              </div>
-              
-              {/* Details middle */}
-              <div className="flex-grow min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-zinc-800 text-sm sm:text-base leading-snug">{plan.name}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {activePlans.map((plan) => {
+              const isSelected = selectedPlan.id === plan.id;
+              return (
+                <div
+                  key={plan.id}
+                  onClick={() => setSelectedPlan(plan)}
+                  className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-amber-500 bg-amber-50/50 shadow-md scale-[1.02]'
+                      : 'border-zinc-200 bg-white hover:border-amber-300 hover:bg-amber-50/20'
+                  }`}
+                >
                   {plan.isPopular && (
-                    <span className="text-[9px] font-bold text-grooming-primary bg-grooming-primary/10 px-2 py-0.5 rounded-full">
-                      Popular
+                    <span className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500 text-white shadow-xs">
+                      Best Choice
                     </span>
                   )}
-                </div>
-                <p className="text-xs text-zinc-400 font-semibold leading-relaxed mt-0.5 sm:mt-1 hidden sm:block">
-                  {plan.desc}
-                </p>
-                <div className="flex items-center gap-1 mt-1 text-zinc-400">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-zinc-400">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
-                  <span className="text-[10px] sm:text-xs font-bold text-zinc-400">{plan.duration}</span>
-                </div>
-              </div>
 
-              {/* Right price */}
-              <div className="text-right flex-shrink-0 px-2">
-                <span className="text-base sm:text-xl font-black text-zinc-800">₹{plan.price}</span>
-              </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl">{plan.icon}</span>
+                      <span className="text-xs font-black uppercase text-amber-700 bg-amber-100 px-2.5 py-1 rounded-lg">
+                        {plan.duration}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-900">{plan.name}</h3>
+                      <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{plan.desc}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-zinc-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase block">Total</span>
+                      <span className="text-xl font-black text-zinc-900">₹{plan.price}</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPlan(plan);
+                        navigate('/dog-wash/booking', { state: { plan } });
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-transform active:scale-95"
+                      style={{ backgroundColor: dbService?.theme?.buttonColor || '#e07b2a' }}
+                    >
+                      Select Plan
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Services Grid */}
+      <section className="px-4 max-w-7xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-zinc-900">Professional Grooming Services</h2>
+            <p className="text-xs text-zinc-500">Expert care tailored for every dog breed</p>
+          </div>
+          <button 
+            onClick={() => navigate('/dog-wash/services')}
+            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+          >
+            View All <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {SERVICES.slice(0, 4).map((service) => (
+            <DogWashCard key={service.id} service={service} />
+          ))}
+        </div>
+      </section>
+
+      {/* Packages Carousel */}
+      <section className="px-4 max-w-7xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-zinc-900">Popular Care Packages</h2>
+            <p className="text-xs text-zinc-500">Bundle & save on recurring treatments</p>
+          </div>
+          <button 
+            onClick={() => navigate('/dog-wash/packages')}
+            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+          >
+            All Packages <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div 
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-none pb-2"
+        >
+          {PACKAGES.map((pkg) => (
+            <div key={pkg.id} className="min-w-[280px] sm:min-w-[320px] snap-center">
+              <DogWashPackageCard pkg={pkg} />
             </div>
           ))}
         </div>
-      </div>
 
+        <div className="flex justify-center items-center gap-2 pt-2">
+          {PACKAGES.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleDotClick(idx)}
+              className={`h-2 rounded-full transition-all ${
+                activeSlide === idx ? 'w-6 bg-amber-500' : 'w-2 bg-zinc-300'
+              }`}
+            />
+          ))}
+        </div>
+      </section>
 
-      {/* 6. Sticky Booking CTA Button */}
-      <div className="carwash-cta-wrapper pt-1">
-        <button 
-          className="carwash-book-btn"
-          style={{ backgroundColor: '#FF6B00' }}
-          onClick={handleBook}
-        >
-          Book {selectedPlan.name} · ₹{selectedPlan.price}
-        </button>
-      </div>
-
-    </motion.div>
+      {/* CTA Footer */}
+      <section className="px-4 max-w-7xl mx-auto">
+        <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 rounded-3xl p-6 sm:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+          <div className="space-y-2 text-center md:text-left">
+            <h3 className="text-2xl sm:text-3xl font-black">Give Your Dog the Royal Treatment Today</h3>
+            <p className="text-xs sm:text-sm text-amber-100 max-w-lg">
+              Book a slot online or drop by our Thane lounge for express self-serve baths and grooming.
+            </p>
+          </div>
+          <PrimaryButton onClick={() => navigate('/dog-wash/booking')} className="bg-white text-amber-900 hover:bg-amber-50 font-black shadow-lg">
+            Book Appointment Now
+          </PrimaryButton>
+        </div>
+      </section>
+    </div>
   );
 }

@@ -7,6 +7,7 @@ import SalonServiceCard from '../components/salonServiceCard';
 import { PrimaryButton } from '../components/salonUI';
 
 import { SERVICES, CATEGORIES, OFFERS, REVIEWS } from '../services/salonApi';
+import serviceApi from '../../common/services/serviceApi';
 
 const HERO_SLIDES = [
   {
@@ -39,6 +40,7 @@ export default function SalonHomePage() {
   const navigate = useNavigate();
   const [searchVal, setSearchVal] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [dbService, setDbService] = useState(null);
 
   // Auto Slider Timer
   useEffect(() => {
@@ -46,6 +48,21 @@ export default function SalonHomePage() {
       setCurrentSlide((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
     }, 5000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Fetch dynamic Salon service details from API
+  useEffect(() => {
+    const fetchSalonData = async () => {
+      try {
+        const res = await serviceApi.getServiceBySlug('salon');
+        if (res.success && res.service) {
+          setDbService(res.service);
+        }
+      } catch (err) {
+        console.warn('Using default salon layout data');
+      }
+    };
+    fetchSalonData();
   }, []);
 
   const handleSearchSubmit = (e) => {
@@ -61,193 +78,156 @@ export default function SalonHomePage() {
     navigate(`/salon/services?category=${encodeURIComponent(catName)}`);
   };
 
-  // Scroll Tracking for horizontal sliders (Premium swipe indicators)
-  const [serviceIndex, setServiceIndex] = useState(0);
-  const [offerIndex, setOfferIndex] = useState(0);
-
-  const serviceRef = useRef(null);
-  const offerRef = useRef(null);
-
-  const handleScrollTracker = (ref, setter, length) => {
-    if (!ref.current) return;
-    const { scrollLeft } = ref.current;
-    const cardWidth = ref.current.scrollWidth / length;
-    const computedIndex = Math.round(scrollLeft / cardWidth);
-    setter(Math.max(0, Math.min(length - 1, computedIndex)));
-  };
-
-  const handleDotScroll = (ref, idx, length) => {
-    if (!ref.current) return;
-    const cardWidth = ref.current.scrollWidth / length;
-    ref.current.scrollTo({
-      left: idx * cardWidth,
-      behavior: 'smooth'
-    });
-  };
-
-  const popularServices = SERVICES.filter(s => s.rating >= 4.9).slice(0, 3);
+  // Combine dynamic database pricing with layout
+  const activeServices = dbService?.pricing && dbService.pricing.length > 0
+    ? dbService.pricing.map((p, idx) => ({
+        id: p._id || idx,
+        title: p.title,
+        price: p.price,
+        description: p.description || 'Executive grooming session',
+        duration: '45 mins',
+        rating: '4.9'
+      }))
+    : SERVICES;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="space-y-6 md:space-y-10 text-zinc-800"
-    >
+    <div className="space-y-6 md:space-y-10 pb-16">
       
-
-      {/* 1. Auto-Sliding Hero Banner */}
-      <div className="relative w-full h-[180px] sm:h-[280px] md:h-[400px] bg-zinc-900 rounded-24 overflow-hidden shadow-premium group border border-zinc-200/50">
+      {/* Dynamic Hero Slider */}
+      <section className="relative w-full h-[380px] sm:h-[450px] rounded-3xl overflow-hidden shadow-2xl bg-zinc-900 border border-zinc-200">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
-            initial={{ opacity: 0, scale: 1.04 }}
+            initial={{ opacity: 0, scale: 1.05 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.8 }}
             className="absolute inset-0 w-full h-full"
           >
-            {/* Dark overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-transparent z-10" />
-            <img
-              src={HERO_SLIDES[currentSlide].image}
-              alt={HERO_SLIDES[currentSlide].title}
-              className="w-full h-full object-cover object-center"
+            <img 
+              src={dbService?.bannerImage || HERO_SLIDES[currentSlide].image} 
+              alt="Salon Banner"
+              className="w-full h-full object-cover opacity-80"
             />
-
-            {/* Slide details */}
-            <div className="absolute inset-0 z-20 flex flex-col justify-center px-6 md:px-16 max-w-2xl text-white">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-primary text-[10px] sm:text-xs md:text-sm uppercase tracking-widest font-extrabold"
-              >
-                <Sparkles className="w-4 h-4 fill-current" />
-                <span>{HERO_SLIDES[currentSlide].tag}</span>
-              </motion.div>
-              
-              <motion.h1
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="text-lg sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
-              >
-                {HERO_SLIDES[currentSlide].title}
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="hidden sm:block text-white/70 text-xs sm:text-sm md:text-base leading-relaxed mb-4 sm:mb-8 max-w-lg font-semibold"
-              >
-                {HERO_SLIDES[currentSlide].desc}
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5 }}
-                className="w-fit sm:w-48"
-              >
-                <PrimaryButton
-                  onClick={() => navigate('/salon/booking')}
-                  className="py-3 px-6 text-xs tracking-wide font-extrabold"
-                >
-                  Book Now
-                </PrimaryButton>
-              </motion.div>
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-900/60 to-transparent" />
           </motion.div>
         </AnimatePresence>
 
-        {/* Slide Indicator Marks */}
-        <div className="absolute bottom-5 right-6 z-30 flex gap-2">
+        <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-end text-white max-w-2xl space-y-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-amber-500 text-zinc-950 w-fit">
+            <Sparkles className="w-3.5 h-3.5" /> {HERO_SLIDES[currentSlide].tag}
+          </span>
+          <h1 className="text-2xl sm:text-4xl font-black leading-tight">
+            {dbService?.serviceName || HERO_SLIDES[currentSlide].title}
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-300 line-clamp-2">
+            {dbService?.shortDescription || HERO_SLIDES[currentSlide].desc}
+          </p>
+
+          <div className="pt-2">
+            <PrimaryButton 
+              onClick={() => navigate('/salon/booking')}
+              className="shadow-lg active:scale-95 transition-transform"
+              style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
+            >
+              {HERO_SLIDES[currentSlide].btnText} <ArrowRight className="w-4 h-4 ml-1 inline" />
+            </PrimaryButton>
+          </div>
+        </div>
+
+        {/* Carousel Indicators */}
+        <div className="absolute bottom-4 right-6 flex items-center gap-2">
           {HERO_SLIDES.map((_, idx) => (
             <button
               key={idx}
               onClick={() => setCurrentSlide(idx)}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                currentSlide === idx ? 'w-6 bg-primary' : 'w-2 bg-white/40'
+              className={`h-2 rounded-full transition-all ${
+                currentSlide === idx ? 'w-6 bg-amber-500' : 'w-2 bg-white/50'
               }`}
-              aria-label={`Go to hero slide ${idx + 1}`}
             />
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* 3. Categories Grid */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Browse Categories</h2>
-          <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Precision styling, spa treatments, and professional cosmetics.</p>
-        </div>
+      {/* Search Bar */}
+      <section className="px-2 max-w-2xl mx-auto">
+        <form onSubmit={handleSearchSubmit} className="relative">
+          <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-3.5" />
+          <input 
+            type="text"
+            placeholder="Search haircuts, facials, beard styling, hair coloring..."
+            value={searchVal}
+            onChange={(e) => setSearchVal(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-white border border-zinc-200 rounded-2xl text-xs sm:text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+          <button 
+            type="submit"
+            className="absolute right-2 top-2 px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800"
+          >
+            Search
+          </button>
+        </form>
+      </section>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      {/* Category Icons Grid */}
+      <section className="px-2 space-y-4">
+        <h2 className="text-xl font-black text-zinc-900">Explore Grooming Tiers</h2>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
           {CATEGORIES.map((cat) => (
-            <motion.button
+            <button
               key={cat.id}
-              whileHover={{ y: -4, border: "1px solid rgba(0, 184, 176, 0.4)" }}
-              whileTap={{ scale: 0.96 }}
               onClick={() => handleCategoryClick(cat.name)}
-              className="bg-white border border-zinc-200 rounded-24 p-5 text-center flex flex-col items-center justify-center space-y-3 shadow-sm hover:shadow transition-all duration-300"
+              className="p-4 bg-white border border-zinc-200/80 rounded-2xl flex flex-col items-center gap-2 shadow-xs hover:border-amber-500 hover:shadow-md transition-all text-center"
             >
-              <span className="text-3xl filter drop-shadow">{cat.icon}</span>
-              <div>
-                <h4 className="font-extrabold text-xs text-zinc-850 leading-tight">{cat.name}</h4>
-                <p className="text-[9px] text-zinc-400 font-semibold mt-0.5">{cat.desc}</p>
-              </div>
-            </motion.button>
+              <span className="text-2xl">{cat.icon}</span>
+              <span className="text-xs font-bold text-zinc-800">{cat.name}</span>
+            </button>
           ))}
         </div>
-      </div>
+      </section>
 
-
-      {/* 5. Popular Services */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-end">
+      {/* Dynamic Services Showcase */}
+      <section className="px-2 space-y-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-850">Popular Services</h2>
-            <p className="text-xs md:text-sm text-zinc-500 font-semibold mt-1.5">Our most requested premium beauty reset treatments.</p>
+            <h2 className="text-xl font-black text-zinc-900">Featured Grooming Packages</h2>
+            <p className="text-xs text-zinc-500">Popular treatments requested by our lounge guests</p>
           </div>
-          <button
-            onClick={() => navigate("/salon/services")}
-            className="text-xs md:text-sm font-extrabold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+          <button 
+            onClick={() => navigate('/salon/services')}
+            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
           >
-            <span>See All Services</span>
-            <ArrowRight className="w-4 h-4" />
+            View All <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div
-          ref={serviceRef}
-          onScroll={() => handleScrollTracker(serviceRef, setServiceIndex, popularServices.length)}
-          className="flex md:grid md:grid-cols-3 gap-6 overflow-x-auto md:overflow-x-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0"
-        >
-          {popularServices.map((service) => (
-            <div key={service.id} className="w-[46vw] sm:w-[240px] md:w-auto flex-shrink-0 snap-start snap-always">
-              <SalonServiceCard service={service} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {activeServices.slice(0, 6).map((service, idx) => (
+            <div key={service.id || idx} className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md uppercase">Executive Care</span>
+                  <span className="text-xs font-bold text-zinc-500">⭐ {service.rating || '4.9'}</span>
+                </div>
+                <h3 className="text-base font-bold text-zinc-900">{service.title || service.name}</h3>
+                <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{service.description}</p>
+              </div>
+
+              <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
+                <span className="text-lg font-black text-zinc-900">₹{service.price}</span>
+                <button
+                  onClick={() => navigate('/salon/booking', { state: { service } })}
+                  className="px-3.5 py-1.5 text-xs font-bold text-white rounded-xl shadow-sm transition-transform active:scale-95"
+                  style={{ backgroundColor: dbService?.theme?.buttonColor || '#00b8b0' }}
+                >
+                  Book Session
+                </button>
+              </div>
             </div>
           ))}
         </div>
+      </section>
 
-        {/* Swipe Dots Indicator */}
-        <div className="flex justify-center gap-2 mt-2 md:hidden">
-          {popularServices.map((_, idx) => (
-            <button
-              key={idx}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                serviceIndex === idx ? 'w-6 bg-primary' : 'w-2 bg-zinc-200'
-              }`}
-              onClick={() => handleDotScroll(serviceRef, idx, popularServices.length)}
-              aria-label={`Go to service slide ${idx + 1}`}
-            />
-          ))}
-        </div>
-      </div>
-
-
-    </motion.div>
+    </div>
   );
 }

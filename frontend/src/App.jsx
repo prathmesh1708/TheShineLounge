@@ -3,13 +3,15 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { ThemeProvider } from './common/context/ThemeContext';
+import { AuthProvider } from './common/context/AuthContext';
+import { AdminRoute, StaffRoute } from './common/components/ProtectedRoute';
 
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
 import BottomNavbar from './common/components/BottomNavbar';
 
-// Admin Panel Layout
-import { AdminLayout } from './admin';
+// Admin Panel Layout & Login
+import { AdminLayout, AdminLoginPage } from './admin';
 
 // Staff Application Mobile Layout & Pages
 import {
@@ -38,6 +40,7 @@ import SalonPage from './salon/pages/SalonPage';
 import SearchPage from './pages/SearchPage';
 import BookingsPage from './pages/BookingsPage';
 import ProfilePage from './pages/ProfilePage';
+import CustomerAuthPage from './pages/CustomerAuthPage';
 
 import ErrorBoundary from './common/components/ErrorBoundary';
 
@@ -68,30 +71,54 @@ function MainAppContent() {
   const isStaffRoute = location.pathname.startsWith('/staff');
 
   if (isAdminRoute) {
+    const isAdminLogin = location.pathname === '/admin/login';
+
+    if (isAdminLogin) {
+      return (
+        <Routes>
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+        </Routes>
+      );
+    }
+
     return (
-      <Routes>
-        <Route path="/admin/*" element={<AdminLayout />} />
-      </Routes>
+      <AdminRoute>
+        <Routes>
+          <Route path="/admin/*" element={<AdminLayout />} />
+        </Routes>
+      </AdminRoute>
     );
   }
 
   if (isStaffRoute) {
+    // Allow /staff/login without auth, protect everything else
+    const isStaffLogin = location.pathname === '/staff/login';
+
+    if (isStaffLogin) {
+      return (
+        <Routes>
+          <Route path="/staff/login" element={<StaffLoginPage />} />
+        </Routes>
+      );
+    }
+
     return (
-      <Routes>
-        <Route path="/staff" element={<StaffLayout />}>
-          <Route index element={<StaffDashboardPage />} />
-          <Route path="dashboard" element={<StaffDashboardPage />} />
-          <Route path="login" element={<StaffLoginPage />} />
-          <Route path="attendance" element={<StaffAttendancePage />} />
-          <Route path="bookings" element={<StaffBookingsPage />} />
-          <Route path="customers" element={<StaffCustomersPage />} />
-          <Route path="memberships" element={<StaffMembershipsPage />} />
-          <Route path="invoicing" element={<StaffInvoicingPage />} />
-          <Route path="schedule" element={<StaffSchedulePage />} />
-          <Route path="notifications" element={<StaffNotificationsPage />} />
-          <Route path="profile" element={<StaffProfilePage />} />
-        </Route>
-      </Routes>
+      <StaffRoute>
+        <Routes>
+          <Route path="/staff" element={<StaffLayout />}>
+            <Route index element={<StaffDashboardPage />} />
+            <Route path="dashboard" element={<StaffDashboardPage />} />
+            <Route path="attendance" element={<StaffAttendancePage />} />
+            <Route path="bookings" element={<StaffBookingsPage />} />
+            <Route path="customers" element={<StaffCustomersPage />} />
+            <Route path="memberships" element={<StaffMembershipsPage />} />
+            <Route path="invoicing" element={<StaffInvoicingPage />} />
+            <Route path="schedule" element={<StaffSchedulePage />} />
+            <Route path="notifications" element={<StaffNotificationsPage />} />
+            <Route path="profile" element={<StaffProfilePage />} />
+          </Route>
+        </Routes>
+      </StaffRoute>
     );
   }
 
@@ -117,6 +144,8 @@ function MainAppContent() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/login" element={<CustomerAuthPage />} />
+              <Route path="/signup" element={<CustomerAuthPage />} />
             </Routes>
           </PageTransition>
         </ErrorBoundary>
@@ -136,9 +165,11 @@ function MainAppContent() {
 export default function App() {
   return (
     <Router>
-      <ThemeProvider>
-        <MainAppContent />
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MainAppContent />
+        </ThemeProvider>
+      </AuthProvider>
     </Router>
   );
 }

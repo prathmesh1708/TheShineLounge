@@ -27,12 +27,14 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import { useAuth } from '../../../common/context/AuthContext';
 import TSLLogo from '../../../common/components/TSLLogo';
 
 export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { stats, bookings, staffList, banners, inventory } = useAdmin();
+  const { user, logout } = useAuth();
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
@@ -263,16 +265,23 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
       {/* Bottom User Info Footer */}
       <div className="p-3 border-t border-blue-800/60">
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-2 py-1.5'}`}>
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
-            alt="Admin Avatar"
-            className="w-8 h-8 rounded-full object-cover border-2 border-amber-500"
-          />
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white font-extrabold text-sm border-2 border-amber-500">
+            {user?.fullName?.charAt(0)?.toUpperCase() || 'A'}
+          </div>
           {!isCollapsed && (
-            <div className="overflow-hidden">
-              <p className="text-xs font-bold text-white truncate">Amitabh Verma</p>
-              <p className="text-[10px] text-blue-200 font-semibold truncate">Super Admin</p>
+            <div className="overflow-hidden flex-1">
+              <p className="text-xs font-bold text-white truncate">{user?.fullName || 'Admin'}</p>
+              <p className="text-[10px] text-blue-200 font-semibold truncate capitalize">{user?.role || 'admin'}</p>
             </div>
+          )}
+          {!isCollapsed && (
+            <button
+              onClick={async () => { await logout(); navigate('/staff/login'); }}
+              className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors"
+              title="Logout"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
           )}
         </div>
       </div>
