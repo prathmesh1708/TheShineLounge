@@ -159,16 +159,7 @@ export default function CarWashPage() {
             <div className="carwash-plan-details">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
                 <h3 className="carwash-plan-name" style={{ margin: 0 }}>Yearly Membership</h3>
-                <span style={{ 
-                  backgroundColor: '#FFF3E0', 
-                  color: '#E65100', 
-                  border: '1px solid #FFE0B2', 
-                  borderRadius: '9999px', 
-                  padding: '0.15rem 0.6rem', 
-                  fontSize: '0.7rem', 
-                  fontWeight: 800,
-                  letterSpacing: '0.03em'
-                }}>
+                <span className="best-value-badge">
                   BEST VALUE
                 </span>
               </div>

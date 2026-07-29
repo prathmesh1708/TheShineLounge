@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { ThemeProvider } from './common/context/ThemeContext';
+
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
 import BottomNavbar from './common/components/BottomNavbar';
@@ -98,24 +100,26 @@ function MainAppContent() {
       <Navbar />
       
       <main className="main-content">
-        <PageTransition>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/cafe" element={<CafePage />} />
-            <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
-            <Route path="/car-wash" element={<CarWashPage />} />
-            <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
-            <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-            <Route path="/car-detailing" element={<CarDetailingPage />} />
-            <Route path="/dog-wash/*" element={<DogWashPage />} />
-            <Route path="/dog-wash" element={<DogWashPage />} />
-            <Route path="/salon/*" element={<SalonPage />} />
-            <Route path="/salon" element={<SalonPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/bookings" element={<BookingsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-          </Routes>
-        </PageTransition>
+        <ErrorBoundary>
+          <PageTransition>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/cafe" element={<CafePage />} />
+              <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
+              <Route path="/car-wash" element={<CarWashPage />} />
+              <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
+              <Route path="/car-detailing/*" element={<CarDetailingPage />} />
+              <Route path="/car-detailing" element={<CarDetailingPage />} />
+              <Route path="/dog-wash/*" element={<DogWashPage />} />
+              <Route path="/dog-wash" element={<DogWashPage />} />
+              <Route path="/salon/*" element={<SalonPage />} />
+              <Route path="/salon" element={<SalonPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Routes>
+          </PageTransition>
+        </ErrorBoundary>
       </main>
 
       <footer className="footer">
@@ -131,8 +135,10 @@ function MainAppContent() {
 
 export default function App() {
   return (
-    <Router>
-      <MainAppContent />
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <MainAppContent />
+      </Router>
+    </ThemeProvider>
   );
 }

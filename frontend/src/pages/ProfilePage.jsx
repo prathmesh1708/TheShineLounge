@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
+import { useTheme } from '../common/context/ThemeContext';
+
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const { theme, toggleTheme, isDark } = useTheme();
   const [activeModal, setActiveModal] = useState(null); // 'edit-profile', 'payment', 'preferences', 'notifications'
 
   // Mock states that update dynamically
@@ -314,6 +317,53 @@ export default function ProfilePage() {
               <span className="settings-item-arrow">›</span>
             </div>
           ))}
+
+          {/* Theme Mode Toggle Row */}
+          <div 
+            className="settings-item-row"
+            onClick={toggleTheme}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div className="settings-item-info">
+              <h4 className="settings-item-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>Theme Mode</span>
+                <span style={{ 
+                  fontSize: '0.7rem', 
+                  padding: '0.15rem 0.5rem', 
+                  borderRadius: '9999px', 
+                  backgroundColor: 'rgba(255, 140, 26, 0.15)', 
+                  color: '#FF8C1A', 
+                  border: '1px solid rgba(255, 140, 26, 0.3)',
+                  fontWeight: 800 
+                }}>
+                  {isDark ? '🌙 Dark' : '☀️ Light'}
+                </span>
+              </h4>
+              <p className="settings-item-desc">Switch between Obsidian Dark and Clean Light mode</p>
+            </div>
+            
+            <div style={{
+              width: '44px',
+              height: '24px',
+              borderRadius: '999px',
+              background: isDark ? '#FF8C1A' : 'rgba(156, 163, 175, 0.4)',
+              position: 'relative',
+              transition: 'background-color 0.25s ease-in-out',
+              flexShrink: 0
+            }}>
+              <div style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: '#FFFFFF',
+                position: 'absolute',
+                top: '3px',
+                left: isDark ? '23px' : '3px',
+                transition: 'left 0.25s ease-in-out',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }} />
+            </div>
+          </div>
         </div>
       </div>
 
