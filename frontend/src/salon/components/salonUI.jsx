@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -55,87 +56,98 @@ export const FormInput = ({ label, id, type = "text", placeholder = "", value, o
 );
 
 // Standard Animated Modal
-export const Modal = ({ isOpen, onClose, title, children }) => (
-  <AnimatePresence>
-    {isOpen && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs"
-        />
+export const Modal = ({ isOpen, onClose, title, children }) => {
+  if (typeof window === 'undefined') return null;
 
-        {/* Dialog body */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          transition={{ type: "spring", duration: 0.5 }}
-          className="relative bg-white border border-zinc-100 rounded-24 shadow-premium w-full max-w-lg p-6 overflow-hidden z-10 text-zinc-800 max-h-[85vh] flex flex-col"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
-            <h3 className="text-lg font-extrabold text-zinc-850">{title}</h3>
-            <button onClick={onClose} className="p-1 hover:bg-zinc-50 rounded-full transition-colors">
-              <X className="w-5 h-5 text-zinc-500" />
-            </button>
-          </div>
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-md"
+          />
 
-          {/* Scrollable Content */}
-          <div className="overflow-y-auto py-4 flex-grow pr-1 scrollbar-thin">
-            {children}
-          </div>
-        </motion.div>
-      </div>
-    )}
-  </AnimatePresence>
-);
+          {/* Dialog body */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ type: "spring", duration: 0.5 }}
+            className="relative bg-white border border-zinc-100 rounded-24 shadow-premium w-full max-w-lg p-6 overflow-hidden z-10 text-zinc-800 max-h-[85vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
+              <h3 className="text-lg font-extrabold text-zinc-850">{title}</h3>
+              <button onClick={onClose} className="p-1 hover:bg-zinc-50 rounded-full transition-colors">
+                <X className="w-5 h-5 text-zinc-500" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto py-4 flex-grow pr-1 scrollbar-thin">
+              {children}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+};
 
 // Animated Bottom Sheet (App-style on mobile)
-export const BottomSheet = ({ isOpen, onClose, title, children }) => (
-  <AnimatePresence>
-    {isOpen && (
-      <div className="fixed inset-0 z-55 flex items-end justify-center">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-black/35 backdrop-blur-xs"
-        />
+export const BottomSheet = ({ isOpen, onClose, title, children }) => {
+  if (typeof window === 'undefined') return null;
 
-        {/* Sheet */}
-        <motion.div
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 220 }}
-          className="relative bg-white border-t border-zinc-200/50 rounded-t-24 shadow-premium w-full max-w-xl max-h-[90vh] p-6 pb-8 overflow-hidden z-10 text-zinc-800 flex flex-col"
-        >
-          {/* Grab handle */}
-          <div className="w-12 h-1 bg-zinc-200 rounded-full mx-auto mb-4.5 flex-shrink-0" />
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-end justify-center">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/50 backdrop-blur-md"
+          />
 
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
-            <h3 className="text-lg font-extrabold text-zinc-850">{title}</h3>
-            <button onClick={onClose} className="p-1 hover:bg-zinc-50 rounded-full transition-colors">
-              <X className="w-5 h-5 text-zinc-550" />
-            </button>
-          </div>
+          {/* Sheet */}
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 220 }}
+            className="relative bg-white border-t border-zinc-200/50 rounded-t-24 shadow-premium w-full max-w-xl max-h-[90vh] p-6 pb-8 overflow-hidden z-10 text-zinc-800 flex flex-col"
+          >
+            {/* Grab handle */}
+            <div className="w-12 h-1 bg-zinc-200 rounded-full mx-auto mb-4.5 flex-shrink-0" />
 
-          {/* Content */}
-          <div className="overflow-y-auto py-4 flex-grow scrollbar-thin">
-            {children}
-          </div>
-        </motion.div>
-      </div>
-    )}
-  </AnimatePresence>
-);
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
+              <h3 className="text-lg font-extrabold text-zinc-850">{title}</h3>
+              <button onClick={onClose} className="p-1 hover:bg-zinc-50 rounded-full transition-colors">
+                <X className="w-5 h-5 text-zinc-550" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto py-4 flex-grow scrollbar-thin">
+              {children}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+};
+
 
 // Toast alert notification
 export const Toast = ({ message, type = "success", show, onClose }) => (

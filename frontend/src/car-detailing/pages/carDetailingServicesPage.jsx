@@ -6,7 +6,7 @@ import { AlertCircle, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import CarDetailingSearchBar from '../components/carDetailingSearchBar';
 import CarDetailingFilterChips from '../components/carDetailingFilterChips';
 import CarDetailingCard from '../components/carDetailingCard';
-import { SERVICES } from '../services/carDetailingApi';
+import { getServicesSync } from '../services/carDetailingApi';
 
 const CATEGORIES = [
   "All",
@@ -28,6 +28,17 @@ export default function CarDetailingServicesPage() {
 
   const [query, setQuery] = useState(initialSearch);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [servicesList, setServicesList] = useState(getServicesSync());
+
+  useEffect(() => {
+    const handleDataChange = () => {
+      setServicesList(getServicesSync());
+    };
+    window.addEventListener('carDetailingDataChanged', handleDataChange);
+    return () => {
+      window.removeEventListener('carDetailingDataChanged', handleDataChange);
+    };
+  }, []);
 
   // Sync state with URL params
   useEffect(() => {
@@ -38,10 +49,11 @@ export default function CarDetailingServicesPage() {
   }, [query, selectedCategory]);
 
   // Filter logic
-  const filteredServices = SERVICES.filter(service => {
-    const matchesSearch = service.name.toLowerCase().includes(query.toLowerCase()) ||
-                          service.tagline.toLowerCase().includes(query.toLowerCase()) ||
-                          service.description.toLowerCase().includes(query.toLowerCase());
+  const filteredServices = servicesList.filter(service => {
+    if (service.status === 'inactive') return false;
+    const matchesSearch = (service.name || '').toLowerCase().includes(query.toLowerCase()) ||
+                          (service.tagline || '').toLowerCase().includes(query.toLowerCase()) ||
+                          (service.description || '').toLowerCase().includes(query.toLowerCase());
     
     const matchesCategory = selectedCategory === "All" || service.category === selectedCategory;
 

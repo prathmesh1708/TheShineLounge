@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Calendar as CalIcon, Clock, User as UserIcon, Tag, MapPin, CheckCircle, Shield } from 'lucide-react';
 
-import { SERVICES, STYLISTS, OFFERS } from '../services/salonApi';
+import { SERVICES, STYLISTS, OFFERS, getTimeSlotsSync } from '../services/salonApi';
 import { PrimaryButton, FormInput } from '../components/salonUI';
 
 export default function SalonBookingPage() {
@@ -15,6 +15,20 @@ export default function SalonBookingPage() {
   const stylistQuery = searchParams.get("stylist") || "";
   const timeQuery = searchParams.get("time") || "";
 
+  // Dynamic Salon Time Slots
+  const [allSlots, setAllSlots] = useState(getTimeSlotsSync());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setAllSlots(getTimeSlotsSync());
+    };
+    window.addEventListener('salonDataChanged', handleSync);
+    return () => window.removeEventListener('salonDataChanged', handleSync);
+  }, []);
+
+  // Filter active time slots
+  const activeSlots = allSlots.filter(s => s.status !== 'inactive').map(s => s.time);
+
   // State hooks
   const [selectedService, setSelectedService] = useState(SERVICES.find(s => s.id === serviceQuery) || SERVICES[0]);
   const [selectedStylist, setSelectedStylist] = useState(STYLISTS.find(s => s.id === stylistQuery) || STYLISTS[0]);
@@ -25,6 +39,9 @@ export default function SalonBookingPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [couponSuccess, setCouponSuccess] = useState("");
+
+  // Determine slot list (use dynamic active salon slots, or fallback to stylist slots)
+  const displaySlots = activeSlots.length > 0 ? activeSlots : (selectedStylist?.timeSlots || []);
 
   // Generate next 7 days dynamically
   const dates = [];
@@ -46,12 +63,13 @@ export default function SalonBookingPage() {
     }
   }, [dates, selectedDate]);
 
-  // Set default timeslot if stylist changes
+  // Set default timeslot if stylist or slot list changes
   useEffect(() => {
-    if (!timeQuery && selectedStylist) {
-      setSelectedTime(selectedStylist.timeSlots[0]);
+    if (!timeQuery && displaySlots.length > 0) {
+      setSelectedTime(displaySlots[0]);
     }
-  }, [selectedStylist, timeQuery]);
+  }, [selectedStylist, timeQuery, displaySlots]);
+
 
   // Sync selected service if query changes
   useEffect(() => {
@@ -217,7 +235,7 @@ export default function SalonBookingPage() {
             <div className="space-y-3 pt-2">
               <span className="text-xs font-bold text-zinc-450 uppercase tracking-wider block ml-1">Available Slots</span>
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {selectedStylist.timeSlots.map((slot, idx) => {
+                {displaySlots.map((slot, idx) => {
                   const isSelected = selectedTime === slot;
                   return (
                     <button
@@ -226,7 +244,7 @@ export default function SalonBookingPage() {
                       className={`py-3 text-xs font-bold rounded-15 border transition-all ${
                         isSelected
                           ? 'bg-primary border-primary text-white shadow-sm'
-                          : 'bg-zinc-55 bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700'
+                          : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700'
                       }`}
                     >
                       {slot}
@@ -235,6 +253,7 @@ export default function SalonBookingPage() {
                 })}
               </div>
             </div>
+
           </div>
 
           {/* 3. Salon Location */}

@@ -28,7 +28,7 @@ export default function SalonServiceCard({ service }) {
         
         {/* Cost Badge */}
         <span className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-white/95 backdrop-blur-xs py-1 px-2 sm:py-1.5 sm:px-3 rounded-full text-xs sm:text-sm font-extrabold text-zinc-800 shadow-sm border border-white/20">
-          ${service.price}
+          ₹{Number(service.price).toLocaleString('en-IN')}
         </span>
       </div>
 

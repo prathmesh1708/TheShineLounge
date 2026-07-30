@@ -19,6 +19,42 @@ const createBooking = async (req, res, next) => {
   }
 };
 
+const getServicesList = async (req, res, next) => {
+  try {
+    const services = await carDetailingService.fetchServices();
+    res.json(formatResponse(true, 'Fetched CarDetailing treatments successfully', services));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createServiceItem = async (req, res, next) => {
+  try {
+    const newService = await carDetailingService.addService(req.body);
+    res.status(201).json(formatResponse(true, 'Added CarDetailing treatment successfully', newService));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateServiceItem = async (req, res, next) => {
+  try {
+    const updated = await carDetailingService.updateService(req.params.id, req.body);
+    res.json(formatResponse(true, 'Updated CarDetailing treatment successfully', updated));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteServiceItem = async (req, res, next) => {
+  try {
+    const deleted = await carDetailingService.deleteService(req.params.id);
+    res.json(formatResponse(true, 'Deleted CarDetailing treatment successfully', deleted));
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getServiceDetails = async (req, res, next) => {
   try {
     const details = await carDetailingService.fetchServiceDetails();
@@ -31,5 +67,10 @@ const getServiceDetails = async (req, res, next) => {
 module.exports = {
   getBookings,
   createBooking,
+  getServicesList,
+  createServiceItem,
+  updateServiceItem,
+  deleteServiceItem,
   getServiceDetails
 };
+

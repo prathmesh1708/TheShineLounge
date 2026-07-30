@@ -458,12 +458,167 @@ export const TECHNICIAN = {
   lng: 75.8943
 };
 
-// Helper methods to simulate API latency
-export const getServices = () => Promise.resolve(SERVICES);
-export const getServiceById = (id) => Promise.resolve(SERVICES.find(s => s.id === id));
-export const getPackages = () => Promise.resolve(PACKAGES);
+// Helper methods with dynamic localStorage support and event notifications
+
+const STORAGE_KEY_SERVICES = 'shine_car_detailing_services';
+const STORAGE_KEY_PACKAGES = 'shine_car_detailing_packages';
+
+const notifyDataChange = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('carDetailingDataChanged'));
+  }
+};
+
+export const getServicesSync = () => {
+  if (typeof window === 'undefined') return SERVICES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SERVICES);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(SERVICES));
+    return SERVICES;
+  } catch (err) {
+    console.error('Error reading car detailing services from localStorage:', err);
+    return SERVICES;
+  }
+};
+
+export const getServices = () => Promise.resolve(getServicesSync());
+
+export const getServiceById = (id) => {
+  const allServices = getServicesSync();
+  return Promise.resolve(allServices.find(s => s.id === id || s._id === id || s.slug === id));
+};
+
+export const saveService = (serviceData) => {
+  const currentServices = getServicesSync();
+  const existingIndex = currentServices.findIndex(s => s.id === serviceData.id || (serviceData.id && s.id === serviceData.id));
+
+  let updatedList;
+  if (existingIndex !== -1) {
+    updatedList = [...currentServices];
+    updatedList[existingIndex] = {
+      ...updatedList[existingIndex],
+      ...serviceData
+    };
+  } else {
+    const newId = serviceData.id || serviceData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const newService = {
+      id: newId,
+      name: serviceData.name || 'New Detailing Treatment',
+      category: serviceData.category || 'Paint Protection',
+      price: Number(serviceData.price) || 199,
+      duration: serviceData.duration || '120 mins',
+      rating: Number(serviceData.rating) || 5.0,
+      reviewsCount: Number(serviceData.reviewsCount) || 1,
+      tagline: serviceData.tagline || '',
+      description: serviceData.description || '',
+      image: serviceData.image || 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800',
+      status: serviceData.status || 'active',
+      features: Array.isArray(serviceData.features) ? serviceData.features : (serviceData.features ? serviceData.features.split('\n').filter(Boolean) : []),
+      inclusions: Array.isArray(serviceData.inclusions) ? serviceData.inclusions : (serviceData.inclusions ? serviceData.inclusions.split('\n').filter(Boolean) : [])
+    };
+    updatedList = [newService, ...currentServices];
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error saving car detailing services:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const updateServicePrice = (id, newPrice) => {
+  const currentServices = getServicesSync();
+  const updatedList = currentServices.map(s => {
+    if (s.id === id || s._id === id) {
+      return { ...s, price: Number(newPrice) };
+    }
+    return s;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error updating car detailing price:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const deleteService = (id) => {
+  const currentServices = getServicesSync();
+  const updatedList = currentServices.filter(s => s.id !== id && s._id !== id);
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error deleting car detailing service:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const getPackagesSync = () => {
+  if (typeof window === 'undefined') return PACKAGES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_PACKAGES);
+    if (stored) return JSON.parse(stored);
+    localStorage.setItem(STORAGE_KEY_PACKAGES, JSON.stringify(PACKAGES));
+    return PACKAGES;
+  } catch (err) {
+    return PACKAGES;
+  }
+};
+
+export const getPackages = () => Promise.resolve(getPackagesSync());
+
+export const savePackage = (packageData) => {
+  const currentPackages = getPackagesSync();
+  const existingIndex = currentPackages.findIndex(p => p.id === packageData.id);
+
+  let updatedList;
+  if (existingIndex !== -1) {
+    updatedList = [...currentPackages];
+    updatedList[existingIndex] = { ...updatedList[existingIndex], ...packageData };
+  } else {
+    const newPackage = {
+      id: packageData.id || `pkg-${Date.now()}`,
+      name: packageData.name,
+      price: Number(packageData.price),
+      duration: packageData.duration || '120 mins',
+      popular: packageData.popular || false,
+      badge: packageData.badge || '',
+      image: packageData.image || 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800',
+      features: packageData.features || []
+    };
+    updatedList = [...currentPackages, newPackage];
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY_PACKAGES, JSON.stringify(updatedList));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const deletePackage = (id) => {
+  const currentPackages = getPackagesSync();
+  const updatedList = currentPackages.filter(p => p.id !== id);
+
+  try {
+    localStorage.setItem(STORAGE_KEY_PACKAGES, JSON.stringify(updatedList));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
 export const getOffers = () => Promise.resolve(OFFERS);
 export const getReviews = () => Promise.resolve(REVIEWS);
 export const getFAQs = () => Promise.resolve(FAQS);
 export const getBookings = () => Promise.resolve(MOCK_BOOKINGS);
 export const getTechnician = () => Promise.resolve(TECHNICIAN);
+

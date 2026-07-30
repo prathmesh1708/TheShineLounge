@@ -411,12 +411,222 @@ export const MOCK_BOOKINGS = [
   }
 ];
 
-export const getServices = () => Promise.resolve(SERVICES);
-export const getServiceById = (id) => Promise.resolve(SERVICES.find(s => s.id === id));
-export const getPackages = () => Promise.resolve(PACKAGES);
+// Helper methods with dynamic localStorage support and event notifications
+
+export const DEFAULT_SALON_TIME_SLOTS = [
+  { id: "slot-1", time: "09:00 AM", status: "active", category: "Morning" },
+  { id: "slot-2", time: "09:30 AM", status: "active", category: "Morning" },
+  { id: "slot-3", time: "10:00 AM", status: "active", category: "Morning" },
+  { id: "slot-4", time: "10:30 AM", status: "active", category: "Morning" },
+  { id: "slot-5", time: "11:00 AM", status: "active", category: "Morning" },
+  { id: "slot-6", time: "11:30 AM", status: "active", category: "Morning" },
+  { id: "slot-7", time: "01:00 PM", status: "active", category: "Afternoon" },
+  { id: "slot-8", time: "01:30 PM", status: "active", category: "Afternoon" },
+  { id: "slot-9", time: "02:00 PM", status: "active", category: "Afternoon" },
+  { id: "slot-10", time: "03:00 PM", status: "active", category: "Afternoon" },
+  { id: "slot-11", time: "04:00 PM", status: "active", category: "Evening" },
+  { id: "slot-12", time: "04:30 PM", status: "active", category: "Evening" },
+  { id: "slot-13", time: "05:00 PM", status: "active", category: "Evening" },
+  { id: "slot-14", time: "06:00 PM", status: "active", category: "Evening" }
+];
+
+const STORAGE_KEY_SALON_SERVICES = 'shine_salon_services';
+const STORAGE_KEY_SALON_PACKAGES = 'shine_salon_packages';
+const STORAGE_KEY_SALON_CATEGORIES = 'shine_salon_categories';
+const STORAGE_KEY_SALON_TIME_SLOTS = 'shine_salon_time_slots';
+
+const notifyDataChange = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('salonDataChanged'));
+  }
+};
+
+export const getTimeSlotsSync = () => {
+  if (typeof window === 'undefined') return DEFAULT_SALON_TIME_SLOTS;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SALON_TIME_SLOTS);
+    if (stored) return JSON.parse(stored);
+    localStorage.setItem(STORAGE_KEY_SALON_TIME_SLOTS, JSON.stringify(DEFAULT_SALON_TIME_SLOTS));
+    return DEFAULT_SALON_TIME_SLOTS;
+  } catch (err) {
+    console.error('Error reading salon time slots from localStorage:', err);
+    return DEFAULT_SALON_TIME_SLOTS;
+  }
+};
+
+export const getTimeSlots = () => Promise.resolve(getTimeSlotsSync());
+
+export const saveTimeSlot = (slotData) => {
+  const currentSlots = getTimeSlotsSync();
+  const existingIndex = currentSlots.findIndex(s => s.id === slotData.id || (slotData.id && s.id === slotData.id) || s.time.toLowerCase() === (slotData.time || '').toLowerCase());
+
+  let updatedList;
+  if (existingIndex !== -1) {
+    updatedList = [...currentSlots];
+    updatedList[existingIndex] = {
+      ...updatedList[existingIndex],
+      ...slotData
+    };
+  } else {
+    const newId = slotData.id || `slot-${Date.now()}`;
+    const newSlot = {
+      id: newId,
+      time: slotData.time || '10:00 AM',
+      status: slotData.status || 'active',
+      category: slotData.category || 'General'
+    };
+    updatedList = [...currentSlots, newSlot];
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SALON_TIME_SLOTS, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error saving salon time slot:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const deleteTimeSlot = (id) => {
+  const currentSlots = getTimeSlotsSync();
+  const updatedList = currentSlots.filter(s => s.id !== id && s.time !== id);
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SALON_TIME_SLOTS, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error deleting salon time slot:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+
+export const getCategoriesSync = () => {
+  if (typeof window === 'undefined') return CATEGORIES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SALON_CATEGORIES);
+    if (stored) return JSON.parse(stored);
+    localStorage.setItem(STORAGE_KEY_SALON_CATEGORIES, JSON.stringify(CATEGORIES));
+    return CATEGORIES;
+  } catch (err) {
+    return CATEGORIES;
+  }
+};
+
+export const getCategories = () => Promise.resolve(getCategoriesSync());
+
+export const getServicesSync = () => {
+  if (typeof window === 'undefined') return SERVICES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SALON_SERVICES);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    localStorage.setItem(STORAGE_KEY_SALON_SERVICES, JSON.stringify(SERVICES));
+    return SERVICES;
+  } catch (err) {
+    console.error('Error reading salon services from localStorage:', err);
+    return SERVICES;
+  }
+};
+
+export const getServices = () => Promise.resolve(getServicesSync());
+
+export const getServiceById = (id) => {
+  const allServices = getServicesSync();
+  return Promise.resolve(allServices.find(s => s.id === id || s._id === id));
+};
+
+export const saveService = (serviceData) => {
+  const currentServices = getServicesSync();
+  const existingIndex = currentServices.findIndex(s => s.id === serviceData.id || (serviceData.id && s.id === serviceData.id));
+
+  let updatedList;
+  if (existingIndex !== -1) {
+    updatedList = [...currentServices];
+    updatedList[existingIndex] = {
+      ...updatedList[existingIndex],
+      ...serviceData
+    };
+  } else {
+    const newId = serviceData.id || serviceData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const newService = {
+      id: newId,
+      name: serviceData.name || 'New Salon Service',
+      category: serviceData.category || 'Hair Cut',
+      price: Number(serviceData.price) || 25,
+      duration: serviceData.duration || '30 mins',
+      rating: Number(serviceData.rating) || 4.9,
+      reviewsCount: Number(serviceData.reviewsCount) || 1,
+      tagline: serviceData.tagline || '',
+      description: serviceData.description || '',
+      image: serviceData.image || 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=600',
+      status: serviceData.status || 'active',
+      icon: serviceData.icon || '💇‍♂️',
+      features: Array.isArray(serviceData.features) ? serviceData.features : (serviceData.features ? serviceData.features.split('\n').filter(Boolean) : []),
+      inclusions: Array.isArray(serviceData.inclusions) ? serviceData.inclusions : (serviceData.inclusions ? serviceData.inclusions.split('\n').filter(Boolean) : [])
+    };
+    updatedList = [newService, ...currentServices];
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SALON_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error saving salon service:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const updateServicePrice = (id, newPrice) => {
+  const currentServices = getServicesSync();
+  const updatedList = currentServices.map(s => {
+    if (s.id === id || s._id === id) {
+      return { ...s, price: Number(newPrice) };
+    }
+    return s;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SALON_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error updating salon service price:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const deleteService = (id) => {
+  const currentServices = getServicesSync();
+  const updatedList = currentServices.filter(s => s.id !== id && s._id !== id);
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SALON_SERVICES, JSON.stringify(updatedList));
+  } catch (e) {
+    console.error('Error deleting salon service:', e);
+  }
+  notifyDataChange();
+  return Promise.resolve(updatedList);
+};
+
+export const getPackagesSync = () => {
+  if (typeof window === 'undefined') return PACKAGES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SALON_PACKAGES);
+    if (stored) return JSON.parse(stored);
+    localStorage.setItem(STORAGE_KEY_SALON_PACKAGES, JSON.stringify(PACKAGES));
+    return PACKAGES;
+  } catch (err) {
+    return PACKAGES;
+  }
+};
+
+export const getPackages = () => Promise.resolve(getPackagesSync());
+
 export const getBookings = () => Promise.resolve(MOCK_BOOKINGS);
 export const getStylists = () => Promise.resolve(STYLISTS);
 export const getStylistById = (id) => Promise.resolve(STYLISTS.find(s => s.id === id));
 export const getOffers = () => Promise.resolve(OFFERS);
 export const getReviews = () => Promise.resolve(REVIEWS);
 export const getFAQs = () => Promise.resolve(FAQS);
+

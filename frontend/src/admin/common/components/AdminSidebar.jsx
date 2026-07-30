@@ -82,6 +82,28 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     const banCount = banners.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
     const iCount = inventory.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
+    if (key === 'car-detailing') {
+      return [
+        { id: 'treatments', label: 'Car Detailing', icon: Wrench },
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
+        { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
+      ];
+    }
+
+    if (key === 'salon') {
+      return [
+        { id: 'services', label: 'Salon Services', icon: Scissors },
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
+        { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
+      ];
+    }
+
     return [
       { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
       { id: 'packages', label: 'Packages & Pricing', icon: Wrench },

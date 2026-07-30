@@ -150,7 +150,7 @@ export default function CarDetailingServiceDetailsPage() {
 
               <div className="flex flex-col items-end">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Price Starts At</span>
-                <span className="text-3xl font-extrabold text-zinc-850 mt-0.5">₹{service.price * 10}</span>
+                <span className="text-3xl font-extrabold text-zinc-850 mt-0.5">₹{Number(service.price).toLocaleString('en-IN')}</span>
               </div>
             </div>
 

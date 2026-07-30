@@ -6,7 +6,7 @@ import { Search, Sparkles, ArrowRight, Star, Clock, Heart } from 'lucide-react';
 import SalonServiceCard from '../components/salonServiceCard';
 import { PrimaryButton } from '../components/salonUI';
 
-import { SERVICES, CATEGORIES, OFFERS, REVIEWS } from '../services/salonApi';
+import { getServicesSync, getCategoriesSync, OFFERS, REVIEWS } from '../services/salonApi';
 import serviceApi from '../../common/services/serviceApi';
 
 const HERO_SLIDES = [
@@ -41,6 +41,8 @@ export default function SalonHomePage() {
   const [searchVal, setSearchVal] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [dbService, setDbService] = useState(null);
+  const [servicesList, setServicesList] = useState(getServicesSync());
+  const [categoriesList, setCategoriesList] = useState(getCategoriesSync());
 
   // Auto Slider Timer
   useEffect(() => {
@@ -48,6 +50,18 @@ export default function SalonHomePage() {
       setCurrentSlide((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
     }, 5000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Listen to live admin data updates
+  useEffect(() => {
+    const handleDataChange = () => {
+      setServicesList(getServicesSync());
+      setCategoriesList(getCategoriesSync());
+    };
+    window.addEventListener('salonDataChanged', handleDataChange);
+    return () => {
+      window.removeEventListener('salonDataChanged', handleDataChange);
+    };
   }, []);
 
   // Fetch dynamic Salon service details from API
@@ -78,17 +92,7 @@ export default function SalonHomePage() {
     navigate(`/salon/services?category=${encodeURIComponent(catName)}`);
   };
 
-  // Combine dynamic database pricing with layout
-  const activeServices = dbService?.pricing && dbService.pricing.length > 0
-    ? dbService.pricing.map((p, idx) => ({
-        id: p._id || idx,
-        title: p.title,
-        price: p.price,
-        description: p.description || 'Executive grooming session',
-        duration: '45 mins',
-        rating: '4.9'
-      }))
-    : SERVICES;
+  const activeServices = servicesList.filter(s => s.status !== 'inactive');
 
   return (
     <div className="space-y-6 md:space-y-10 pb-16">
@@ -173,7 +177,7 @@ export default function SalonHomePage() {
       <section className="px-2 space-y-4">
         <h2 className="text-xl font-black text-zinc-900">Explore Grooming Tiers</h2>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          {CATEGORIES.map((cat) => (
+          {categoriesList.map((cat) => (
             <button
               key={cat.id}
               onClick={() => handleCategoryClick(cat.name)}

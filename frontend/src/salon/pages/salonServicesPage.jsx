@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 
 import SalonServiceCard from '../components/salonServiceCard';
-import { SERVICES } from '../services/salonApi';
+import { getServicesSync } from '../services/salonApi';
 
 const CATEGORIES_FILTER = [
   "All",
@@ -29,6 +29,17 @@ export default function SalonServicesPage() {
 
   const [searchVal, setSearchVal] = useState(searchParamVal);
   const [selectedCat, setSelectedCat] = useState(catParamVal);
+  const [servicesList, setServicesList] = useState(getServicesSync());
+
+  useEffect(() => {
+    const handleDataChange = () => {
+      setServicesList(getServicesSync());
+    };
+    window.addEventListener('salonDataChanged', handleDataChange);
+    return () => {
+      window.removeEventListener('salonDataChanged', handleDataChange);
+    };
+  }, []);
 
   // Sync state with URL params
   useEffect(() => {
@@ -59,10 +70,11 @@ export default function SalonServicesPage() {
     setSearchParams(newParams);
   };
 
-  const filteredServices = SERVICES.filter(service => {
-    const matchesSearch = service.name.toLowerCase().includes(searchVal.toLowerCase()) ||
-                          service.tagline.toLowerCase().includes(searchVal.toLowerCase()) ||
-                          service.description.toLowerCase().includes(searchVal.toLowerCase());
+  const filteredServices = servicesList.filter(service => {
+    if (service.status === 'inactive') return false;
+    const matchesSearch = (service.name || '').toLowerCase().includes(searchVal.toLowerCase()) ||
+                          (service.tagline || '').toLowerCase().includes(searchVal.toLowerCase()) ||
+                          (service.description || '').toLowerCase().includes(searchVal.toLowerCase());
     const matchesCategory = selectedCat === "All" || service.category === selectedCat;
     return matchesSearch && matchesCategory;
   });

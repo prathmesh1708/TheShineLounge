@@ -60,7 +60,7 @@ export default function CarDetailingCard({ service }) {
               <span>{service.duration}</span>
             </div>
             <div className="font-extrabold text-zinc-800 text-xs sm:text-base">
-              ₹{service.price * 10}
+              ₹{Number(service.price).toLocaleString('en-IN')}
             </div>
           </div>
 
