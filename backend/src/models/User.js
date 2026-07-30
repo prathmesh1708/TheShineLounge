@@ -62,6 +62,26 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    photo: {
+      type: String,
+      default: ''
+    },
+    serviceKey: {
+      type: String,
+      default: ''
+    },
+    staffRole: {
+      type: String,
+      default: 'Staff Specialist'
+    },
+    salary: {
+      type: String,
+      default: ''
+    },
+    leaveBalance: {
+      type: Number,
+      default: 12
+    },
     lastLogin: {
       type: Date,
       default: null
