@@ -2,19 +2,27 @@ import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, ClipboardList, Camera, Calendar, User } from 'lucide-react';
 import { useStaff } from '../context/StaffContext';
+import { useAuth } from '../../../common/context/AuthContext';
 
 export default function StaffBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { setIsCameraOpen, setCameraPurpose } = useStaff();
+  const { hasPermission } = useAuth();
 
-  const navItems = [
-    { label: 'Home', path: '/staff/dashboard', icon: Home },
-    { label: 'Jobs', path: '/staff/bookings', icon: ClipboardList },
+  const allNavItems = [
+    { label: 'Home', path: '/staff/dashboard', icon: Home, permission: 'dashboard' },
+    { label: 'Jobs', path: '/staff/bookings', icon: ClipboardList, permission: 'bookings' },
     { id: 'camera', label: 'Camera', icon: Camera, isCenter: true },
-    { label: 'Schedule', path: '/staff/schedule', icon: Calendar },
+    { label: 'Schedule', path: '/staff/schedule', icon: Calendar, permission: 'dashboard' },
     { label: 'Profile', path: '/staff/profile', icon: User }
   ];
+
+  // Filter nav items by permission (Home, Camera, Profile always visible)
+  const navItems = allNavItems.filter(item => {
+    if (item.isCenter || !item.permission) return true;
+    return hasPermission(item.permission);
+  });
 
   const handleCenterClick = () => {
     setCameraPurpose('check-in');

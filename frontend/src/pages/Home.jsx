@@ -15,6 +15,7 @@ import ServiceGrid from '../common/components/ServiceGrid';
 import TrendingSection from '../common/components/TrendingSection';
 import ServiceIcon from '../common/components/ServiceIcon';
 import { ShimmerCard } from '../common/components/Shimmer';
+import serviceApi from '../common/services/serviceApi';
 
 // Import local image assets for trending items
 import trendingCarWash from '../assets/images/trending_car_wash.png';
@@ -44,12 +45,22 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activePromoIndex, setActivePromoIndex] = useState(0);
   const [savedItems, setSavedItems] = useState([]);
+  const [dynamicServices, setDynamicServices] = useState([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 450);
-    return () => clearTimeout(timer);
+    const loadHomeData = async () => {
+      try {
+        const data = await serviceApi.getHomeServices();
+        if (data.success && data.services.length > 0) {
+          setDynamicServices(data.services);
+        }
+      } catch {
+        // Fallback to defaults
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadHomeData();
   }, []);
 
   const toggleSaveItem = (itemId, e) => {
@@ -69,14 +80,23 @@ export default function Home() {
     { id: 'salon', label: 'Salon', path: '/salon' }
   ];
 
-  const lightCategories = [
+  const defaultCategories = [
     { id: 'car-wash', label: 'Car Wash', icon: '🚗', path: '/car-wash', color: '#148F87' },
-    { id: 'detailing', label: 'Car Detailing', icon: '🛡️', path: '/car-detailing', color: '#4A5568' },
+    { id: 'car-detailing', label: 'Car Detailing', icon: '🛡️', path: '/car-detailing', color: '#4A5568' },
     { id: 'dog-wash', label: 'Dog Bath', icon: '🐕', path: '/dog-wash', color: '#2E7D32' },
     { id: 'cafe', label: 'Cafe', icon: '☕', path: '/cafe', color: '#8D5B28' },
-    { id: 'drive-through', label: 'Drive-Through Cafe', icon: '⏱️', path: '/drive-through-cafe', color: '#C17F19' },
+    { id: 'drive-through-cafe', label: 'Drive-Through Cafe', icon: '⏱️', path: '/drive-through-cafe', color: '#C17F19' },
     { id: 'salon', label: 'Salon', icon: '✂️', path: '/salon', color: '#7B1FA2' }
   ];
+
+  const lightCategories = dynamicServices.length > 0
+    ? dynamicServices.map(srv => ({
+        id: srv.slug,
+        label: srv.serviceName,
+        path: `/${srv.slug}`,
+        color: srv.theme?.primaryColor || '#e07b2a'
+      }))
+    : defaultCategories;
 
   const trendingItems = [
     {

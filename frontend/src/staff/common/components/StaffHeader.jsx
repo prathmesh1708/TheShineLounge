@@ -3,11 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Bell, Sparkles, Camera, ShieldCheck } from 'lucide-react';
 import TSLLogo from '../../../common/components/TSLLogo';
 import { useStaff } from '../context/StaffContext';
+import { useAuth } from '../../../common/context/AuthContext';
 
 export default function StaffHeader({ title }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentStaff, isCheckedIn, notifications } = useStaff();
+  const { user } = useAuth();
 
   const isHome = location.pathname === '/staff' || location.pathname === '/staff/dashboard';
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -32,10 +34,10 @@ export default function StaffHeader({ title }) {
           <h1 className="font-extrabold text-sm text-white tracking-wide truncate max-w-[170px]">
             {title || (isHome ? 'TSL Staff Mobile' : 'Staff Panel')}
           </h1>
-          {currentStaff && (
+          {(user || currentStaff) && (
             <div className="flex items-center gap-1.5 text-[10px] text-blue-200">
               <span className={`w-1.5 h-1.5 rounded-full ${isCheckedIn ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span className="font-semibold truncate max-w-[120px]">{currentStaff.role}</span>
+              <span className="font-semibold truncate max-w-[120px]">{user?.department || currentStaff?.role || 'Staff'}</span>
             </div>
           )}
         </div>

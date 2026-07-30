@@ -27,12 +27,14 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import { useAuth } from '../../../common/context/AuthContext';
 import TSLLogo from '../../../common/components/TSLLogo';
 
 export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { stats, bookings, staffList, banners, inventory } = useAdmin();
+  const { user, logout } = useAuth();
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
@@ -54,7 +56,6 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   }, [currentServiceKey]);
 
   const globalNavItems = [
-    { label: 'Global Dashboard', path: '/admin', icon: LayoutDashboard, exact: true },
     { label: 'All Bookings', path: '/admin/bookings', icon: CalendarCheck, badge: stats.pendingBookings },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Customer CRM', path: '/admin/customers', icon: Users },
@@ -143,133 +144,144 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
         </div>
 
         {/* Navigation Items List */}
-        <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar">
+        <div className="p-3 space-y-1.5 overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar">
           
-          {/* SECTION 1: Service Modules with Collapsible Dropdowns */}
-          <div>
-            {!isCollapsed && (
-              <p className="px-3 mb-2 text-[10px] font-black uppercase tracking-widest text-amber-400">
-                Service Management Modules
-              </p>
-            )}
-            <div className="space-y-1.5">
-              {serviceModules.map((item) => {
-                const Icon = item.icon;
-                const isCurrentService = currentServiceKey === item.key;
-                const isExpanded = openDropdownKey === item.key && !isCollapsed;
+          {/* Global Dashboard */}
+          {(() => {
+            const isActive = location.pathname === '/admin' || location.pathname === '/admin/dashboard';
+            return (
+              <NavLink
+                to="/admin"
+                className={`flex items-center justify-between px-3 py-2 rounded-xl font-medium text-xs transition-all duration-200 group ${
+                  isActive
+                    ? 'text-white font-bold shadow-md'
+                    : 'text-blue-100 hover:bg-blue-800/60 hover:text-white'
+                }`}
+                style={isActive ? { backgroundColor: '#e07b2a' } : {}}
+                title={isCollapsed ? 'Global Dashboard' : undefined}
+              >
+                <div className="flex items-center gap-2.5">
+                  <LayoutDashboard className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-white' : 'text-blue-200'}`} />
+                  {!isCollapsed && <span>Global Dashboard</span>}
+                </div>
+              </NavLink>
+            );
+          })()}
 
-                return (
-                  <div key={item.key} className="rounded-xl overflow-hidden">
-                    {/* Main Service Header Link / Button */}
-                    <button
-                      onClick={() => handleToggleDropdown(item.key, item.path)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-xs transition-all duration-200 group ${
-                        isCurrentService
-                          ? 'bg-blue-900/80 text-amber-300 border border-blue-700/60 shadow-xs'
-                          : 'text-blue-100 hover:bg-blue-800/60 hover:text-white'
-                      }`}
-                      title={isCollapsed ? item.label : undefined}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isCurrentService ? 'text-amber-400' : 'text-amber-400'}`} />
-                        {!isCollapsed && <span className="font-extrabold">{item.label}</span>}
-                      </div>
+          {/* Service Modules */}
+          {serviceModules.map((item) => {
+            const Icon = item.icon;
+            const isCurrentService = currentServiceKey === item.key;
+            const isExpanded = openDropdownKey === item.key && !isCollapsed;
 
-                      {!isCollapsed && (
-                        <div className="p-0.5 rounded text-blue-300 group-hover:text-white">
-                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Service Sub-Menu Dropdown Items */}
-                    {isExpanded && (
-                      <div className="mt-1 ml-3 pl-2.5 border-l-2 border-amber-500/40 space-y-1 py-1">
-                        {getSubNavItems(item.key, item.serviceName).map((sub) => {
-                          const SubIcon = sub.icon;
-                          const isSubActive = isCurrentService && activeTabQuery === sub.id;
-
-                          return (
-                            <NavLink
-                              key={sub.id}
-                              to={`${item.path}?tab=${sub.id}`}
-                              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
-                                isSubActive
-                                  ? 'text-white font-black shadow-xs'
-                                  : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
-                              }`}
-                              style={isSubActive ? { backgroundColor: '#e07b2a' } : {}}
-                            >
-                              <SubIcon className={`w-3.5 h-3.5 flex-shrink-0 ${isSubActive ? 'text-white' : 'text-amber-300'}`} />
-                              <span className="truncate">{sub.label}</span>
-                            </NavLink>
-                          );
-                        })}
-                      </div>
-                    )}
+            return (
+              <div key={item.key} className="rounded-xl overflow-hidden">
+                {/* Main Service Header Link / Button */}
+                <button
+                  onClick={() => handleToggleDropdown(item.key, item.path)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-xs transition-all duration-200 group ${
+                    isCurrentService
+                      ? 'bg-blue-900/80 text-amber-300 border border-blue-700/60 shadow-xs'
+                      : 'text-blue-100 hover:bg-blue-800/60 hover:text-white'
+                  }`}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isCurrentService ? 'text-amber-400' : 'text-amber-400'}`} />
+                    {!isCollapsed && <span className="font-extrabold">{item.label}</span>}
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* SECTION 2: Global Management */}
-          <div>
-            {!isCollapsed && (
-              <p className="px-3 mb-2 text-[10px] font-black uppercase tracking-widest text-blue-300">
-                Global Operations
-              </p>
-            )}
-            <div className="space-y-1">
-              {globalNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = item.exact
-                  ? location.pathname === item.path || location.pathname === '/admin/dashboard'
-                  : location.pathname.startsWith(item.path);
-
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={`flex items-center justify-between px-3 py-2 rounded-xl font-medium text-xs transition-all duration-200 group ${
-                      isActive
-                        ? 'text-white font-bold shadow-md'
-                        : 'text-blue-100 hover:bg-blue-800/60 hover:text-white'
-                    }`}
-                    style={isActive ? { backgroundColor: '#e07b2a' } : {}}
-                    title={isCollapsed ? item.label : undefined}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-white' : 'text-blue-200'}`} />
-                      {!isCollapsed && <span>{item.label}</span>}
+                  {!isCollapsed && (
+                    <div className="p-0.5 rounded text-blue-300 group-hover:text-white">
+                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                     </div>
+                  )}
+                </button>
 
-                    {!isCollapsed && item.badge > 0 && (
-                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full text-white bg-amber-500">
-                        {item.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                );
-              })}
-            </div>
-          </div>
+                {/* Service Sub-Menu Dropdown Items */}
+                {isExpanded && (
+                  <div className="mt-1 ml-3 pl-2.5 border-l-2 border-amber-500/40 space-y-1 py-1">
+                    {getSubNavItems(item.key, item.serviceName).map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = isCurrentService && activeTabQuery === sub.id;
+
+                      return (
+                        <NavLink
+                          key={sub.id}
+                          to={`${item.path}?tab=${sub.id}`}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                            isSubActive
+                              ? 'text-white font-black shadow-xs'
+                              : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
+                          }`}
+                          style={isSubActive ? { backgroundColor: '#e07b2a' } : {}}
+                        >
+                          <SubIcon className={`w-3.5 h-3.5 flex-shrink-0 ${isSubActive ? 'text-white' : 'text-amber-300'}`} />
+                          <span className="truncate">{sub.label}</span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Remaining Global Items */}
+          {globalNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.exact
+              ? location.pathname === item.path || location.pathname === '/admin/dashboard'
+              : location.pathname.startsWith(item.path);
+
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={`flex items-center justify-between px-3 py-2 rounded-xl font-medium text-xs transition-all duration-200 group ${
+                  isActive
+                    ? 'text-white font-bold shadow-md'
+                    : 'text-blue-100 hover:bg-blue-800/60 hover:text-white'
+                }`}
+                style={isActive ? { backgroundColor: '#e07b2a' } : {}}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-white' : 'text-blue-200'}`} />
+                  {!isCollapsed && <span>{item.label}</span>}
+                </div>
+
+                {!isCollapsed && item.badge > 0 && (
+                  <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full text-white bg-amber-500">
+                    {item.badge}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </div>
       </div>
 
       {/* Bottom User Info Footer */}
       <div className="p-3 border-t border-blue-800/60">
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-2 py-1.5'}`}>
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
-            alt="Admin Avatar"
-            className="w-8 h-8 rounded-full object-cover border-2 border-amber-500"
-          />
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white font-extrabold text-sm border-2 border-amber-500">
+            {user?.fullName?.charAt(0)?.toUpperCase() || 'A'}
+          </div>
           {!isCollapsed && (
-            <div className="overflow-hidden">
-              <p className="text-xs font-bold text-white truncate">Amitabh Verma</p>
-              <p className="text-[10px] text-blue-200 font-semibold truncate">Super Admin</p>
+            <div className="overflow-hidden flex-1">
+              <p className="text-xs font-bold text-white truncate">{user?.fullName || 'Admin'}</p>
+              <p className="text-[10px] text-blue-200 font-semibold truncate capitalize">{user?.role || 'admin'}</p>
             </div>
+          )}
+          {!isCollapsed && (
+            <button
+              onClick={async () => { await logout(); navigate('/staff/login'); }}
+              className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors"
+              title="Logout"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
           )}
         </div>
       </div>

@@ -1,4 +1,5 @@
 export { default as AdminLayout } from './common/components/AdminLayout';
+export { default as AdminLoginPage } from './pages/AdminLoginPage';
 export { useAdmin, AdminProvider } from './common/context/AdminContext';
 export * from './car-wash-admin';
 export * from './car-detailing-admin';

@@ -24,6 +24,11 @@ const salonStaff = require('./staff/salon-staff');
 // Import Admin Module
 const admin = require('./admin');
 
+// Import Auth, User & Dynamic Service Routes
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
+
 const app = express();
 
 // Connect to Database
@@ -52,6 +57,11 @@ app.use('/api/staff/salon', salonStaff.routes);
 
 // Mount Admin Routes
 app.use('/api/admin', admin.routes);
+
+// Mount Auth, User & Dynamic Service Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/services', serviceRoutes);
 
 
 // Root Route

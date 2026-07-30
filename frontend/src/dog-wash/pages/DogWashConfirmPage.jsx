@@ -7,16 +7,17 @@ export default function DogWashConfirmPage() {
 
   // Retrieve booking details from state or fallback defaults
   const stateData = location.state || {};
-  const service = {
-    name: stateData.item || stateData.service?.name || 'Quick Bath',
-    price: stateData.price || stateData.service?.price || 100,
-    duration: stateData.duration || stateData.service?.duration || '2 Minutes'
+  const service = stateData.service || {
+    name: stateData.item || '2 Minutes Wash',
+    price: stateData.price || 100,
+    duration: stateData.duration || '2 Minutes'
   };
-  const slot = {
-    label: stateData.time || stateData.slot?.label || 'Today 4:30 PM'
+  const slot = stateData.slot || {
+    label: stateData.time || 'Today 4:30 PM'
   };
-  const pet = {
-    name: stateData.vehicle || 'Max (Golden Retriever)',
+  const vehicle = stateData.vehicle || {
+    name: 'Max',
+    plate: 'Golden Retriever · 25 kg',
     icon: '🐕'
   };
 
@@ -33,7 +34,7 @@ export default function DogWashConfirmPage() {
   const handleConfirm = () => {
     setBookingConfirmed(true);
     setTimeout(() => {
-      navigate('/dog-wash/my-bookings');
+      navigate('/bookings');
     }, 2200);
   };
 
@@ -48,14 +49,14 @@ export default function DogWashConfirmPage() {
             <polyline points="12 19 5 12 12 5" />
           </svg>
         </button>
-        <h1 className="confirm-header-title">Confirm Dog Bath</h1>
+        <h1 className="confirm-header-title">Confirm Dog Wash</h1>
         <div style={{ width: '44px' }} /> {/* Spacing spacer */}
       </div>
 
       {bookingConfirmed ? (
         <div className="confirm-success-card">
           <div className="success-icon-badge">🐕✨</div>
-          <h2 className="success-title">Grooming Confirmed!</h2>
+          <h2 className="success-title">Wash Confirmed!</h2>
           <p className="success-desc">
             Your pet wash session has been scheduled successfully. Redirecting to your bookings...
           </p>
@@ -65,11 +66,11 @@ export default function DogWashConfirmPage() {
           
           {/* Service detail card */}
           <div className="confirm-section-card">
-            <h3 className="confirm-card-heading">Selected Treatment</h3>
+            <h3 className="confirm-card-heading">Selected Service</h3>
             <div className="confirm-service-summary">
               <div>
                 <h4 className="summary-service-name">{service.name}</h4>
-                <span className="summary-service-duration">⏱️ {service.duration}</span>
+                <span className="summary-service-duration">⏱️ {service.duration || '20 min'}</span>
               </div>
               <span className="summary-service-price">₹{service.price}</span>
             </div>
@@ -82,13 +83,15 @@ export default function DogWashConfirmPage() {
               <div className="confirm-detail-item">
                 <span className="confirm-detail-label">Pet Profile</span>
                 <span className="confirm-detail-value">
-                  {pet.icon} {pet.name}
+                  {vehicle.icon || '🐕'} {vehicle.name} ({vehicle.plate || vehicle.breed || 'Golden Retriever'})
                 </span>
               </div>
-              <div className="confirm-detail-item">
-                <span className="confirm-detail-label">Schedule Slot</span>
-                <span className="confirm-detail-value">{slot.label}</span>
-              </div>
+              {slot?.label && (
+                <div className="confirm-detail-item">
+                  <span className="confirm-detail-label">Schedule Slot</span>
+                  <span className="confirm-detail-value">{slot.label}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -121,7 +124,6 @@ export default function DogWashConfirmPage() {
           {/* Bottom Confirmation CTA */}
           <button 
             className="confirm-final-btn"
-            style={{ backgroundColor: '#FF6B00' }}
             onClick={handleConfirm}
           >
             Confirm Booking · ₹{finalTotal}

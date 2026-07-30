@@ -4,17 +4,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
 import { useTheme } from '../common/context/ThemeContext';
+import { useAuth } from '../common/context/AuthContext';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { theme, toggleTheme, isDark } = useTheme();
+  const { user, isAuthenticated, logout, updateUser } = useAuth();
   const [activeModal, setActiveModal] = useState(null); // 'edit-profile', 'payment', 'preferences', 'notifications'
 
-  // Mock states that update dynamically
+  // User state initialized from AuthContext
   const [profile, setProfile] = useState({
-    name: 'Vally Guest',
-    email: 'vally.guest@shinelounge.com',
-    phone: '+91 98765 43210'
+    name: user?.fullName || 'Vally Guest',
+    email: user?.email || 'vally.guest@shinelounge.com',
+    phone: user?.mobile || '+91 98765 43210'
   });
 
   const [preferences, setPreferences] = useState({
@@ -370,9 +372,9 @@ export default function ProfilePage() {
       <div className="profile-actions-box" style={{ marginTop: 0 }}>
         <button 
           className="profile-signout-btn" 
-          onClick={() => {
-            alert('Logout successful (demonstration only).');
-            navigate('/');
+          onClick={async () => {
+            await logout();
+            navigate('/login');
           }}
         >
           Sign Out
