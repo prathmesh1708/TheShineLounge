@@ -229,16 +229,22 @@ export const initialServices = [
   {
     id: 'srv-3',
     key: 'dog-wash',
-    name: 'Dog Bath',
+    name: 'Dog Wash',
     category: 'Pet Care',
-    description: 'Medicated bath, blow dry, nail clipping, ear cleaning, and coat brushing.',
-    price: 499,
-    duration: '45 min',
+    description: 'Self-serve & full-service hydrobath pet grooming lounge.',
+    price: 100,
+    duration: '2-12 min',
     status: 'active',
     image: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=600&q=80',
+    pricing: [
+      { id: 'p7', title: '2 Minutes Wash', price: 100, description: 'Quick 2 minutes warm hydrobath session' },
+      { id: 'p8', title: '5 Minutes Wash', price: 200, description: 'Standard 5 minutes warm hydrobath session' },
+      { id: 'p9', title: '12 Minutes Wash', price: 500, description: 'Extended 12 minutes deluxe warm hydrobath session' }
+    ],
     plans: [
-      { id: 'p7', name: 'Basic Paw Bath', price: 499, description: 'Shampoo bath + blow dry', billing: 'per pet' },
-      { id: 'p8', name: 'Full Dog Spa', price: 999, description: 'Bath, haircut, nail trim, ear spa', billing: 'per pet' }
+      { id: 'p7', name: '2 Minutes Wash', price: 100, description: 'Quick 2 minutes warm hydrobath session', billing: 'per wash' },
+      { id: 'p8', name: '5 Minutes Wash', price: 200, description: 'Standard 5 minutes warm hydrobath session', billing: 'per wash' },
+      { id: 'p9', name: '12 Minutes Wash', price: 500, description: 'Extended 12 minutes deluxe warm hydrobath session', billing: 'per wash' }
     ]
   },
   {

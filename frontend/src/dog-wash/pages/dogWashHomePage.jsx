@@ -26,25 +26,38 @@ export default function DogWashHomePage() {
   useEffect(() => {
     const fetchServiceData = async () => {
       try {
+        const cached = localStorage.getItem('tsl_dog_wash_service');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setDbService(parsed);
+          const initialPricing = parsed.pricing && parsed.pricing.length > 0
+            ? parsed.pricing
+            : parsed.plans;
+          if (initialPricing && initialPricing.length > 0) {
+            setSelectedService({
+              id: initialPricing[0]._id || initialPricing[0].id || '2-min',
+              name: initialPricing[0].title || initialPricing[0].name,
+              price: initialPricing[0].price
+            });
+          }
+        }
         const res = await serviceApi.getServiceBySlug('dog-wash');
         if (res.success && res.service) {
           setDbService(res.service);
-          if (res.service.pricing && res.service.pricing.length > 0) {
+          localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+          const livePricing = res.service.pricing && res.service.pricing.length > 0
+            ? res.service.pricing
+            : res.service.plans;
+          if (livePricing && livePricing.length > 0) {
             setSelectedService({
-              id: res.service.pricing[0]._id || '2-min',
-              name: res.service.pricing[0].title || res.service.pricing[0].name,
-              price: res.service.pricing[0].price
-            });
-          } else if (res.service.plans && res.service.plans.length > 0) {
-            setSelectedService({
-              id: res.service.plans[0]._id || '2-min',
-              name: res.service.plans[0].name,
-              price: res.service.plans[0].price
+              id: livePricing[0]._id || livePricing[0].id || '2-min',
+              name: livePricing[0].title || livePricing[0].name,
+              price: livePricing[0].price
             });
           }
         }
       } catch (err) {
-        console.warn('Using default dog-wash layout data');
+        console.warn('Using cached or default dog-wash layout data');
       }
     };
     fetchServiceData();
@@ -87,14 +100,23 @@ export default function DogWashHomePage() {
     });
   };
 
-  // 3 Time-Based Basic Bath Pricing Options (₹100 for 2 min, ₹200 for 5 min, ₹500 for 12 min)
-  const pricingItems = dbService?.pricing && dbService.pricing.length > 0
+  // Dynamic Bath Pricing Options
+  const rawItems = (dbService?.pricing && dbService.pricing.length > 0)
     ? dbService.pricing
-    : [
-        { _id: '2-min', title: '2 Minutes Wash', price: 100, description: 'Quick 2 minutes warm hydrobath session' },
-        { _id: '5-min', title: '5 Minutes Wash', price: 200, description: 'Standard 5 minutes warm hydrobath session' },
-        { _id: '12-min', title: '12 Minutes Wash', price: 500, description: 'Extended 12 minutes deluxe warm hydrobath session' }
-      ];
+    : ((dbService?.plans && dbService.plans.length > 0)
+      ? dbService.plans
+      : [
+          { _id: '2-min', title: '2 Minutes Wash', price: 100, description: 'Quick 2 minutes warm hydrobath session' },
+          { _id: '5-min', title: '5 Minutes Wash', price: 200, description: 'Standard 5 minutes warm hydrobath session' },
+          { _id: '12-min', title: '12 Minutes Wash', price: 500, description: 'Extended 12 minutes deluxe warm hydrobath session' }
+        ]);
+
+  const pricingItems = rawItems.map(p => ({
+    _id: p._id || p.id || p.title || p.name,
+    title: p.title || p.name,
+    price: p.price,
+    description: p.description || (p.features && p.features.join(', '))
+  }));
 
   return (
     <div className="carwash-booking-container">

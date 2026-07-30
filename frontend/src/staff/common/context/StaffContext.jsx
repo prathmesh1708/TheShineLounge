@@ -3,10 +3,63 @@ import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecord
 
 const StaffContext = createContext();
 
+const formatStaffUser = (u) => {
+  if (!u) return mockStaffMembers[2];
+  return {
+    id: u._id || u.id || 'STF-LIVE',
+    employeeId: u.email || 'STF-01',
+    name: u.fullName || u.name || 'Staff Member',
+    role: u.staffRole || (u.role === 'staff' ? (u.department || 'Staff Specialist') : u.role) || 'Car Wash Specialist',
+    department: u.department || 'Car Wash',
+    serviceKey: u.serviceKey || 'car-wash',
+    email: u.email || '',
+    mobile: u.mobile || '',
+    salary: u.salary || '',
+    photo: u.photo || u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    avatar: u.photo || u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    permissions: u.permissions || ['bookings', 'orders']
+  };
+};
+
 export function StaffProvider({ children }) {
-  // Currently Logged-in Staff (Default to STF-03 Rohan Deshmukh - Car Wash Lead)
-  const [currentStaff, setCurrentStaff] = useState(mockStaffMembers[2]);
+  const getInitialStaff = () => {
+    try {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u) return formatStaffUser(u);
+      }
+    } catch (err) {
+      console.warn('Error parsing tsl_user in StaffContext:', err);
+    }
+    return mockStaffMembers[2];
+  };
+
+  // Currently Logged-in Staff
+  const [currentStaff, setCurrentStaff] = useState(getInitialStaff);
   const [isAuthenticated, setIsAuthenticated] = useState(true);
+
+  // Sync staff context whenever localStorage tsl_user changes or mounts
+  useEffect(() => {
+    const syncStaffUser = () => {
+      try {
+        const stored = localStorage.getItem('tsl_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (u) {
+            setCurrentStaff(formatStaffUser(u));
+            setIsAuthenticated(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Sync staff error:', err);
+      }
+    };
+
+    syncStaffUser();
+    window.addEventListener('storage', syncStaffUser);
+    return () => window.removeEventListener('storage', syncStaffUser);
+  }, []);
 
   // State
   const [jobs, setJobs] = useState(mockAssignedJobs);

@@ -125,10 +125,15 @@ const initialServices = [
       background: '#faf5ff',
       hoverColor: '#6d28d9'
     },
+    pricing: [
+      { title: '2 Minutes Wash', price: 100, gst: true, description: 'Quick 2 minutes warm hydrobath session', displayOrder: 1 },
+      { title: '5 Minutes Wash', price: 200, gst: true, description: 'Standard 5 minutes warm hydrobath session', displayOrder: 2 },
+      { title: '12 Minutes Wash', price: 500, gst: true, description: 'Extended 12 minutes deluxe warm hydrobath session', displayOrder: 3 }
+    ],
     plans: [
-      { name: 'Self-Serve Express Hydrobath (5 Mins)', price: 199, duration: '5 Mins', features: ['Warm Hydrobath', 'Hypoallergenic Shampoo', 'Velocity Dryer'], recommended: false, displayOrder: 1 },
-      { name: 'Self-Serve Deluxe Spa (12 Mins)', price: 399, duration: '12 Mins', features: ['Extended Wash', 'Conditioner & De-Shedding Rake', 'Towel Service'], recommended: true, displayOrder: 2 },
-      { name: 'Full-Service Grooming Package', price: 999, duration: '45 Mins', features: ['Pro Groomer Wash', 'Nail Trimming', 'Ear Cleaning & Fragrance'], recommended: false, displayOrder: 3 }
+      { name: '2 Minutes Wash', price: 100, duration: '2 Mins', features: ['Quick 2 minutes warm hydrobath session'], recommended: false, displayOrder: 1 },
+      { name: '5 Minutes Wash', price: 200, duration: '5 Mins', features: ['Standard 5 minutes warm hydrobath session'], recommended: true, displayOrder: 2 },
+      { name: '12 Minutes Wash', price: 500, duration: '12 Mins', features: ['Extended 12 minutes deluxe warm hydrobath session'], recommended: false, displayOrder: 3 }
     ],
     memberships: [
       {

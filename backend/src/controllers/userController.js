@@ -8,7 +8,20 @@ const bcrypt = require('bcryptjs');
 // @access  Admin
 const createStaff = async (req, res) => {
   try {
-    const { fullName, email, password, mobile, department, permissions, branch } = req.body;
+    const {
+      fullName,
+      email,
+      password,
+      mobile,
+      department,
+      serviceKey,
+      staffRole,
+      salary,
+      leaveBalance,
+      photo,
+      permissions,
+      branch
+    } = req.body;
 
     if (!fullName || !email || !password) {
       return res.status(400).json({
@@ -32,8 +45,14 @@ const createStaff = async (req, res) => {
       password,
       mobile: mobile || '',
       role: 'staff',
-      department: department || '',
-      permissions: permissions || [],
+      department: department || 'Car Wash',
+      serviceKey: serviceKey || 'car-wash',
+      staffRole: staffRole || 'Staff Specialist',
+      salary: salary || '',
+      leaveBalance: leaveBalance ? Number(leaveBalance) : 12,
+      photo: photo || '',
+      profileImage: photo || '',
+      permissions: permissions || ['bookings', 'orders'],
       branch: branch || 'Main Branch',
       createdBy: req.user._id
     });
@@ -48,6 +67,11 @@ const createStaff = async (req, res) => {
         mobile: staff.mobile,
         role: staff.role,
         department: staff.department,
+        serviceKey: staff.serviceKey,
+        staffRole: staff.staffRole,
+        salary: staff.salary,
+        leaveBalance: staff.leaveBalance,
+        photo: staff.photo,
         permissions: staff.permissions,
         isActive: staff.isActive,
         branch: staff.branch,
@@ -75,13 +99,23 @@ const getStaffList = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 20,
+      limit = 50,
       search = '',
       department = '',
+      serviceKey = '',
       status = ''
     } = req.query;
 
     const query = { role: 'staff', isDeleted: false };
+
+    if (serviceKey) {
+      query.$or = [
+        { serviceKey: serviceKey },
+        { department: { $regex: serviceKey.replace('-', ' '), $options: 'i' } }
+      ];
+    } else if (department && department !== 'All') {
+      query.department = department;
+    }
 
     // Search by name, email, or mobile
     if (search) {

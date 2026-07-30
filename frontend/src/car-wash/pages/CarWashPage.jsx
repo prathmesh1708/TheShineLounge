@@ -18,23 +18,38 @@ export default function CarWashPage() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const videoRef = useRef(null);
 
-  // Fetch dynamic service details from backend API
+  // Fetch dynamic service details from backend API & local cache
   useEffect(() => {
     const fetchServiceData = async () => {
       try {
+        const cached = localStorage.getItem('tsl_car_wash_service');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setDbService(parsed);
+          const initialItems = (parsed.pricing && parsed.pricing.length > 0) ? parsed.pricing : parsed.plans;
+          if (initialItems && initialItems.length > 0) {
+            setSelectedService({
+              id: initialItems[0]._id || initialItems[0].id || 'single',
+              name: initialItems[0].title || initialItems[0].name,
+              price: initialItems[0].price
+            });
+          }
+        }
         const res = await serviceApi.getServiceBySlug('car-wash');
         if (res.success && res.service) {
           setDbService(res.service);
-          if (res.service.pricing && res.service.pricing.length > 0) {
+          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+          const liveItems = (res.service.pricing && res.service.pricing.length > 0) ? res.service.pricing : res.service.plans;
+          if (liveItems && liveItems.length > 0) {
             setSelectedService({
-              id: res.service.pricing[0]._id || 'single',
-              name: res.service.pricing[0].title,
-              price: res.service.pricing[0].price
+              id: liveItems[0]._id || liveItems[0].id || 'single',
+              name: liveItems[0].title || liveItems[0].name,
+              price: liveItems[0].price
             });
           }
         }
       } catch (err) {
-        console.warn('Using default car-wash layout data');
+        console.warn('Using cached or default car-wash layout data');
       }
     };
     fetchServiceData();
@@ -73,20 +88,37 @@ export default function CarWashPage() {
     });
   };
 
-  // Pricing list: fallback to default if db pricing empty
-  const pricingItems = dbService?.pricing && dbService.pricing.length > 0
+  // Dynamic Pricing list
+  const rawPricing = (dbService?.pricing !== undefined)
     ? dbService.pricing
-    : [
-        { _id: 'single', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' },
-        { _id: 'super', title: 'Super Shine Wash', price: 999, description: 'Triple foam conditioner & tire shine' }
-      ];
+    : ((dbService?.plans !== undefined)
+      ? dbService.plans
+      : [
+          { _id: 'single', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
+          { _id: 'super', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' }
+        ]);
 
-  const membershipItems = dbService?.memberships && dbService.memberships.length > 0
+  const pricingItems = rawPricing.map(p => ({
+    _id: p._id || p.id || p.title || p.name,
+    title: p.title || p.name,
+    price: p.price,
+    description: p.description || (p.features && p.features.join(', '))
+  }));
+
+  // Dynamic Memberships list
+  const rawMemberships = (dbService?.memberships !== undefined)
     ? dbService.memberships
     : [
-        { _id: 'monthly', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior fragrance'] },
-        { _id: 'yearly', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating'], badge: 'BEST VALUE' }
+        { _id: 'monthly', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes + Interior Steam once a month'], badge: 'MOST POPULAR' }
       ];
+
+  const membershipItems = rawMemberships.map(m => ({
+    _id: m._id || m.id || m.name,
+    name: m.name || m.title,
+    price: m.price,
+    benefits: Array.isArray(m.benefits) ? m.benefits : [m.benefits || m.description || ''],
+    badge: m.badge
+  }));
 
   return (
     <div className="carwash-booking-container">
@@ -164,7 +196,7 @@ export default function CarWashPage() {
           {pricingItems.map((p) => (
             <div 
               key={p._id || p.title}
-              className={`carwash-plan-card carwash-plan-single ${selectedService.id === p._id ? 'selected' : ''}`}
+              className={`carwash-plan-card carwash-plan-single ${(selectedService.id === p._id || selectedService.name === p.title) ? 'selected' : ''}`}
               onClick={() => setSelectedService({ id: p._id, name: p.title, price: p.price })}
             >
               <div className="carwash-plan-details">
@@ -182,7 +214,7 @@ export default function CarWashPage() {
           {membershipItems.map((m) => (
             <div 
               key={m._id || m.name}
-              className={`carwash-plan-card carwash-plan-monthly ${selectedService.id === m._id ? 'selected' : ''}`}
+              className={`carwash-plan-card carwash-plan-monthly ${(selectedService.id === m._id || selectedService.name === m.name) ? 'selected' : ''}`}
               onClick={() => setSelectedService({ id: m._id, name: m.name, price: m.price })}
               style={{ position: 'relative' }}
             >

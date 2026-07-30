@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import serviceApi from '../../../common/services/serviceApi';
 import {
   initialDashboardStats,
   revenueTrendData,
@@ -57,40 +58,100 @@ export const AdminProvider = ({ children }) => {
   // --- CRUD ACTIONS ---
 
   // 1. Services & Plans
-  const toggleServiceStatus = (id) => {
-    setServices(prev => prev.map(s => s.id === id ? { ...s, status: s.status === 'active' ? 'inactive' : 'active' } : s));
+  const toggleServiceStatus = async (id) => {
+    setServices(prev => prev.map(s => (s.id === id || s.key === id || s._id === id) ? { ...s, status: s.status === 'active' ? 'inactive' : 'active' } : s));
     showToast('Service status updated');
+
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === id || s.slug === id || s.serviceName.toLowerCase().includes(String(id).toLowerCase()));
+        if (target) {
+          await serviceApi.toggleServiceStatus(target._id);
+        }
+      }
+    } catch (err) {
+      console.warn('API sync status error:', err.message);
+    }
   };
 
-  const updateServicePrice = (id, newPrice) => {
-    setServices(prev => prev.map(s => s.id === id ? { ...s, price: Number(newPrice) } : s));
+  const updateServicePrice = async (id, newPrice) => {
+    const numPrice = Number(newPrice);
+    setServices(prev => prev.map(s => (s.id === id || s.key === id || s._id === id) ? { ...s, price: numPrice } : s));
     showToast('Service price updated successfully');
+
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === id || s.slug === id || s.slug === 'car-wash' || s.serviceName.toLowerCase().includes(String(id).toLowerCase()));
+        if (target) {
+          const updatedPricing = [...(target.pricing || [])];
+          if (updatedPricing.length > 0) {
+            updatedPricing[0].price = numPrice;
+          } else {
+            updatedPricing.push({ title: 'Single Wash', price: numPrice });
+          }
+          await serviceApi.updateService(target._id, { pricing: updatedPricing });
+        }
+      }
+    } catch (err) {
+      console.warn('API sync price error:', err.message);
+    }
   };
 
-  const addServicePlan = (serviceId, newPlan) => {
+  const addServicePlan = async (serviceId, newPlan) => {
     setServices(prev => prev.map(s => {
-      if (s.id === serviceId) {
+      if (s.id === serviceId || s.key === serviceId) {
         return {
           ...s,
-          plans: [...s.plans, { id: `p-${Date.now()}`, ...newPlan }]
+          plans: [...(s.plans || []), { id: `p-${Date.now()}`, ...newPlan }]
         };
       }
       return s;
     }));
     showToast('New sub-service plan added!');
+
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        if (target) {
+          await serviceApi.addPlan(target._id, {
+            name: newPlan.name,
+            price: Number(newPlan.price),
+            description: newPlan.description || '',
+            duration: newPlan.billing || 'per service'
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('API sync add plan error:', err.message);
+    }
   };
 
-  const deleteServicePlan = (serviceId, planId) => {
+  const deleteServicePlan = async (serviceId, planId) => {
     setServices(prev => prev.map(s => {
-      if (s.id === serviceId) {
+      if (s.id === serviceId || s.key === serviceId) {
         return {
           ...s,
-          plans: s.plans.filter(p => p.id !== planId)
+          plans: (s.plans || []).filter(p => p.id !== planId && p._id !== planId)
         };
       }
       return s;
     }));
     showToast('Plan removed', 'error');
+
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        if (target) {
+          await serviceApi.deletePlan(target._id, planId);
+        }
+      }
+    } catch (err) {
+      console.warn('API sync delete plan error:', err.message);
+    }
   };
 
   // 2. Banners
