@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import apiClient from '../common/utils/apiClient';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -17,6 +19,29 @@ const itemVariants = {
 
 export default function BookingsPage() {
   const navigate = useNavigate();
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedBookingId, setExpandedBookingId] = useState(null);
+
+  const getSteps = (serviceKey) => {
+    const key = (serviceKey || '').toLowerCase();
+    if (key.includes('wash') && !key.includes('dog')) {
+      return ['Pending', 'Received', 'Wash Started', 'Completed', 'Delivered'];
+    }
+    if (key.includes('detail')) {
+      return ['Pending', 'Received', 'Inspection', 'Detailing', 'Delivered'];
+    }
+    if (key.includes('dog')) {
+      return ['Pending', 'Station', 'Bath & Dry', 'Finished', 'Delivered'];
+    }
+    if (key.includes('salon')) {
+      return ['Pending', 'Chair', 'Treatment', 'Completed'];
+    }
+    if (key.includes('cafe')) {
+      return ['Received', 'Kitchen', 'Ready', 'Delivered'];
+    }
+    return ['Pending', 'Confirmed', 'In Progress', 'Completed'];
+  };
 
   // Mock Active Bookings List
   const mockBookings = [
@@ -28,7 +53,12 @@ export default function BookingsPage() {
       time: '02:00 PM - 02:30 PM',
       status: 'Confirmed',
       statusColor: '#2E7D32',
-      statusBg: 'rgba(46, 125, 50, 0.08)'
+      statusBg: 'rgba(46, 125, 50, 0.08)',
+      serviceKey: 'car-wash',
+      stepIndex: 1,
+      notes: 'Vehicle received at lobby. Initial inspection complete.',
+      photos: [],
+      staffAssigned: 'Rohan Deshmukh'
     },
     {
       id: 'B-2026-4412',
@@ -38,9 +68,66 @@ export default function BookingsPage() {
       time: '03:30 PM - 04:00 PM',
       status: 'Pending',
       statusColor: '#C17F19',
-      statusBg: 'rgba(193, 127, 25, 0.08)'
+      statusBg: 'rgba(193, 127, 25, 0.08)',
+      serviceKey: 'salon',
+      stepIndex: 0,
+      notes: '',
+      photos: [],
+      staffAssigned: ''
     }
   ];
+
+  useEffect(() => {
+    const fetchMyBookings = async () => {
+      try {
+        let email = '';
+        const stored = localStorage.getItem('tsl_user');
+        if (stored) {
+          email = JSON.parse(stored).email;
+        }
+
+        const res = await apiClient.get('/bookings');
+        if (res.data && res.data.bookings) {
+          const filtered = email
+            ? res.data.bookings.filter(b => b.customerEmail === email)
+            : res.data.bookings;
+
+          const mapped = filtered.map(b => ({
+            id: b.bookingId,
+            service: b.serviceName,
+            package: `${b.packageName} (₹${b.price})`,
+            date: b.date,
+            time: b.timeSlot,
+            status: b.status,
+            statusColor: (b.status === 'Completed' || b.status === 'Delivered') ? '#2E7D32' : b.status === 'In Progress' ? '#1E4A7E' : '#C17F19',
+            statusBg: (b.status === 'Completed' || b.status === 'Delivered') ? 'rgba(46, 125, 50, 0.08)' : b.status === 'In Progress' ? 'rgba(30, 74, 126, 0.08)' : 'rgba(193, 127, 25, 0.08)',
+            serviceKey: b.serviceKey,
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || '',
+            photos: b.photos || [],
+            staffAssigned: b.assignedStaffName || ''
+          }));
+
+          if (mapped.length > 0) {
+            setBookings(mapped);
+          } else {
+            setBookings(mockBookings);
+          }
+        } else {
+          setBookings(mockBookings);
+        }
+      } catch (err) {
+        console.warn('Could not load active bookings, using fallback:', err.message);
+        setBookings(mockBookings);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMyBookings();
+    const interval = setInterval(fetchMyBookings, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="bookings-page-container app-mobile-dashboard" style={{ marginTop: '-0.75rem' }}>
@@ -51,12 +138,13 @@ export default function BookingsPage() {
         initial="hidden"
         animate="show"
       >
-        {mockBookings.map((booking) => (
+        {bookings.map((booking) => (
           <motion.div 
             key={booking.id} 
             variants={itemVariants}
-            className="section-card" 
+            className="section-card cursor-pointer hover:border-amber-400 transition-all" 
             style={{ padding: '1.75rem', marginBottom: 0 }}
+            onClick={() => setExpandedBookingId(expandedBookingId === booking.id ? null : booking.id)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
               <div>
@@ -65,16 +153,23 @@ export default function BookingsPage() {
                 </span>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.25rem' }}>{booking.service}</h3>
               </div>
-              <span style={{ 
-                fontSize: '0.75rem', 
-                fontWeight: 700, 
-                padding: '0.35rem 0.85rem', 
-                borderRadius: '9999px',
-                color: booking.statusColor,
-                backgroundColor: booking.statusBg
-              }}>
-                {booking.status}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 700, 
+                  padding: '0.35rem 0.85rem', 
+                  borderRadius: '9999px',
+                  color: booking.statusColor,
+                  backgroundColor: booking.statusBg
+                }}>
+                  {booking.status}
+                </span>
+                {expandedBookingId === booking.id ? (
+                  <ChevronUp className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.9rem' }}>
@@ -91,6 +186,91 @@ export default function BookingsPage() {
                 <span className="summary-value">{booking.time}</span>
               </div>
             </div>
+
+            {/* Expanded Real-Time Progress Tracker Stepper */}
+            {expandedBookingId === booking.id && (
+              <div className="mt-5 pt-5 border-t border-gray-100 space-y-5 animate-fadeIn text-left" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] uppercase font-black tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
+                    Live Progress Status
+                  </span>
+                  {booking.staffAssigned && booking.staffAssigned !== 'Not Assigned' && (
+                    <span className="text-[10px] text-gray-500 font-bold">
+                      👤 Specialist: <strong className="text-gray-700">{booking.staffAssigned}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress Stepper Line & Nodes */}
+                <div className="relative py-4 px-2 select-none">
+                  {/* Connecting Line background */}
+                  <div className="absolute top-1/2 left-4 right-4 h-1 bg-gray-200 -translate-y-1/2 rounded-full z-0" />
+                  
+                  {/* Active progress line fill */}
+                  <div 
+                    className="absolute top-1/2 left-4 h-1 bg-amber-500 -translate-y-1/2 rounded-full transition-all duration-500 z-0" 
+                    style={{ 
+                      width: `${(Math.min(booking.stepIndex || 0, getSteps(booking.serviceKey).length - 1) / (getSteps(booking.serviceKey).length - 1)) * 100}%`,
+                      right: 'auto'
+                    }}
+                  />
+
+                  {/* Stepper nodes */}
+                  <div className="relative flex justify-between items-center z-10">
+                    {getSteps(booking.serviceKey).map((stepLabel, idx) => {
+                      const isCompleted = idx <= (booking.stepIndex || 0);
+                      return (
+                        <div key={idx} className="flex flex-col items-center">
+                          {/* Circle Node */}
+                          <div 
+                            className={`w-7 h-7 rounded-full flex items-center justify-center border-2 font-bold text-xs shadow-xs transition-all duration-300 ${
+                              isCompleted 
+                                ? 'bg-amber-500 border-amber-500 text-white' 
+                                : 'bg-white border-gray-300 text-gray-400'
+                            }`}
+                          >
+                            {isCompleted ? '✓' : idx + 1}
+                          </div>
+                          {/* Step Label */}
+                          <span 
+                            className={`mt-2 text-[9px] font-black text-center max-w-[70px] leading-tight tracking-tighter ${
+                              isCompleted ? 'text-amber-700' : 'text-gray-400'
+                            }`}
+                          >
+                            {stepLabel}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Progress Notes */}
+                {booking.notes && (
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-[10px] text-gray-600 leading-relaxed italic">
+                    📢 <strong>Specialist Notes:</strong> "{booking.notes}"
+                  </div>
+                )}
+
+                {/* Progress Selfies / Photos */}
+                {booking.photos && booking.photos.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-gray-800 uppercase tracking-wider block">Work In Progress Photos</span>
+                    <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
+                      {booking.photos.map((phUrl, pIdx) => (
+                        <a href={phUrl} target="_blank" rel="noopener noreferrer" key={pIdx} className="flex-shrink-0">
+                          <img 
+                            src={phUrl} 
+                            alt={`Progress photo ${pIdx + 1}`} 
+                            className="w-20 h-20 object-cover rounded-xl border hover:opacity-90 transition-opacity" 
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         ))}
       </motion.div>

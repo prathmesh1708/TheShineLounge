@@ -25,8 +25,25 @@ export function AuthProvider({ children }) {
         } else {
           clearAuth();
         }
-      } catch {
-        clearAuth();
+      } catch (err) {
+        // Only clear authentication if it is explicitly invalid/expired (401/403)
+        // If the server is restarting, offline, or returns 500, preserve the cached session
+        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+          clearAuth();
+        } else {
+          try {
+            const cached = localStorage.getItem('tsl_user');
+            if (cached) {
+              const u = JSON.parse(cached);
+              setUser(u);
+              setToken(storedToken);
+            } else {
+              clearAuth();
+            }
+          } catch {
+            clearAuth();
+          }
+        }
       } finally {
         setLoading(false);
       }

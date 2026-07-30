@@ -202,7 +202,20 @@ const getStaffById = async (req, res) => {
 // @access  Admin
 const updateStaff = async (req, res) => {
   try {
-    const { fullName, email, mobile, department, permissions, branch } = req.body;
+    const {
+      fullName,
+      email,
+      mobile,
+      department,
+      serviceKey,
+      staffRole,
+      salary,
+      leaveBalance,
+      photo,
+      permissions,
+      branch,
+      password
+    } = req.body;
 
     const staff = await User.findOne({
       _id: req.params.id,
@@ -226,21 +239,48 @@ const updateStaff = async (req, res) => {
           message: 'This email is already in use by another account'
         });
       }
-      staff.email = email;
+      staff.email = email.toLowerCase();
     }
 
     if (fullName) staff.fullName = fullName;
     if (mobile !== undefined) staff.mobile = mobile;
     if (department !== undefined) staff.department = department;
+    if (serviceKey !== undefined) staff.serviceKey = serviceKey;
+    if (staffRole !== undefined) staff.staffRole = staffRole;
+    if (salary !== undefined) staff.salary = salary;
+    if (leaveBalance !== undefined) staff.leaveBalance = Number(leaveBalance);
+    if (photo !== undefined) {
+      staff.photo = photo;
+      staff.profileImage = photo;
+    }
     if (permissions !== undefined) staff.permissions = permissions;
     if (branch !== undefined) staff.branch = branch;
+    if (password) {
+      staff.password = password; // Triggers the schema pre-save hook for hashing!
+    }
 
-    await staff.save({ validateBeforeSave: false });
+    await staff.save();
 
     res.status(200).json({
       success: true,
       message: 'Staff member updated successfully',
-      staff
+      staff: {
+        _id: staff._id,
+        fullName: staff.fullName,
+        email: staff.email,
+        mobile: staff.mobile,
+        role: staff.role,
+        department: staff.department,
+        serviceKey: staff.serviceKey,
+        staffRole: staff.staffRole,
+        salary: staff.salary,
+        leaveBalance: staff.leaveBalance,
+        photo: staff.photo,
+        permissions: staff.permissions,
+        isActive: staff.isActive,
+        branch: staff.branch,
+        createdAt: staff.createdAt
+      }
     });
   } catch (error) {
     res.status(500).json({
