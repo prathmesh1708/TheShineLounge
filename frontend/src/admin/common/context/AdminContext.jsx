@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import serviceApi from '../../../common/services/serviceApi';
+import apiClient from '../../../common/utils/apiClient';
 import {
   initialDashboardStats,
   revenueTrendData,
@@ -54,6 +55,44 @@ export const AdminProvider = ({ children }) => {
       setToast(null);
     }, 3500);
   };
+
+  const fetchBookingsList = async () => {
+    try {
+      const res = await apiClient.get('/bookings');
+      if (res.data && res.data.bookings) {
+        const mapped = res.data.bookings.map(b => ({
+          _id: b._id,
+          id: b.bookingId,
+          customerName: b.customerName,
+          serviceKey: b.serviceKey,
+          serviceName: b.serviceName,
+          plan: b.packageName,
+          timeSlot: `${b.date} | ${b.timeSlot}`,
+          total: b.price,
+          status: b.status,
+          staffAssigned: b.assignedStaffName || 'Not Assigned',
+          assignedStaffId: b.assignedStaffId,
+          stepIndex: b.stepIndex,
+          notes: b.notes,
+          photos: b.photos
+        }));
+
+        // Merge with initialBookings mock seeds
+        const merged = [...mapped, ...initialBookings.filter(ib => !mapped.some(m => m.id === ib.id))];
+        setBookings(merged);
+      }
+    } catch (err) {
+      console.warn('Could not fetch bookings list:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookingsList();
+
+    // Poll for live booking updates from staff every 5 seconds
+    const interval = setInterval(fetchBookingsList, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // --- CRUD ACTIONS ---
 
@@ -168,6 +207,11 @@ export const AdminProvider = ({ children }) => {
     showToast('Banner visibility toggled');
   };
 
+  const updateBanner = (id, updatedFields) => {
+    setBanners(prev => prev.map(b => b.id === id ? { ...b, ...updatedFields } : b));
+    showToast('Promotional banner updated successfully!');
+  };
+
   const deleteBanner = (id) => {
     setBanners(prev => prev.filter(b => b.id !== id));
     showToast('Banner deleted', 'error');
@@ -211,33 +255,87 @@ export const AdminProvider = ({ children }) => {
   };
 
   // 5. Bookings
-  const updateBookingStatus = (id, newStatus) => {
+  const updateBookingStatus = async (id, newStatus) => {
+    // 1. Optimistically update local state
     setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
     showToast(`Booking ${id} status updated to ${newStatus}`);
+
+    // 2. Call PUT /bookings/:id in the backend
+    try {
+      const match = bookings.find(b => b.id === id);
+      if (match && match._id) {
+        await apiClient.put(`/bookings/${match._id}`, { status: newStatus });
+        fetchBookingsList();
+      }
+    } catch (err) {
+      console.warn('Error updating booking status in backend:', err.message);
+    }
   };
 
-  const assignStaffToBooking = (id, staffName) => {
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, staffAssigned: staffName } : b));
+  const assignStaffToBooking = async (id, staffName) => {
+    // Find the staff user object from the staffList to get their ID
+    const staffUser = staffList.find(s => s.fullName === staffName || s.name === staffName || s.employeeId === staffName);
+    const staffId = staffUser?.id || staffUser?._id || null;
+
+    // 1. Optimistically update local state
+    setBookings(prev => prev.map(b => b.id === id ? { ...b, staffAssigned: staffName, assignedStaffId: staffId } : b));
     showToast(`Assigned ${staffName} to booking ${id}`);
+
+    // 2. Call PUT /bookings/:id in the backend
+    try {
+      const match = bookings.find(b => b.id === id);
+      if (match && match._id) {
+        await apiClient.put(`/bookings/${match._id}`, { 
+          assignedStaffId: staffId, 
+          assignedStaffName: staffName 
+        });
+        fetchBookingsList();
+      }
+    } catch (err) {
+      console.warn('Error assigning staff in backend:', err.message);
+    }
   };
 
-  const addBooking = (bookingData) => {
-    const newId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+  const addBooking = async (bookingData) => {
+    const newId = `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const gstVal = Number((bookingData.amount * 0.18).toFixed(2));
     const totalVal = Number((bookingData.amount + gstVal).toFixed(2));
     
-    setBookings(prev => [
-      {
-        id: newId,
-        ...bookingData,
-        gst: gstVal,
-        total: totalVal,
-        status: 'Pending',
-        date: new Date().toISOString().split('T')[0]
-      },
-      ...prev
-    ]);
-    showToast(`New booking ${newId} created!`);
+    // Save to backend DB
+    try {
+      const payload = {
+        bookingId: newId,
+        serviceKey: bookingData.serviceKey || 'car-wash',
+        serviceName: bookingData.serviceName || 'Car Wash',
+        packageName: bookingData.plan || 'Executive Wash',
+        price: totalVal,
+        date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        timeSlot: bookingData.timeSlot || '02:00 PM - 02:30 PM',
+        customerName: bookingData.customerName,
+        customerEmail: bookingData.customerEmail || 'customer@example.com',
+        vehicleNo: bookingData.vehicleNo || 'MH-01-AB-1234',
+        vehicleType: bookingData.vehicleType || 'SUV'
+      };
+
+      await apiClient.post('/bookings', payload);
+      fetchBookingsList();
+      showToast(`New booking ${newId} created!`);
+    } catch (err) {
+      console.warn('Error creating booking in backend, using local fallback:', err.message);
+      // Fallback local update
+      setBookings(prev => [
+        {
+          id: newId,
+          ...bookingData,
+          gst: gstVal,
+          total: totalVal,
+          status: 'Pending',
+          date: new Date().toISOString().split('T')[0]
+        },
+        ...prev
+      ]);
+      showToast(`New booking ${newId} created (local fallback)!`);
+    }
   };
 
   // 6. Staff
@@ -355,6 +453,7 @@ export const AdminProvider = ({ children }) => {
       deleteServicePlan,
       addBanner,
       toggleBannerStatus,
+      updateBanner,
       deleteBanner,
       composeNotification,
       updateMembershipStatus,

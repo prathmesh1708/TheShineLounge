@@ -51,7 +51,7 @@ export default function AdminDashboardPage() {
           <span className="text-xs font-extrabold uppercase tracking-widest text-amber-300 flex items-center gap-1.5 mb-1">
             <Sparkles className="w-4 h-4 text-amber-400" /> Multi-Service Executive Portal
           </span>
-          <h1 className="text-2xl font-black tracking-tight">Welcome back, Amitabh! 👋</h1>
+          <h1 className="text-2xl font-black tracking-tight">Welcome back! 👋</h1>
           <p className="text-xs text-blue-100 mt-1 max-w-xl">
             Here is your live business intelligence snapshot across Car Wash, Detailing, Pet Spa, Café, and Salon services for Mumbai Main Branch.
           </p>

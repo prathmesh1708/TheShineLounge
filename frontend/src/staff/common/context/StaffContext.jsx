@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecords, mockStaffNotifications } from '../data/staffMockData';
+import apiClient from '../../../common/utils/apiClient';
 
 const StaffContext = createContext();
 
@@ -68,9 +69,74 @@ export function StaffProvider({ children }) {
   const [notifications, setNotifications] = useState(mockStaffNotifications);
   
   // Check-In State
-  const [isCheckedIn, setIsCheckedIn] = useState(true);
-  const [checkInPhoto, setCheckInPhoto] = useState('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80');
-  const [checkInTime, setCheckInTime] = useState('08:45 AM');
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [checkInPhoto, setCheckInPhoto] = useState('');
+  const [checkInTime, setCheckInTime] = useState('');
+
+  const fetchLiveAttendance = async (staffId) => {
+    if (!staffId || staffId.toString().startsWith('STF-')) return;
+    try {
+      const res = await apiClient.get(`/attendance/staff/${staffId}`);
+      if (res.data && res.data.attendance) {
+        setAttendance(res.data.attendance);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayLog = res.data.attendance.find(a => a.date === todayStr);
+        if (todayLog) {
+          setIsCheckedIn(todayLog.checkOutTime === 'In Progress');
+          setCheckInPhoto(todayLog.photoUrl);
+          setCheckInTime(todayLog.checkInTime);
+        } else {
+          setIsCheckedIn(false);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching live attendance:', err.message);
+    }
+  };
+
+  const fetchLiveJobs = async () => {
+    try {
+      const res = await apiClient.get('/bookings');
+      if (res.data && res.data.bookings) {
+        const mapped = res.data.bookings.map(b => ({
+          _id: b._id,
+          id: b.bookingId,
+          serviceKey: b.serviceKey,
+          serviceName: b.serviceName,
+          planName: b.packageName,
+          vehicleNo: b.vehicleNo || 'MH01AB1234',
+          vehicleModel: b.vehicleType || 'Tesla Model 3',
+          customerName: b.customerName,
+          phone: b.customerEmail || '+91 98200 12345',
+          date: b.date,
+          timeSlot: b.timeSlot,
+          amount: b.price,
+          total: b.price,
+          status: b.status,
+          stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+          notes: b.notes || '',
+          photos: b.photos || [],
+          staffId: b.assignedStaffId || 'STF-03',
+          staffName: b.assignedStaffName || 'Rohan Deshmukh'
+        }));
+
+        // Merge with mockAssignedJobs seeds
+        const merged = [...mapped, ...mockAssignedJobs.filter(mj => !mapped.some(m => m.id === mj.id))];
+        setJobs(merged);
+      }
+    } catch (err) {
+      console.warn('Could not fetch jobs from database:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (currentStaff) {
+      if (currentStaff.id && !currentStaff.id.toString().startsWith('STF-')) {
+        fetchLiveAttendance(currentStaff.id);
+      }
+      fetchLiveJobs();
+    }
+  }, [currentStaff]);
 
   // Camera Modal State
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -109,35 +175,42 @@ export function StaffProvider({ children }) {
   };
 
   // Check In Handler with Photo
-  const processCheckIn = (photoUrl) => {
-    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setIsCheckedIn(true);
-    setCheckInPhoto(photoUrl);
-    setCheckInTime(timeNow);
-
-    const newRecord = {
-      id: `ATT-${Date.now()}`,
-      staffId: currentStaff.id,
-      date: new Date().toISOString().split('T')[0],
-      checkInTime: timeNow,
-      checkOutTime: 'In Progress',
-      status: 'Present',
-      photoUrl: photoUrl,
-      location: '19.0760° N, 72.8777° E (Thane Branch)'
-    };
-
-    setAttendance(prev => [newRecord, ...prev]);
-    showToast('Check-In Successful! Selfie & Location Logged.', 'success');
+  const processCheckIn = async (photoUrl) => {
+    try {
+      const res = await apiClient.post('/attendance/check-in', {
+        photoUrl,
+        location: '19.0760° N, 72.8777° E (Main Branch)'
+      });
+      if (res.data && res.data.success) {
+        setIsCheckedIn(true);
+        setCheckInPhoto(photoUrl);
+        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setCheckInTime(timeNow);
+        showToast('Check-In Successful! Selfie & Location Logged.', 'success');
+        fetchLiveAttendance(currentStaff.id);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Check-in failed.', 'error');
+    }
   };
 
   // Check Out Handler
-  const processCheckOut = () => {
-    setIsCheckedIn(false);
-    showToast('Checked-Out Successfully. Shift logged.', 'info');
+  const processCheckOut = async () => {
+    try {
+      const res = await apiClient.post('/attendance/check-out');
+      if (res.data && res.data.success) {
+        setIsCheckedIn(false);
+        showToast('Checked-Out Successfully. Shift logged.', 'info');
+        fetchLiveAttendance(currentStaff.id);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Check-out failed.', 'error');
+    }
   };
 
   // Update Job Status Stepper
-  const updateJobStatus = (jobId, newStatus, newStepIndex, notes = '', photoUrl = null) => {
+  const updateJobStatus = async (jobId, newStatus, newStepIndex, notes = '', photoUrl = null) => {
+    // 1. Optimistically update local jobs state
     setJobs(prev => prev.map(job => {
       if (job.id === jobId) {
         const updatedPhotos = photoUrl ? [...(job.photos || []), photoUrl] : job.photos;
@@ -152,6 +225,22 @@ export function StaffProvider({ children }) {
       return job;
     }));
     showToast(`Job ${jobId} updated to "${newStatus}"`, 'success');
+
+    // 2. Call PUT /bookings/:id in backend
+    try {
+      const match = jobs.find(j => j.id === jobId);
+      if (match && match._id) {
+        await apiClient.put(`/bookings/${match._id}`, {
+          status: newStatus,
+          stepIndex: newStepIndex,
+          notes: notes || match.notes,
+          photoUrl
+        });
+        fetchLiveJobs(); // reload list
+      }
+    } catch (err) {
+      console.warn('Error updating job status in backend:', err.message);
+    }
   };
 
   // Add New Customer

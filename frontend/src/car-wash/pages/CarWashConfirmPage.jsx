@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import apiClient from '../../common/utils/apiClient';
 
 export default function CarWashConfirmPage() {
   const location = useLocation();
@@ -23,12 +24,58 @@ export default function CarWashConfirmPage() {
   const gst = Math.round(taxableAmount * taxRate);
   const finalTotal = taxableAmount + gst;
 
-  const handleConfirm = () => {
-    setBookingConfirmed(true);
-    setTimeout(() => {
-      // Navigate to bookings page or home
-      navigate('/bookings');
-    }, 2500);
+  const handleConfirm = async () => {
+    try {
+      // Get customer info from localStorage
+      let customerName = 'Mohit';
+      let customerEmail = 'mohit@theshine.com';
+      try {
+        const stored = localStorage.getItem('tsl_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          customerName = u.fullName || u.name || customerName;
+          customerEmail = u.email || customerEmail;
+        }
+      } catch (e) {
+        console.warn('Error reading customer from localStorage:', e);
+      }
+
+      // Parse date and timeslot
+      let dateVal = 'July 18, 2026';
+      let timeSlotVal = '02:00 PM - 02:30 PM';
+      if (slot?.label) {
+        if (slot.label.includes('Today')) {
+          dateVal = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          timeSlotVal = slot.label.replace('Today', '').trim();
+        } else {
+          dateVal = slot.label;
+          timeSlotVal = slot.label;
+        }
+      }
+
+      const payload = {
+        bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        serviceKey: 'car-wash',
+        serviceName: 'Car Wash',
+        packageName: service.name,
+        price: finalTotal,
+        date: dateVal,
+        timeSlot: timeSlotVal,
+        customerName,
+        customerEmail,
+        vehicleNo: vehicle?.plate || 'MH-01-AB-1234',
+        vehicleType: vehicle?.name || 'Tesla Model 3'
+      };
+
+      await apiClient.post('/bookings', payload);
+      setBookingConfirmed(true);
+      setTimeout(() => {
+        navigate('/bookings');
+      }, 2500);
+    } catch (err) {
+      console.error('Error submitting booking:', err);
+      alert('Failed to register booking: ' + (err.response?.data?.message || err.message));
+    }
   };
 
   return (

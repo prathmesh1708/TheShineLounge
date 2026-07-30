@@ -57,6 +57,9 @@ export default function CarWashAdminHubPage() {
     addStaff,
     toggleStaffStatus,
     addBanner,
+    toggleBannerStatus,
+    updateBanner,
+    deleteBanner,
     addInventoryItem,
     updateStock,
     showToast
@@ -217,6 +220,35 @@ export default function CarWashAdminHubPage() {
     permissions: ['bookings', 'orders']
   });
 
+  // Edit Staff Modal States
+  const [editStaffModal, setEditStaffModal] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [editStaffForm, setEditStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Car Wash Specialist',
+    salary: '₹35,000 / month',
+    leaveBalance: 12,
+    photo: '',
+    permissions: []
+  });
+  const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'attendance'
+
+  // Marketing Banner CRUD States
+  const [addBannerModal, setAddBannerModal] = useState(false);
+  const [editBannerModal, setEditBannerModal] = useState(false);
+  const [selectedBanner, setSelectedBanner] = useState(null);
+  const [bannerForm, setBannerForm] = useState({
+    title: '',
+    subtitle: '',
+    imageUrl: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80',
+    actionLink: '/car-wash',
+    status: 'active'
+  });
+
   const handleGeneratePassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
     let pwd = '';
@@ -280,6 +312,137 @@ export default function CarWashAdminHubPage() {
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
       alert(`Error: ${errMsg}`);
+    }
+  };
+
+  const handleOpenEditStaff = async (stf) => {
+    setSelectedStaff(stf);
+    setEditStaffForm({
+      fullName: stf.fullName || stf.name || '',
+      email: stf.email || '',
+      password: '',
+      mobile: stf.mobile || '',
+      staffRole: stf.staffRole || stf.role || 'Car Wash Specialist',
+      salary: stf.salary || '₹35,000 / month',
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      photo: stf.photo || stf.avatar || stf.profileImage || '',
+      permissions: stf.permissions || []
+    });
+    setStaffAttendanceLogs([]);
+    setActiveStaffModalTab('details');
+    setEditStaffModal(true);
+
+    const sId = stf._id || stf.id;
+    if (sId && !sId.toString().startsWith('STF-')) {
+      try {
+        const res = await apiClient.get(`/attendance/staff/${sId}`);
+        if (res.data && res.data.attendance) {
+          setStaffAttendanceLogs(res.data.attendance);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff attendance history:', err.message);
+      }
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    try {
+      const payload = {
+        fullName: editStaffForm.fullName,
+        email: editStaffForm.email,
+        mobile: editStaffForm.mobile,
+        staffRole: editStaffForm.staffRole,
+        salary: editStaffForm.salary,
+        leaveBalance: Number(editStaffForm.leaveBalance),
+        photo: editStaffForm.photo,
+        permissions: editStaffForm.permissions
+      };
+      if (editStaffForm.password) {
+        payload.password = editStaffForm.password;
+      }
+
+      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member updated successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error updating staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error updating staff: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    const confirmDel = window.confirm(`Are you sure you want to delete "${editStaffForm.fullName}"?`);
+    if (!confirmDel) return;
+
+    try {
+      const res = await apiClient.delete(`/users/staff/${sId}`);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member deleted successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error deleting staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error deleting staff: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Banner CRUD Handlers
+  const handleOpenAddBanner = () => {
+    setBannerForm({
+      title: '',
+      subtitle: '',
+      imageUrl: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80',
+      actionLink: '/car-wash',
+      status: 'active'
+    });
+    setAddBannerModal(true);
+  };
+
+  const handleOpenEditBanner = (ban) => {
+    setSelectedBanner(ban);
+    setBannerForm({
+      title: ban.title || '',
+      subtitle: ban.subtitle || '',
+      imageUrl: ban.imageUrl || '',
+      actionLink: ban.actionLink || '/car-wash',
+      status: ban.status || 'active'
+    });
+    setEditBannerModal(true);
+  };
+
+  const handleSaveNewBanner = (e) => {
+    e.preventDefault();
+    addBanner({
+      ...bannerForm,
+      serviceKey: 'car-wash'
+    });
+    setAddBannerModal(false);
+  };
+
+  const handleSaveEditBanner = (e) => {
+    e.preventDefault();
+    if (!selectedBanner) return;
+    updateBanner(selectedBanner.id, bannerForm);
+    setEditBannerModal(false);
+  };
+
+  const handleDeleteBanner = (id) => {
+    if (window.confirm('Are you sure you want to delete this promo banner?')) {
+      deleteBanner(id);
+      setEditBannerModal(false);
     }
   };
 
@@ -736,7 +899,11 @@ export default function CarWashAdminHubPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
-              <div key={stf._id || stf.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 transition-all">
+              <div 
+                key={stf._id || stf.id} 
+                onClick={() => handleOpenEditStaff(stf)}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+              >
                 <div className="flex items-start gap-3">
                   <img
                     src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
@@ -801,16 +968,69 @@ export default function CarWashAdminHubPage() {
       )}
 
       {activeTab === 'marketing' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {serviceBanners.map(ban => (
-            <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-              <img src={ban.imageUrl} className="w-full h-32 object-cover" />
-              <div className="p-3">
-                <h4 className="font-bold text-xs">{ban.title}</h4>
-                <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+            <div>
+              <h3 className="text-base font-black text-gray-900">Promotional Banners & Deals ({serviceBanners.length})</h3>
+              <p className="text-xs text-gray-500">Configure visual promo banners and active discount banners displayed on the customer frontend</p>
             </div>
-          ))}
+            <button
+              onClick={handleOpenAddBanner}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Add New Banner
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {serviceBanners.map((ban) => (
+              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div className="relative">
+                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                    {ban.actionLink && (
+                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        CTA Link: {ban.actionLink}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleBannerStatus(ban.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenEditBanner(ban)}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBanner(ban.id)}
+                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                        title="Delete Banner"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1070,6 +1290,354 @@ export default function CarWashAdminHubPage() {
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
             >
               <UserPlus className="w-4 h-4" /> Generate Credentials & Onboard Staff Member
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Staff Member & Shift Attendance Logs */}
+      <AdminModal 
+        isOpen={editStaffModal} 
+        onClose={() => setEditStaffModal(false)} 
+        title={`Manage Staff: ${editStaffForm.fullName || 'Member'}`}
+      >
+        <div className="space-y-4 text-xs p-1">
+          {/* Modal Sub-Tabs */}
+          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('details')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Staff Profile Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('attendance')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Shift Attendance Logs ({staffAttendanceLogs.length})
+            </button>
+          </div>
+
+          {activeStaffModalTab === 'details' && (
+            <form onSubmit={handleUpdateStaff} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.fullName}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, fullName: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.staffRole}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, staffRole: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editStaffForm.email}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, email: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-gray-700">Update Password (Leave blank to keep same)</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+                        let pwd = '';
+                        for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+                        setEditStaffForm(prev => ({ ...prev, password: pwd }));
+                      }}
+                      className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                    >
+                      ⚡ Auto Generate
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={editStaffForm.password}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, password: e.target.value })}
+                    placeholder="Enter new password if resetting"
+                    className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.mobile}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, mobile: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.salary}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <input
+                    type="number"
+                    value={editStaffForm.leaveBalance}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, leaveBalance: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Profile Photo URL</label>
+                <input
+                  type="text"
+                  value={editStaffForm.photo}
+                  onChange={e => setEditStaffForm({ ...editStaffForm, photo: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl text-gray-600 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1.5">Module Permissions (Sidebar Navigation Access)</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
+                  {[
+                    { id: 'bookings', label: 'Service Bookings' },
+                    { id: 'orders', label: 'Live Orders' },
+                    { id: 'inventory', label: 'Inventory Stock' },
+                    { id: 'customers', label: 'Customer CRM' }
+                  ].map(perm => (
+                    <label key={perm.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={editStaffForm.permissions.includes(perm.id)}
+                        onChange={() => {
+                          const current = editStaffForm.permissions;
+                          if (current.includes(perm.id)) {
+                            setEditStaffForm({ ...editStaffForm, permissions: current.filter(p => p !== perm.id) });
+                          } else {
+                            setEditStaffForm({ ...editStaffForm, permissions: [...current, perm.id] });
+                          }
+                        }}
+                        className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                      />
+                      <span>{perm.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleDeleteStaff}
+                  className="px-4 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl transition-all flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Staff
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                >
+                  Save Profile Changes
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeStaffModalTab === 'attendance' && (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {staffAttendanceLogs.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 font-medium">
+                  No shift attendance records found for this staff member.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {staffAttendanceLogs.map((log) => (
+                    <div key={log._id || log.id} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-800">{log.date}</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${log.checkOutTime === 'In Progress' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {log.checkOutTime === 'In Progress' ? 'Active Shift' : 'Shift Completed'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500">
+                          ⏱️ check-in: <strong className="text-gray-700">{log.checkInTime}</strong> | checkout: <strong className="text-gray-700">{log.checkOutTime}</strong>
+                        </p>
+                        <p className="text-[10px] text-gray-400 italic">
+                          📍 {log.location || 'Main Branch'}
+                        </p>
+                      </div>
+                      {log.photoUrl && (
+                        <div className="flex flex-col items-center">
+                          <span className="text-[8px] text-gray-400 font-extrabold mb-1">Selfie</span>
+                          <img
+                            src={log.photoUrl}
+                            alt="Check-in Selfie"
+                            className="w-10 h-10 rounded-lg object-cover border shadow-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </AdminModal>
+
+      {/* Modal: Add New Banner */}
+      <AdminModal isOpen={addBannerModal} onClose={() => setAddBannerModal(false)} title="Add New Promo Banner">
+        <form onSubmit={handleSaveNewBanner} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={e => setBannerForm({ ...bannerForm, title: e.target.value })}
+              placeholder="e.g. Monsoon Hydro-Fest"
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Offer Text *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.subtitle}
+              onChange={e => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              placeholder="e.g. Get 20% off on all packages"
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.imageUrl}
+              onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              placeholder="https://..."
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Call-To-Action Link (CTA)</label>
+            <input
+              type="text"
+              value={bannerForm.actionLink}
+              onChange={e => setBannerForm({ ...bannerForm, actionLink: e.target.value })}
+              placeholder="/bookings or /car-wash"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+          >
+            Save Promotional Banner
+          </button>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Banner */}
+      <AdminModal isOpen={editBannerModal} onClose={() => setEditBannerModal(false)} title="Edit Promo Banner">
+        <form onSubmit={handleSaveEditBanner} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={e => setBannerForm({ ...bannerForm, title: e.target.value })}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Offer Text *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.subtitle}
+              onChange={e => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.imageUrl}
+              onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Call-To-Action Link (CTA)</label>
+            <input
+              type="text"
+              value={bannerForm.actionLink}
+              onChange={e => setBannerForm({ ...bannerForm, actionLink: e.target.value })}
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => handleDeleteBanner(selectedBanner?.id)}
+              className="px-4 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl transition-all flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider"
+            >
+              Save Details
             </button>
           </div>
         </form>
