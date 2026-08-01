@@ -39,6 +39,8 @@ export default function ProfilePage() {
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [invoiceModalItem, setInvoiceModalItem] = useState(null);
 
+  const [dbService, setDbService] = useState(null);
+
   useEffect(() => {
     const fetchMyBookings = async () => {
       try {
@@ -60,7 +62,24 @@ export default function ProfilePage() {
         setLoadingBookings(false);
       }
     };
+
+    const fetchServiceData = async () => {
+      try {
+        const cached = localStorage.getItem('tsl_car_wash_service');
+        if (cached) {
+          setDbService(JSON.parse(cached));
+        }
+        const res = await apiClient.get('/services/car-wash');
+        if (res.data && res.data.service) {
+          setDbService(res.data.service);
+        }
+      } catch (err) {
+        console.warn('Could not load service details for limit computation');
+      }
+    };
+
     fetchMyBookings();
+    fetchServiceData();
   }, []);
 
   const [cards] = useState([
@@ -128,8 +147,14 @@ export default function ProfilePage() {
     };
   };
 
+  const matchedMembership = activeMembership && dbService?.memberships?.find(
+    m => (activeMembership.packageName || '').toLowerCase().includes((m.name || '').toLowerCase())
+  );
+
   const washesLimit = activeMembership 
-    ? ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 4)
+    ? (matchedMembership?.visitLimit !== undefined
+        ? (matchedMembership.visitLimit === 999 ? 'Unlimited' : matchedMembership.visitLimit)
+        : ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 4))
     : 0;
 
   const washesUsedCount = bookings.filter(b => 
