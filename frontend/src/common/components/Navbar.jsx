@@ -94,7 +94,7 @@ export default function Navbar() {
   };
 
   const getSearchBtnBg = () => {
-    if (location.pathname === '/car-detailing') return 'bg-luxury-emerald hover:bg-luxury-emeraldHover';
+    if (location.pathname === '/car-detailing') return 'bg-[#FF6B00] hover:bg-[#E66000]';
     if (location.pathname === '/dog-wash') return 'bg-grooming-primary hover:bg-grooming-hover';
     if (location.pathname === '/salon') return 'bg-[#00B8B0] hover:bg-[#00A19B]';
     return 'bg-zinc-800 hover:bg-zinc-900';

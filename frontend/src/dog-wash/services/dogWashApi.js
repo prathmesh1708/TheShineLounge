@@ -364,3 +364,39 @@ export const getTechnician = () => Promise.resolve({
   phone: "+91 98765 09876",
   vehicleInfo: "Teal Groomer Van (MP09AB5678)"
 });
+
+export const DEFAULT_MACHINE_CONFIG = {
+  location: "Palasia Main Rd, Scheme 54, Indore (Kiosk #04)",
+  kioskName: "Indore Self-Serve Hydrobath Station #04",
+  workingHours: "08:00 AM - 10:00 PM IST (Mon - Sun)",
+  status: "Online & Fully Operational",
+  instructions: [
+    { step: '1', title: 'Secure Your Pet', desc: 'Place your dog inside the non-slip tub & latch the safety tether lead.' },
+    { step: '2', title: 'Select Duration & Pay', desc: 'Choose 2, 5, or 12 minute wash duration on the touchscreen kiosk.' },
+    { step: '3', title: 'Hydrobath & Shampoo', desc: 'Use the warm spray nozzle to rinse & infuse gentle organic shampoo.' },
+    { step: '4', title: 'Warm Blow Dry', desc: 'Use the two-speed silent warm air dryer for a fluffy, dry coat finish.' }
+  ],
+  safetyGuidelines: [
+    "Keep your pet leashed and latched to the safety tether at all times inside the tub.",
+    "Thermostatic temperature safety lock keeps water safely below 38°C (100°F).",
+    "Press the red Emergency Stop button on the kiosk console if needed.",
+    "Automatic UV & sanitization flush runs after every completed wash session."
+  ]
+};
+
+export const getMachineConfig = () => {
+  if (typeof window === 'undefined') return DEFAULT_MACHINE_CONFIG;
+  try {
+    const stored = localStorage.getItem('tsl_dog_wash_machine_config');
+    if (stored) return JSON.parse(stored);
+  } catch (e) {}
+  return DEFAULT_MACHINE_CONFIG;
+};
+
+export const saveMachineConfig = (config) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('tsl_dog_wash_machine_config', JSON.stringify(config));
+    window.dispatchEvent(new Event('dogWashMachineConfigChanged'));
+  } catch (e) {}
+};

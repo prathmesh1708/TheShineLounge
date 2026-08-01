@@ -24,7 +24,8 @@ import {
   Coffee,
   CupSoda,
   Scissors,
-  TrendingUp
+  TrendingUp,
+  Cpu
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useAuth } from '../../../common/context/AuthContext';
@@ -99,6 +100,18 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
         { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
         { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
         { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
+        { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
+      ];
+    }
+
+    if (key === 'dog-wash') {
+      return [
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
+        { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'machine', label: 'Machine & Kiosk', icon: Cpu },
         { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
         { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
       ];

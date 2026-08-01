@@ -18,7 +18,12 @@ import {
   Layers,
   Upload,
   Link as LinkIcon,
-  X
+  X,
+  UserPlus,
+  Phone,
+  Mail,
+  MapPin,
+  Car
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,11 +39,16 @@ import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import apiClient from '../../../common/utils/apiClient';
 import {
   getServicesSync,
   saveService,
   updateServicePrice as apiUpdatePrice,
-  deleteService as apiDeleteService
+  deleteService as apiDeleteService,
+  getVehicleTypes,
+  saveVehicleType,
+  deleteVehicleType,
+  getBookingsSync
 } from '../../../car-detailing/services/carDetailingApi';
 
 const CATEGORY_OPTIONS = [
@@ -65,6 +75,7 @@ export default function CarDetailingAdminHubPage() {
     addServicePlan,
     deleteServicePlan,
     addBooking,
+    updateBookingStatus,
     addStaff,
     addBanner,
     addInventoryItem,
@@ -75,8 +86,24 @@ export default function CarDetailingAdminHubPage() {
   const tabFromUrl = searchParams.get('tab') || 'treatments';
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
-  // Dynamic Car Detailing Treatments state
+  // Dynamic Car Detailing Treatments, Staff, Vehicle Types & Bookings State
   const [detailingServices, setDetailingServices] = useState(getServicesSync());
+  const [dbStaff, setDbStaff] = useState([]);
+  const [adminVehicleTypes, setAdminVehicleTypes] = useState(getVehicleTypes());
+  const [localDetailingBookings, setLocalDetailingBookings] = useState(getBookingsSync());
+  const [newVehicleTypeInput, setNewVehicleTypeInput] = useState('');
+  const [showVehicleTypesSection, setShowVehicleTypesSection] = useState(true);
+
+  const fetchLiveStaff = async () => {
+    try {
+      const res = await apiClient.get('/users/staff?serviceKey=car-detailing');
+      if (res.data && res.data.staff) {
+        setDbStaff(res.data.staff);
+      }
+    } catch (err) {
+      console.warn('Could not fetch live car-detailing staff list:', err.message);
+    }
+  };
 
   useEffect(() => {
     if (searchParams.get('tab')) {
@@ -85,14 +112,32 @@ export default function CarDetailingAdminHubPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    fetchLiveStaff();
     const syncData = () => {
       setDetailingServices(getServicesSync());
+      setAdminVehicleTypes(getVehicleTypes());
+      setLocalDetailingBookings(getBookingsSync());
     };
     window.addEventListener('carDetailingDataChanged', syncData);
+    window.addEventListener('carDetailingVehicleTypesChanged', syncData);
     return () => {
       window.removeEventListener('carDetailingDataChanged', syncData);
+      window.removeEventListener('carDetailingVehicleTypesChanged', syncData);
     };
   }, []);
+
+  const handleAddVehicleTypeSubmit = (e) => {
+    e.preventDefault();
+    if (!newVehicleTypeInput.trim()) return;
+    saveVehicleType(newVehicleTypeInput.trim());
+    setNewVehicleTypeInput('');
+    if (showToast) showToast('New vehicle type added successfully!', 'success');
+  };
+
+  const handleDeleteVehicleTypeItem = (typeName) => {
+    deleteVehicleType(typeName);
+    if (showToast) showToast(`Vehicle type "${typeName}" removed`, 'info');
+  };
 
   const handleTabChange = (tabId) => {
     setActiveTabState(tabId);
@@ -102,7 +147,28 @@ export default function CarDetailingAdminHubPage() {
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
   const serviceMain = services.find(s => s.key === serviceKey) || services[0];
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
+  const mappedLocal = localDetailingBookings.map(b => ({
+    id: b.id,
+    customerName: b.customerName || 'Car Owner',
+    vehicle: b.vehicle || b.vehicleNo || 'Vehicle',
+    vehicleNo: b.vehicleNo || b.vehicle || 'MP-09-AB-1234',
+    vehicleType: b.vehicleType || 'Sedan',
+    plan: b.package || b.service || 'Paint Protection Film (PPF)',
+    service: b.package || b.service || 'Paint Protection Film (PPF)',
+    serviceKey: 'car-detailing',
+    serviceName: 'Car Detailing',
+    date: b.date || (b.timeSlot ? b.timeSlot.split('|')[0].trim() : new Date().toISOString().split('T')[0]),
+    total: b.price || b.amount || 1490,
+    amount: b.price || b.amount || 1490,
+    status: b.status || 'Confirmed'
+  }));
+
+  const contextBookings = bookings.filter(b => b.serviceKey === 'car-detailing' || (b.serviceName && b.serviceName.toLowerCase().includes('detail')));
+
+  const serviceBookings = [
+    ...mappedLocal,
+    ...contextBookings.filter(cb => !mappedLocal.some(lb => lb.id === cb.id))
+  ];
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
@@ -111,6 +177,246 @@ export default function CarDetailingAdminHubPage() {
   const [editingPriceModal, setEditingPriceModal] = useState(false);
   const [selectedServiceItem, setSelectedServiceItem] = useState(null);
   const [newPrice, setNewPrice] = useState(0);
+
+  const [addBookingModal, setAddBookingModal] = useState(false);
+  const [newBookingForm, setNewBookingForm] = useState({
+    customerName: '',
+    phone: '',
+    vehicleNo: '',
+    vehicleType: 'Sedan',
+    plan: 'Paint Protection Film (PPF)',
+    amount: 1499,
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  const handleCreateBooking = (e) => {
+    e.preventDefault();
+    if (!newBookingForm.customerName) return;
+
+    addBooking({
+      serviceKey: 'car-detailing',
+      serviceName: 'Car Detailing',
+      customerName: newBookingForm.customerName,
+      phone: newBookingForm.phone,
+      vehicleNo: newBookingForm.vehicleNo || 'MH-01-AB-1234',
+      vehicleType: newBookingForm.vehicleType || 'Sedan',
+      plan: newBookingForm.plan,
+      amount: Number(newBookingForm.amount),
+      date: newBookingForm.date || new Date().toISOString().split('T')[0]
+    });
+
+    setAddBookingModal(false);
+    setNewBookingForm({
+      customerName: '',
+      phone: '',
+      vehicleNo: '',
+      vehicleType: 'Sedan',
+      plan: 'Paint Protection Film (PPF)',
+      amount: 1499,
+      date: new Date().toISOString().split('T')[0]
+    });
+  };
+
+  // Add Staff Modal State
+  const [addStaffModal, setAddStaffModal] = useState(false);
+  const [staffForm, setStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Detailing Specialist',
+    salary: '₹42,000 / month',
+    leaveBalance: 12,
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+    permissions: ['bookings', 'orders']
+  });
+
+  // Edit Staff Modal States
+  const [editStaffModal, setEditStaffModal] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [editStaffForm, setEditStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Detailing Specialist',
+    salary: '₹42,000 / month',
+    leaveBalance: 12,
+    photo: '',
+    permissions: []
+  });
+  const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details');
+
+  const handleGeneratePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+    let pwd = '';
+    for (let i = 0; i < 10; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setStaffForm(prev => ({ ...prev, password: pwd }));
+  };
+
+  const handleStaffPhotoUpload = (e, isEdit = false) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        if (showToast) showToast('Image size should be less than 5MB', 'error');
+        else alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (isEdit) {
+          setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+        } else {
+          setStaffForm(prev => ({ ...prev, photo: reader.result }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePermissionToggle = (perm) => {
+    setStaffForm(prev => {
+      const current = prev.permissions;
+      if (current.includes(perm)) {
+        return { ...prev, permissions: current.filter(p => p !== perm) };
+      } else {
+        return { ...prev, permissions: [...current, perm] };
+      }
+    });
+  };
+
+  const handleSaveNewStaff = async (e) => {
+    e.preventDefault();
+    if (!staffForm.fullName || !staffForm.email || !staffForm.password) {
+      alert('Please fill out Name, Email ID, and Password');
+      return;
+    }
+
+    try {
+      const res = await apiClient.post('/users/staff', {
+        fullName: staffForm.fullName,
+        email: staffForm.email,
+        password: staffForm.password,
+        mobile: staffForm.mobile,
+        department: 'Car Detailing',
+        serviceKey: 'car-detailing',
+        staffRole: staffForm.staffRole,
+        salary: staffForm.salary,
+        leaveBalance: Number(staffForm.leaveBalance),
+        photo: staffForm.photo,
+        permissions: staffForm.permissions
+      });
+
+      if (res.data && res.data.success) {
+        alert(`✅ Staff member onboarded successfully!\n\nStaff Email: ${staffForm.email}\nPassword: ${staffForm.password}\n\nStaff can now log in at /staff/login.`);
+        fetchLiveStaff();
+        setAddStaffModal(false);
+        setStaffForm({
+          fullName: '',
+          email: '',
+          password: '',
+          mobile: '',
+          staffRole: 'Detailing Specialist',
+          salary: '₹42,000 / month',
+          leaveBalance: 12,
+          photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+          permissions: ['bookings', 'orders']
+        });
+      } else {
+        alert(`Error: ${res.data?.message || 'Could not create staff'}`);
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
+      alert(`Error: ${errMsg}`);
+    }
+  };
+
+  const handleOpenEditStaff = async (stf) => {
+    setSelectedStaff(stf);
+    setEditStaffForm({
+      fullName: stf.fullName || stf.name || '',
+      email: stf.email || '',
+      password: '',
+      mobile: stf.mobile || '',
+      staffRole: stf.staffRole || stf.role || 'Detailing Specialist',
+      salary: stf.salary || '₹42,000 / month',
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      photo: stf.photo || stf.avatar || stf.profileImage || '',
+      permissions: stf.permissions || []
+    });
+    setStaffAttendanceLogs([]);
+    setActiveStaffModalTab('details');
+    setEditStaffModal(true);
+
+    const sId = stf._id || stf.id;
+    if (sId && !sId.toString().startsWith('STF-')) {
+      try {
+        const res = await apiClient.get(`/attendance/staff/${sId}`);
+        if (res.data && res.data.attendance) {
+          setStaffAttendanceLogs(res.data.attendance);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff attendance history:', err.message);
+      }
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    try {
+      const payload = {
+        fullName: editStaffForm.fullName,
+        email: editStaffForm.email,
+        mobile: editStaffForm.mobile,
+        staffRole: editStaffForm.staffRole,
+        salary: editStaffForm.salary,
+        leaveBalance: Number(editStaffForm.leaveBalance),
+        photo: editStaffForm.photo,
+        permissions: editStaffForm.permissions
+      };
+      if (editStaffForm.password) {
+        payload.password = editStaffForm.password;
+      }
+
+      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member updated successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error updating staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error updating staff: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    const confirmDel = window.confirm(`Are you sure you want to delete "${editStaffForm.fullName}"?`);
+    if (!confirmDel) return;
+
+    try {
+      const res = await apiClient.delete(`/users/staff/${sId}`);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member deleted successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error deleting staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error deleting staff: ' + (err.response?.data?.message || err.message));
+    }
+  };
 
   const [addTreatmentModal, setAddTreatmentModal] = useState(false);
   const [treatmentForm, setTreatmentForm] = useState({
@@ -497,34 +803,220 @@ export default function CarDetailingAdminHubPage() {
         </div>
       )}
 
-      {/* TAB 4: BOOKINGS */}
+      {/* TAB 3: BOOKINGS */}
       {activeTab === 'bookings' && (
-        <DataTable
-          columns={[
-            { header: 'ID', accessorKey: 'id' },
-            { header: 'Customer', accessorKey: 'customerName' },
-            { header: 'Package / Treatment', accessorKey: 'plan' },
-            { header: 'Slot', accessorKey: 'timeSlot' },
-            { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total}</span> },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceBookings}
-          searchPlaceholder="Search Bookings..."
-        />
+        <div className="space-y-5">
+          {/* Header & Controls Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Car Detailing Appointments ({serviceBookings.length})</h3>
+              <p className="text-xs text-gray-500">Live view and status tracking for ceramic coating, PPF & detailing appointments</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowVehicleTypesSection(!showVehicleTypesSection)}
+                className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Car className="w-4 h-4 text-amber-600" />
+                <span>{showVehicleTypesSection ? 'Hide Vehicle Types' : `Manage Vehicle Types (${adminVehicleTypes.length})`}</span>
+              </button>
+              <button
+                onClick={() => setAddBookingModal(true)}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> New Car Detailing Booking
+              </button>
+            </div>
+          </div>
+
+          {/* Integrated Dynamic Vehicle Types Management Section */}
+          {showVehicleTypesSection && (
+            <div className="bg-white border border-amber-200/80 rounded-2xl p-5 shadow-xs space-y-4 bg-gradient-to-r from-amber-50/20 via-white to-white">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                    <Car className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                      Dynamic Vehicle Types Registry
+                    </h4>
+                    <p className="text-[11px] text-gray-500 font-medium">
+                      Configure vehicle types for booking step 1. Custom vehicle types entered by users automatically appear here.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Add Vehicle Type Form */}
+                <form onSubmit={handleAddVehicleTypeSubmit} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Pickup Truck, EV, Van"
+                    value={newVehicleTypeInput}
+                    onChange={(e) => setNewVehicleTypeInput(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-amber-500 w-44 sm:w-56 bg-white"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-1.5 bg-[#FF6B00] hover:bg-[#E66000] text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition-all shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Type</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Vehicle Types List */}
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                {adminVehicleTypes.map((vType) => {
+                  const isDefault = ["Hatchback", "Sedan", "SUV", "Luxury / Sports"].includes(vType);
+                  return (
+                    <div
+                      key={vType}
+                      className="px-3 py-1.5 bg-gray-50 border border-gray-200 hover:border-amber-300 rounded-xl flex items-center gap-2 shadow-2xs text-xs font-extrabold text-gray-800 transition-all"
+                    >
+                      <Car className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{vType}</span>
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded ${
+                        isDefault ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                      }`}>
+                        {isDefault ? 'Standard' : 'Custom'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteVehicleTypeItem(vType)}
+                        className="text-gray-400 hover:text-red-600 transition-colors ml-1"
+                        title="Delete Vehicle Type"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <DataTable
+            columns={[
+              { header: 'Booking ID', accessorKey: 'id', cell: (r) => <span className="font-mono font-bold text-gray-900">{r.id}</span> },
+              { header: 'Customer & Vehicle', accessorKey: 'customerName', cell: (r) => (
+                <div>
+                  <p className="font-bold text-gray-900">{r.customerName}</p>
+                  <p className="text-[10px] text-gray-500 font-semibold">{r.vehicle || r.vehicleNo || r.phone || 'Detailing Client'}</p>
+                </div>
+              )},
+              { header: 'Vehicle Type', accessorKey: 'vehicleType', cell: (r) => (
+                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs font-extrabold border border-amber-200 inline-flex items-center gap-1">
+                  <Car className="w-3 h-3 text-amber-600" />
+                  <span>{r.vehicleType || 'Sedan'}</span>
+                </span>
+              )},
+              { header: 'Treatment / Package', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },
+              { header: 'Booking Date', accessorKey: 'date', cell: (r) => (
+                <span className="text-xs font-bold text-gray-700">
+                  {r.date || (r.timeSlot ? r.timeSlot.split('|')[0].trim() : new Date().toISOString().split('T')[0])}
+                </span>
+              )},
+              { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+              { header: 'Status', accessorKey: 'status', cell: (r) => (
+                <select
+                  value={r.status || 'Confirmed'}
+                  onChange={(e) => updateBookingStatus(r.id, e.target.value)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold cursor-pointer border-0 shadow-xs focus:ring-2 focus:ring-amber-500 ${
+                    r.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                    r.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                    r.status === 'Confirmed' ? 'bg-amber-100 text-amber-800' :
+                    r.status === 'Cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              )}
+            ]}
+            data={serviceBookings}
+            searchPlaceholder="Search Car Detailing Bookings..."
+          />
+        </div>
       )}
 
       {/* TAB 5: STAFF */}
       {activeTab === 'staff' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {serviceStaff.map(stf => (
-            <div key={stf.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
-              <img src={stf.avatar} className="w-12 h-12 rounded-full object-cover" />
-              <div>
-                <h4 className="font-bold text-xs">{stf.name}</h4>
-                <p className="text-[10px] text-gray-500">{stf.role}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900">
+                Car Detailing Department Staff ({dbStaff.length || serviceStaff.length})
+              </h3>
+              <p className="text-xs text-gray-500">
+                Onboard detailing specialists, generate email login credentials & assign module access
+              </p>
             </div>
-          ))}
+            <button
+              onClick={() => setAddStaffModal(true)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <UserPlus className="w-4 h-4" /> Onboard New Staff Member
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
+              <div 
+                key={stf._id || stf.id} 
+                onClick={() => handleOpenEditStaff(stf)}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <img
+                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80"}
+                    alt={stf.fullName || stf.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                  />
+                  <div className="space-y-1 overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {stf.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Detailing Specialist'}</p>
+                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                    <span className="font-bold text-gray-800 flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98210 55555'}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                    <span className="font-bold text-emerald-700">{stf.salary || '₹42,000 / month'}</span>
+                  </div>
+                </div>
+
+                {stf.permissions && stf.permissions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {stf.permissions.map(p => (
+                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -555,6 +1047,8 @@ export default function CarDetailingAdminHubPage() {
           data={serviceInventory}
         />
       )}
+
+
 
       {/* MODAL: ADD / EDIT DETAILING TREATMENT */}
       <AdminModal
@@ -822,6 +1316,490 @@ export default function CarDetailingAdminHubPage() {
           >
             Save Package
           </button>
+        </div>
+      </AdminModal>
+
+      {/* MODAL: ADD CAR DETAILING BOOKING */}
+      <AdminModal isOpen={addBookingModal} onClose={() => setAddBookingModal(false)} title="New Car Detailing Booking">
+        <form onSubmit={handleCreateBooking} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Customer Name *</label>
+            <input
+              type="text"
+              required
+              value={newBookingForm.customerName}
+              onChange={e => setNewBookingForm({ ...newBookingForm, customerName: e.target.value })}
+              className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              placeholder="e.g. Rahul Sharma"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Phone Number</label>
+              <input
+                type="text"
+                value={newBookingForm.phone}
+                onChange={e => setNewBookingForm({ ...newBookingForm, phone: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="+91 98200 12345"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Vehicle No / Model</label>
+              <input
+                type="text"
+                value={newBookingForm.vehicleNo}
+                onChange={e => setNewBookingForm({ ...newBookingForm, vehicleNo: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="MH01AB1234 / BMW X5"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Vehicle Type</label>
+            <select
+              value={newBookingForm.vehicleType}
+              onChange={e => setNewBookingForm({ ...newBookingForm, vehicleType: e.target.value })}
+              className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500 bg-white"
+            >
+              {adminVehicleTypes.map(vType => (
+                <option key={vType} value={vType}>{vType}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Detailing Treatment / Package</label>
+            <input
+              type="text"
+              value={newBookingForm.plan}
+              onChange={e => setNewBookingForm({ ...newBookingForm, plan: e.target.value })}
+              className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              placeholder="e.g. Paint Protection Film (PPF)"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Total Amount (₹)</label>
+              <input
+                type="number"
+                required
+                value={newBookingForm.amount}
+                onChange={e => setNewBookingForm({ ...newBookingForm, amount: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Booking Date</label>
+              <input
+                type="date"
+                required
+                value={newBookingForm.date}
+                onChange={e => setNewBookingForm({ ...newBookingForm, date: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500 bg-white"
+              />
+            </div>
+          </div>
+          <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAddBookingModal(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs"
+            >
+              Create Detailing Booking
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Onboard New Staff Member */}
+      <AdminModal isOpen={addStaffModal} onClose={() => setAddStaffModal(false)} title="Onboard New Staff Member">
+        <form onSubmit={handleSaveNewStaff} className="space-y-4 text-xs p-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.fullName}
+                onChange={e => setStaffForm({ ...staffForm, fullName: e.target.value })}
+                placeholder="e.g. Deepak Joshi"
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.staffRole}
+                onChange={e => setStaffForm({ ...staffForm, staffRole: e.target.value })}
+                placeholder="Detailing Specialist"
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+              <input
+                type="email"
+                required
+                value={staffForm.email}
+                onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
+                placeholder="deepak@theshinelounge.com"
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="font-bold text-gray-700">Login Password *</label>
+                <button
+                  type="button"
+                  onClick={handleGeneratePassword}
+                  className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                >
+                  ⚡ Auto Generate
+                </button>
+              </div>
+              <input
+                type="text"
+                required
+                value={staffForm.password}
+                onChange={e => setStaffForm({ ...staffForm, password: e.target.value })}
+                placeholder="Staff!@#123"
+                className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-amber-50/40"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+              <input
+                type="text"
+                value={staffForm.mobile}
+                onChange={e => setStaffForm({ ...staffForm, mobile: e.target.value })}
+                placeholder="+91 98210 55555"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <input
+                type="text"
+                value={staffForm.salary}
+                onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
+                placeholder="₹42,000 / month"
+                className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <input
+                type="number"
+                value={staffForm.leaveBalance}
+                onChange={e => setStaffForm({ ...staffForm, leaveBalance: e.target.value })}
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Staff Profile Photo</label>
+            <div className="flex items-center gap-3 p-2 bg-gray-50 border rounded-xl">
+              <img
+                src={staffForm.photo || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80"}
+                alt="Staff Preview"
+                className="w-12 h-12 rounded-full object-cover border border-amber-500/40 shrink-0"
+              />
+              <div className="flex-1 space-y-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleStaffPhotoUpload(e, false)}
+                  className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-white hover:file:bg-amber-600 cursor-pointer"
+                />
+                <p className="text-[10px] text-gray-400">Upload JPG, PNG or WEBP (Max 5MB)</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1.5">Module Permissions (Sidebar Navigation Access)</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
+              {[
+                { id: 'bookings', label: 'Service Bookings' },
+                { id: 'orders', label: 'Live Orders' },
+                { id: 'inventory', label: 'Inventory Stock' },
+                { id: 'customers', label: 'Customer CRM' }
+              ].map(perm => (
+                <label key={perm.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={staffForm.permissions.includes(perm.id)}
+                    onChange={() => handlePermissionToggle(perm.id)}
+                    className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                  />
+                  <span>{perm.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" /> Generate Credentials & Onboard Staff Member
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Staff Member & Shift Attendance Logs */}
+      <AdminModal 
+        isOpen={editStaffModal} 
+        onClose={() => setEditStaffModal(false)} 
+        title={`Manage Staff: ${editStaffForm.fullName || 'Member'}`}
+      >
+        <div className="space-y-4 text-xs p-1">
+          {/* Modal Sub-Tabs */}
+          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('details')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Staff Profile Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('attendance')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Shift Attendance Logs ({staffAttendanceLogs.length})
+            </button>
+          </div>
+
+          {activeStaffModalTab === 'details' && (
+            <form onSubmit={handleUpdateStaff} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.fullName}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, fullName: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.staffRole}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, staffRole: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editStaffForm.email}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, email: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-gray-700">Update Password</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+                        let pwd = '';
+                        for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+                        setEditStaffForm(prev => ({ ...prev, password: pwd }));
+                      }}
+                      className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                    >
+                      ⚡ Auto Generate
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={editStaffForm.password}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, password: e.target.value })}
+                    placeholder="Enter new password if resetting"
+                    className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.mobile}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, mobile: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.salary}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <input
+                    type="number"
+                    value={editStaffForm.leaveBalance}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, leaveBalance: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Staff Profile Photo</label>
+                <div className="flex items-center gap-3 p-2 bg-gray-50 border rounded-xl">
+                  <img
+                    src={editStaffForm.photo || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80"}
+                    alt="Staff Preview"
+                    className="w-12 h-12 rounded-full object-cover border border-amber-500/40 shrink-0"
+                  />
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleStaffPhotoUpload(e, true)}
+                      className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-white hover:file:bg-amber-600 cursor-pointer"
+                    />
+                    <p className="text-[10px] text-gray-400">Upload JPG, PNG or WEBP (Max 5MB)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={handleDeleteStaff}
+                  className="px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Staff Member
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-amber-500 text-white hover:bg-amber-600 rounded-xl font-bold transition-all text-xs uppercase shadow-xs"
+                >
+                  Save Staff Details
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeStaffModalTab === 'attendance' && (
+            <div className="space-y-3">
+              {staffAttendanceLogs.length > 0 ? (
+                <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                  {staffAttendanceLogs.map((log) => {
+                    const formatTime = (timeVal) => {
+                      if (!timeVal) return 'In Progress';
+                      if (typeof timeVal === 'string') {
+                        const trimmed = timeVal.trim();
+                        if (trimmed.includes('AM') || trimmed.includes('PM') || trimmed.toLowerCase().includes('progress')) {
+                          return trimmed;
+                        }
+                      }
+                      const parsed = new Date(timeVal);
+                      if (!isNaN(parsed.getTime())) {
+                        return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      }
+                      return String(timeVal);
+                    };
+
+                    const checkIn = formatTime(log.checkInTime);
+                    const checkOut = formatTime(log.checkOutTime);
+                    const isActive = !log.checkOutTime || log.checkOutTime === 'In Progress' || log.status === 'Active Shift';
+
+                    return (
+                      <div key={log._id || log.id} className="p-3.5 bg-gray-50/80 border border-gray-200/80 rounded-2xl flex justify-between items-center shadow-xs">
+                        <div className="space-y-1.5 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-sm text-gray-900">{log.date || '2026-07-30'}</span>
+                            <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                              isActive ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {isActive ? 'Active Shift' : 'Shift Completed'}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                            <span>
+                              check-in: <strong className="text-gray-900">{checkIn}</strong> | checkout: <strong className="text-gray-900">{checkOut}</strong>
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 italic">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                            <span>{log.location || '19.0760° N, 72.8777° E (Main Branch)'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-1 shrink-0">
+                          <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-wider">Selfie</span>
+                          <img
+                            src={log.photoUrl || log.selfie || log.photo || "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150"}
+                            alt="Staff Selfie"
+                            className="w-11 h-11 rounded-xl object-cover border border-gray-200 shadow-xs"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center bg-gray-50 rounded-2xl border text-gray-400">
+                  No shift attendance records logged yet for this staff member.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </AdminModal>
     </div>

@@ -101,6 +101,8 @@ const serviceSchema = new mongoose.Schema({
   // Media URLs
   icon: { type: String, default: 'Car' },
   bannerImage: { type: String, default: '' },
+  heroVideo: { type: String, default: '' },
+  bannerVideo: { type: String, default: '' },
   thumbnail: { type: String, default: '' },
   coverImage: { type: String, default: '' },
   mobileBanner: { type: String, default: '' },

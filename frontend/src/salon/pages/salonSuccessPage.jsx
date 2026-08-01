@@ -53,7 +53,7 @@ export default function SalonSuccessPage() {
         </div>
         <div className="flex justify-between items-center text-xs">
           <span className="text-zinc-450 font-bold uppercase tracking-wider">Amount Paid</span>
-          <span className="font-extrabold text-primary text-sm">${finalPrice}</span>
+          <span className="font-extrabold text-primary text-sm">₹{finalPrice}</span>
         </div>
         <div className="flex justify-between items-center text-xs border-t border-zinc-150 pt-3">
           <span className="text-zinc-450 font-bold uppercase tracking-wider">Location</span>
@@ -112,16 +112,16 @@ export default function SalonSuccessPage() {
           <div className="space-y-3 text-xs font-semibold text-zinc-650">
             <div className="flex justify-between">
               <span>Treatment Booking</span>
-              <span className="text-zinc-800 font-bold">${Number(finalPrice) - 3}</span>
+              <span className="text-zinc-800 font-bold">₹{Math.max(0, Number(finalPrice) - 3)}</span>
             </div>
             <div className="flex justify-between">
               <span>Convenience Slot Fee</span>
-              <span className="text-zinc-800 font-bold">$3</span>
+              <span className="text-zinc-800 font-bold">₹3</span>
             </div>
             <hr className="border-zinc-100" />
             <div className="flex justify-between text-sm font-extrabold text-zinc-850">
               <span>Total Paid</span>
-              <span className="text-primary">${finalPrice}</span>
+              <span className="text-primary">₹{finalPrice}</span>
             </div>
           </div>
 

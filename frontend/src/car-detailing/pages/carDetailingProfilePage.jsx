@@ -157,7 +157,7 @@ export default function CarDetailingProfilePage() {
                   required
                 />
                 <FormInput
-                  label="Alternate Number (Optional)"
+                  label="Alternate Number"
                   name="alternatePhone"
                   placeholder="e.g. 98260XXXXX"
                   register={register}

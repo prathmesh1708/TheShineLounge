@@ -36,9 +36,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         'Car Wash',
+        'Car Detailing',
         'Detailing',
         'Cafe',
         'Salon',
+        "Men's Salon",
         'Dog Wash',
         'Accounts',
         'CRM',

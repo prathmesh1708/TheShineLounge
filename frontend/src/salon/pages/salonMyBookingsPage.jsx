@@ -124,7 +124,7 @@ export default function SalonMyBookingsPage() {
                   <div className="flex md:flex-col justify-end items-end gap-3 border-t md:border-t-0 md:border-l border-zinc-100 pt-4 md:pt-0 md:pl-6 flex-shrink-0">
                     <div className="text-right hidden md:block">
                       <span className="text-[9px] text-zinc-400 uppercase font-bold block">Grand Total</span>
-                      <span className="text-lg font-extrabold text-zinc-800">${b.price}</span>
+                      <span className="text-lg font-extrabold text-zinc-800">₹{b.price}</span>
                     </div>
                     <button className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-wider">
                       <span>Manage Details</span>
@@ -177,7 +177,7 @@ export default function SalonMyBookingsPage() {
                 <p><span className="text-zinc-400">Time Window:</span> {selectedBooking.time}</p>
                 <p><span className="text-zinc-400">Stylist Assigned:</span> {selectedBooking.stylist}</p>
                 <p><span className="text-zinc-400">Salon Location:</span> {selectedBooking.location}</p>
-                <p><span className="text-zinc-400">Price Paid:</span> ${selectedBooking.price}</p>
+                <p><span className="text-zinc-400">Price Paid:</span> ₹{selectedBooking.price}</p>
               </div>
             </div>
 

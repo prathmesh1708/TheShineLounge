@@ -87,12 +87,16 @@ export default function BookingsPage() {
         }
 
         const res = await apiClient.get('/bookings');
-        if (res.data && res.data.bookings) {
-          const filtered = email
-            ? res.data.bookings.filter(b => b.customerEmail === email)
-            : res.data.bookings;
+        if (res.data && Array.isArray(res.data.bookings) && res.data.bookings.length > 0) {
+          let userBookings = res.data.bookings;
+          if (email) {
+            const matches = res.data.bookings.filter(b => b.customerEmail === email || !b.customerEmail);
+            if (matches.length > 0) {
+              userBookings = matches;
+            }
+          }
 
-          const mapped = filtered.map(b => ({
+          const mapped = userBookings.map(b => ({
             id: b.bookingId,
             service: b.serviceName,
             package: `${b.packageName} (₹${b.price})`,
@@ -108,11 +112,7 @@ export default function BookingsPage() {
             staffAssigned: b.assignedStaffName || ''
           }));
 
-          if (mapped.length > 0) {
-            setBookings(mapped);
-          } else {
-            setBookings(mockBookings);
-          }
+          setBookings(mapped);
         } else {
           setBookings(mockBookings);
         }

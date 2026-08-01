@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, Calendar, Clock, Car, MapPin, Download, Home, ArrowRight } from 'lucide-react';
+import { CheckCircle, Car, MapPin, Download, Home, ArrowRight } from 'lucide-react';
 import { Toast } from '../components/carDetailingUI';
 
 export default function CarDetailingSuccessPage() {
@@ -14,8 +14,6 @@ export default function CarDetailingSuccessPage() {
     bookingId: "BK-8239",
     vehicle: "Hyundai Verna (White)",
     item: "Premium Detail",
-    date: "2026-07-20",
-    time: "08:30 AM - 12:30 PM (Morning)",
     price: 1690,
     address: "Scheme No. 54, Vijay Nagar, Indore"
   };
@@ -67,14 +65,6 @@ export default function CarDetailingSuccessPage() {
           <div className="flex items-center gap-3">
             <span className="text-luxury-emerald text-base font-bold">★</span>
             <span>Service: <strong className="text-zinc-800">{booking.item}</strong></span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Calendar className="w-4.5 h-4.5 text-luxury-emerald flex-shrink-0" />
-            <span>Date: <strong className="text-zinc-800">{booking.date}</strong></span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Clock className="w-4.5 h-4.5 text-luxury-emerald flex-shrink-0" />
-            <span>Time Slot: <strong className="text-zinc-800">{booking.time}</strong></span>
           </div>
           <div className="flex items-start gap-3">
             <MapPin className="w-4.5 h-4.5 text-luxury-emerald flex-shrink-0 mt-0.5" />

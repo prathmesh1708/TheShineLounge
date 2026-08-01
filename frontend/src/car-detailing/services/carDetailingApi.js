@@ -399,11 +399,16 @@ export const MOCK_BOOKINGS = [
     id: "BK-9831",
     status: "Upcoming",
     package: "Premium Detail",
-    price: 149,
-    date: "2026-07-20",
+    price: 1490,
+    paymentType: "Deposit Paid",
+    depositAmount: 372,
+    remainingAmount: 1118,
+    paymentStatus: "Deposit Paid",
+    date: "2026-08-05",
     time: "10:00 AM - 01:00 PM",
     technician: "Vikram Rathore",
     vehicle: "Hyundai Verna (White)",
+    vehicleNo: "MP-09-AB-1234",
     location: "Home - Vijay Nagar, Indore",
     eta: "30 mins",
     timeline: [
@@ -418,11 +423,16 @@ export const MOCK_BOOKINGS = [
     id: "BK-8271",
     status: "Completed",
     package: "Basic Wash",
-    price: 49,
+    price: 490,
+    paymentType: "Fully Paid",
+    depositAmount: 490,
+    remainingAmount: 0,
+    paymentStatus: "Fully Paid",
     date: "2026-07-12",
     time: "03:00 PM - 03:45 PM",
     technician: "Ramesh Kumar",
     vehicle: "Maruti Swift",
+    vehicleNo: "MP-09-CD-5678",
     location: "Home - Saket Colony, Indore",
     timeline: [
       { status: "Confirmed", time: "July 12, 02:00 PM", active: true },
@@ -435,11 +445,16 @@ export const MOCK_BOOKINGS = [
     id: "BK-5421",
     status: "Cancelled",
     package: "Ultimate Detail",
-    price: 249,
+    price: 2490,
+    paymentType: "Deposit Paid",
+    depositAmount: 622,
+    remainingAmount: 0,
+    paymentStatus: "Cancelled & Refunded",
     date: "2026-06-30",
     time: "09:00 AM - 01:30 PM",
     technician: "None",
     vehicle: "Kia Seltos",
+    vehicleNo: "MP-09-EF-9012",
     location: "Home - Geeta Nagar, Indore",
     timeline: [
       { status: "Cancelled by User", time: "June 29, 05:00 PM", active: true }
@@ -616,9 +631,209 @@ export const deletePackage = (id) => {
   return Promise.resolve(updatedList);
 };
 
+const STORAGE_KEY_BOOKINGS = 'shine_car_detailing_bookings';
+
+export const getBookingsSync = () => {
+  if (typeof window === 'undefined') return MOCK_BOOKINGS;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_BOOKINGS);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(MOCK_BOOKINGS));
+    return MOCK_BOOKINGS;
+  } catch (err) {
+    console.error('Error reading bookings from localStorage:', err);
+    return MOCK_BOOKINGS;
+  }
+};
+
+export const getBookings = () => Promise.resolve(getBookingsSync());
+
+export const getBookingById = (id) => {
+  const bookings = getBookingsSync();
+  const found = bookings.find(b => b.id === id);
+  return Promise.resolve(found || bookings[0]);
+};
+
+export const addBooking = (bookingData) => {
+  const current = getBookingsSync();
+  const newBooking = {
+    id: bookingData.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+    status: 'Upcoming',
+    package: bookingData.package || bookingData.item || 'Car Detailing Service',
+    price: Number(bookingData.price) || 1490,
+    paymentType: bookingData.paymentType || 'Fully Paid',
+    depositAmount: Number(bookingData.depositAmount) || Number(bookingData.price) || 1490,
+    remainingAmount: Number(bookingData.remainingAmount) || 0,
+    paymentStatus: bookingData.paymentStatus || 'Fully Paid',
+    date: bookingData.date || new Date().toISOString().split('T')[0],
+    time: bookingData.time || '10:00 AM - 01:00 PM',
+    technician: 'Vikram Rathore',
+    vehicle: bookingData.vehicle || 'Vehicle',
+    vehicleNo: bookingData.vehicleNo || 'MP-09-AB-1234',
+    location: bookingData.location || bookingData.address || 'Indore Studio',
+    eta: '30 mins',
+    timeline: [
+      { status: "Confirmed", time: new Date().toLocaleString(), active: true },
+      { status: "Technician Assigned", time: new Date().toLocaleString(), active: true },
+      { status: "En Route", time: "Pending", active: false },
+      { status: "In Progress", time: "Pending", active: false },
+      { status: "Completed", time: "Pending", active: false }
+    ]
+  };
+
+  const updated = [newBooking, ...current];
+  try {
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(newBooking);
+};
+
+export const rescheduleBooking = (id, newDate, newTimeSlot) => {
+  const current = getBookingsSync();
+  const updated = current.map(b => {
+    if (b.id === id) {
+      return {
+        ...b,
+        date: newDate,
+        time: newTimeSlot,
+        timeline: [
+          ...(b.timeline || []),
+          { status: `Rescheduled to ${newDate}`, time: new Date().toLocaleString(), active: true }
+        ]
+      };
+    }
+    return b;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updated.find(b => b.id === id));
+};
+
+export const cancelBooking = (id, reason = "Cancelled by User") => {
+  const current = getBookingsSync();
+  const updated = current.map(b => {
+    if (b.id === id) {
+      return {
+        ...b,
+        status: 'Cancelled',
+        paymentStatus: b.paymentType === 'Deposit Paid' ? 'Deposit Refunded (as per policy)' : 'Full Refund Processed',
+        remainingAmount: 0,
+        timeline: [
+          ...(b.timeline || []),
+          { status: `Cancelled: ${reason}`, time: new Date().toLocaleString(), active: true }
+        ]
+      };
+    }
+    return b;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updated.find(b => b.id === id));
+};
+
+export const payRemainingBalance = (id, paymentMethod = "Online Card") => {
+  const current = getBookingsSync();
+  const updated = current.map(b => {
+    if (b.id === id) {
+      return {
+        ...b,
+        paymentStatus: 'Fully Paid',
+        depositAmount: b.price,
+        remainingAmount: 0,
+        timeline: [
+          ...(b.timeline || []),
+          { status: `Remaining balance paid via ${paymentMethod}`, time: new Date().toLocaleString(), active: true }
+        ]
+      };
+    }
+    return b;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updated.find(b => b.id === id));
+};
+
+export const updateBookingStatus = (id, newStatus) => {
+  const current = getBookingsSync();
+  const updated = current.map(b => {
+    if (b.id === id) {
+      return {
+        ...b,
+        status: newStatus,
+        timeline: (b.timeline || []).map(t => {
+          if (t.status === newStatus || (newStatus === 'Completed' && t.status === 'Completed')) {
+            return { ...t, active: true, time: new Date().toLocaleString() };
+          }
+          return t;
+        })
+      };
+    }
+    return b;
+  });
+
+  try {
+    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  return Promise.resolve(updated.find(b => b.id === id));
+};
+
+const DEFAULT_VEHICLE_TYPES = ["Hatchback", "Sedan", "SUV", "Luxury / Sports"];
+const STORAGE_KEY_VEHICLE_TYPES = 'shine_car_detailing_vehicle_types';
+
+export const getVehicleTypes = () => {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY_VEHICLE_TYPES);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return DEFAULT_VEHICLE_TYPES;
+};
+
+export const saveVehicleType = (type) => {
+  const trimmed = (type || '').trim();
+  if (!trimmed) return getVehicleTypes();
+  const current = getVehicleTypes();
+  if (!current.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
+    const updated = [...current, trimmed];
+    try {
+      localStorage.setItem(STORAGE_KEY_VEHICLE_TYPES, JSON.stringify(updated));
+    } catch (e) {}
+    notifyDataChange();
+    window.dispatchEvent(new Event('carDetailingVehicleTypesChanged'));
+    return updated;
+  }
+  return current;
+};
+
+export const deleteVehicleType = (type) => {
+  const current = getVehicleTypes();
+  const updated = current.filter(t => t !== type);
+  try {
+    localStorage.setItem(STORAGE_KEY_VEHICLE_TYPES, JSON.stringify(updated));
+  } catch (e) {}
+  notifyDataChange();
+  window.dispatchEvent(new Event('carDetailingVehicleTypesChanged'));
+  return updated;
+};
+
 export const getOffers = () => Promise.resolve(OFFERS);
 export const getReviews = () => Promise.resolve(REVIEWS);
 export const getFAQs = () => Promise.resolve(FAQS);
-export const getBookings = () => Promise.resolve(MOCK_BOOKINGS);
 export const getTechnician = () => Promise.resolve(TECHNICIAN);
+
 

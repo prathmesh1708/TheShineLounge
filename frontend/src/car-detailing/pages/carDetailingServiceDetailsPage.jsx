@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Clock, Star, ArrowLeft, ShieldCheck, HelpCircle, Check, ArrowRight } from 'lucide-react';
+import { Clock, Star, ArrowLeft, ShieldCheck, Check, ArrowRight } from 'lucide-react';
 
-import { getServiceById, REVIEWS, FAQS } from '../services/carDetailingApi';
+import { getServiceById } from '../services/carDetailingApi';
 import { PrimaryButton, SkeletonLoader } from '../components/carDetailingUI';
 
 export default function CarDetailingServiceDetailsPage() {
@@ -53,8 +53,7 @@ export default function CarDetailingServiceDetailsPage() {
     );
   }
 
-  // Filter reviews matching the category/service roughly
-  const matchingReviews = REVIEWS.filter((r, idx) => r.service.toLowerCase().includes(service.category.toLowerCase()) || r.service.toLowerCase().includes(service.name.toLowerCase()) || idx < 2);
+
 
   return (
     <motion.div
@@ -186,68 +185,6 @@ export default function CarDetailingServiceDetailsPage() {
 
       </div>
 
-      {/* Reviews Block */}
-      {matchingReviews.length > 0 && (
-        <div className="space-y-6 pt-6 border-t border-zinc-150">
-          <h3 className="text-2xl font-bold tracking-tight text-zinc-800">Customer Feedback</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {matchingReviews.map((rev) => (
-              <div key={rev.id} className="bg-white border border-zinc-200 rounded-24 p-6 space-y-4 shadow-sm text-zinc-850">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <img src={rev.avatar} alt={rev.name} className="w-10 h-10 rounded-full object-cover border border-zinc-150" />
-                    <div>
-                      <h4 className="font-bold text-sm text-zinc-800">{rev.name}</h4>
-                      <span className="text-[10px] text-zinc-450 block">{rev.date}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-0.5 text-yellow-650 bg-yellow-400/10 border border-yellow-400/15 py-1 px-2.5 rounded-full">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className={`w-3 h-3 ${i < rev.rating ? 'fill-current' : 'text-zinc-200'}`} />
-                    ))}
-                  </div>
-                </div>
-                <p className="text-xs text-zinc-600 italic leading-relaxed">"{rev.comment}"</p>
-                <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
-                  <span>{rev.vehicle}</span>
-                  <span className="text-luxury-emerald bg-luxury-emerald/10 px-2 py-0.5 rounded-full border border-luxury-emerald/15">Verified Booking</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* FAQ Accordion Block */}
-      <div className="space-y-6 pt-6 border-t border-zinc-150">
-        <div className="flex gap-2 items-center text-zinc-800">
-          <HelpCircle className="w-5 h-5 text-luxury-emerald" />
-          <h3 className="text-xl font-bold tracking-tight">Relevant Detailing FAQs</h3>
-        </div>
-        <div className="max-w-3xl">
-          <FAQAccordionItem faq={FAQS[0]} />
-          <FAQAccordionItem faq={FAQS[2]} className="mt-3" />
-        </div>
-      </div>
-
     </motion.div>
-  );
-}
-
-// Internal small FAQ toggle component
-function FAQAccordionItem({ faq, className = "" }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={`bg-white border border-zinc-200 rounded-20 overflow-hidden shadow-sm ${className}`}>
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4.5 text-left text-sm font-bold text-zinc-800 hover:text-luxury-emerald">
-        <span>{faq.q}</span>
-        <span className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
-      </button>
-      {open && (
-        <div className="p-4.5 text-xs text-zinc-500 leading-relaxed border-t border-zinc-100 pt-3">
-          {faq.a}
-        </div>
-      )}
-    </div>
   );
 }

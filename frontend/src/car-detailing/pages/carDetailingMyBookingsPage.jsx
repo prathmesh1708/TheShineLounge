@@ -12,7 +12,7 @@ export default function CarDetailingMyBookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchLatestBookings = () => {
     getBookings()
       .then(res => {
         setBookings(Array.isArray(res) ? res : []);
@@ -22,6 +22,19 @@ export default function CarDetailingMyBookingsPage() {
         setBookings([]);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchLatestBookings();
+
+    const handleDataChanged = () => {
+      fetchLatestBookings();
+    };
+
+    window.addEventListener('carDetailingDataChanged', handleDataChanged);
+    return () => {
+      window.removeEventListener('carDetailingDataChanged', handleDataChanged);
+    };
   }, []);
 
   const filteredBookings = (bookings || []).filter(b => b && b.status === activeTab);

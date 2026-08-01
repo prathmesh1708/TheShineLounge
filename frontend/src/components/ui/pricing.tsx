@@ -35,7 +35,7 @@ export function Pricing({
   plans,
   title = "Simple, Transparent Pricing",
   description = "Choose the plan that works for you\nAll plans include access to our platform, lead generation tools, and dedicated support.",
-  currency = "USD",
+  currency = "INR",
 }: PricingProps) {
   const [isMonthly, setIsMonthly] = useState(true);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -155,12 +155,8 @@ export function Pricing({
             className={cn(
               `w-[72vw] sm:w-[320px] lg:w-auto flex-shrink-0 snap-start snap-always rounded-2xl border-[1px] p-4 sm:p-6 bg-background text-center lg:flex lg:flex-col lg:justify-center relative transition-all duration-300`,
               plan.isPopular
-                ? (currency === "INR"
-                    ? "border-luxury-emerald border-2 shadow-[0_12px_40px_-10px_rgba(22,163,74,0.25)] ring-1 ring-luxury-emerald/10"
-                    : "border-primary border-2 shadow-premium")
-                : (currency === "INR"
-                    ? "border-zinc-200/85 hover:border-zinc-300 hover:shadow-[0_12px_30px_-10px_rgba(22,163,74,0.15)] shadow-sm"
-                    : "border-zinc-200/85 hover:border-zinc-300 shadow-sm"),
+                ? "border-primary border-2 shadow-premium"
+                : "border-zinc-200/85 hover:border-zinc-300 shadow-sm",
               "flex flex-col",
               !plan.isPopular && "lg:mt-5",
               index === 0 || index === 2
@@ -190,12 +186,12 @@ export function Pricing({
                     }
                     format={{
                       style: "currency",
-                      currency: currency,
+                      currency: "INR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
                     }}
-                    formatter={(value) => currency === "INR" ? `₹${value}` : `$${value}`}
-                    locales={currency === "INR" ? "en-IN" : "en-US"}
+                    formatter={(value) => `₹${value}`}
+                    locales="en-IN"
                     transformTiming={{
                       duration: 500,
                       easing: "ease-out",

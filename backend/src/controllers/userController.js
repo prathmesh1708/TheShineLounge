@@ -107,28 +107,28 @@ const getStaffList = async (req, res) => {
     } = req.query;
 
     const query = { role: 'staff', isDeleted: false };
+    const andConditions = [];
 
     if (serviceKey) {
-      query.$or = [
-        { serviceKey: serviceKey },
-        { department: { $regex: serviceKey.replace('-', ' '), $options: 'i' } }
-      ];
+      andConditions.push({
+        $or: [
+          { serviceKey: serviceKey },
+          { department: { $regex: serviceKey.replace('-', ' '), $options: 'i' } }
+        ]
+      });
     } else if (department && department !== 'All') {
       query.department = department;
     }
 
     // Search by name, email, or mobile
     if (search) {
-      query.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { mobile: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    // Filter by department
-    if (department && department !== 'All') {
-      query.department = department;
+      andConditions.push({
+        $or: [
+          { fullName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { mobile: { $regex: search, $options: 'i' } }
+        ]
+      });
     }
 
     // Filter by status
@@ -136,6 +136,10 @@ const getStaffList = async (req, res) => {
       query.isActive = true;
     } else if (status === 'Inactive') {
       query.isActive = false;
+    }
+
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);

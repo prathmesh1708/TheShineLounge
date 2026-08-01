@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
+import apiClient from '../../common/utils/apiClient';
 
 import { PrimaryButton, SecondaryButton, FormInput, FormSelect, DatePicker, Toast } from '../components/dogWashUI';
 import { SERVICES, PACKAGES, OFFERS, MOCK_PETS } from '../services/dogWashApi';
@@ -114,19 +115,51 @@ export default function DogWashBookingPage() {
   const nextStep = () => setStep(prev => prev + 1);
   const prevStep = () => setStep(prev => prev - 1);
 
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
     const selectedItem = watchedPackage !== "none"
       ? PACKAGES.find(p => p.id === watchedPackage)?.name
       : SERVICES.find(s => s.id === watchedService)?.name;
     const petObj = MOCK_PETS.find(p => p.id === data.selectedPet) || MOCK_PETS[0];
 
+    const bookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    let customerName = 'Pet Owner';
+    let customerEmail = '';
+    try {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.name) customerName = u.name;
+        if (u.email) customerEmail = u.email;
+      }
+    } catch (e) {}
+
+    const payload = {
+      bookingId,
+      serviceKey: 'dog-wash',
+      serviceName: 'Dog Wash',
+      packageName: selectedItem || 'Dog Hydrobath Spa',
+      price: getFinalTotal(),
+      date: data.bookingDate,
+      timeSlot: 'Walk-In',
+      customerName,
+      customerEmail,
+      vehicleNo: `${petObj.name} (${petObj.breed})`,
+      vehicleType: 'Dog'
+    };
+
+    try {
+      await apiClient.post('/bookings', payload);
+    } catch (err) {
+      console.warn('Error saving dog wash booking in DB:', err.message);
+    }
+
     navigate('/dog-wash/success', {
       state: {
-        bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        bookingId,
         vehicle: `${petObj.name} (${petObj.breed})`,
         item: selectedItem,
         date: data.bookingDate,
-        time: data.bookingTime,
         price: getFinalTotal(),
         address: `${data.address}, ${data.landmark || ''} (Pin: ${data.pincode})`
       }

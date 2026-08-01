@@ -3717,16 +3717,16 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 6px 16px rgba(26, 26, 26, 0.2);
 }
 
-/* --- Sticky Booking CTA --- */
+/* --- Booking CTA --- */
 .carwash-cta-wrapper {
-  margin-top: 0.25rem;
+  margin-top: 0.85rem;
   padding: 0;
 }
 
 .carwash-book-btn {
   width: 100%;
-  padding: 1.1rem;
-  border-radius: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 1.25rem;
   border: none;
   background-color: #FF6B00;
   color: #FAF9F6;
@@ -3736,6 +3736,26 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 6px 20px rgba(255, 107, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.carwash-book-btn-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 0.5rem;
+}
+
+.carwash-book-btn-price {
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(4px);
+  padding: 0.35rem 0.85rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 900;
+  flex-shrink: 0;
 }
 
 .carwash-book-btn:hover {

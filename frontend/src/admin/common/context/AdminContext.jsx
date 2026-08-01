@@ -25,7 +25,23 @@ export const AdminProvider = ({ children }) => {
   const [services, setServices] = useState(initialServices);
   const [banners, setBanners] = useState(initialBanners);
   const [memberships, setMemberships] = useState(initialMemberships);
-  const [staffList, setStaffList] = useState(initialStaff);
+  const [staffList, setStaffList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_admin_staff_list');
+      return saved ? JSON.parse(saved) : initialStaff;
+    } catch (e) {
+      return initialStaff;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tsl_admin_staff_list', JSON.stringify(staffList));
+    } catch (e) {
+      console.warn('Could not save staffList to localStorage:', e);
+    }
+  }, [staffList]);
+
   const [bookings, setBookings] = useState(initialBookings);
   const [customers, setCustomers] = useState(initialCustomers);
   const [inventory, setInventory] = useState(initialInventory);
@@ -327,6 +343,8 @@ export const AdminProvider = ({ children }) => {
         {
           id: newId,
           ...bookingData,
+          serviceKey: bookingData.serviceKey || 'car-wash',
+          serviceName: bookingData.serviceName || 'Car Wash',
           gst: gstVal,
           total: totalVal,
           status: 'Pending',
@@ -347,10 +365,25 @@ export const AdminProvider = ({ children }) => {
         ...newStaff,
         status: 'Active',
         joinedDate: new Date().toISOString().split('T')[0],
-        avatar: newStaff.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+        avatar: newStaff.avatar || newStaff.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
       }
     ]);
     showToast('New staff member added!');
+  };
+
+  const updateStaff = (id, updatedFields) => {
+    setStaffList(prev => prev.map(s => {
+      if (s.id === id || s._id === id || (s.email && updatedFields.email && s.email.toLowerCase() === updatedFields.email.toLowerCase())) {
+        return { ...s, ...updatedFields };
+      }
+      return s;
+    }));
+    showToast('Staff member details updated!');
+  };
+
+  const deleteStaff = (id, email) => {
+    setStaffList(prev => prev.filter(s => s.id !== id && s._id !== id && (!email || s.email?.toLowerCase() !== email.toLowerCase())));
+    showToast('Staff member deleted', 'error');
   };
 
   const toggleStaffStatus = (id) => {
@@ -462,6 +495,8 @@ export const AdminProvider = ({ children }) => {
       assignStaffToBooking,
       addBooking,
       addStaff,
+      updateStaff,
+      deleteStaff,
       toggleStaffStatus,
       addCustomer,
       addInventoryItem,

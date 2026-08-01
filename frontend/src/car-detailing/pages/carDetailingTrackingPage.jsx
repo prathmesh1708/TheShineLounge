@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin, Phone, MessageSquare, Clock, ShieldCheck, Navigation, ArrowLeft } from 'lucide-react';
+import { MapPin, Phone, MessageSquare, Clock, ShieldCheck, Navigation, ArrowLeft, CheckCircle2, PartyPopper, FileText, Sparkles } from 'lucide-react';
 
-import { getTechnician, MOCK_BOOKINGS } from '../services/carDetailingApi';
+import { getTechnician, getBookingById, updateBookingStatus } from '../services/carDetailingApi';
 import { Toast, Drawer } from '../components/carDetailingUI';
+import CarDetailingInvoiceModal from '../components/carDetailingInvoiceModal';
 
 export default function CarDetailingTrackingPage() {
   const navigate = useNavigate();
@@ -15,29 +16,40 @@ export default function CarDetailingTrackingPage() {
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Invoice modal & state
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+
   // Chat drawer and toast states
   const [showChat, setShowChat] = useState(false);
   const [chatMsg, setChatMsg] = useState("");
   const [chatHistory, setChatHistory] = useState([
-    { sender: "tech", msg: "Hello! I am preparing the detailing van. Do you have a water faucet available near the parking?" },
-    { sender: "user", msg: "Yes, there is a dedicated wash bay with a water hookup right in our driveway." }
+    { sender: "tech", msg: "Hello! I am preparing the detailing van with steam unit & ceramic prep kits. Do you have a water faucet nearby?" },
+    { sender: "user", msg: "Yes, we have a water faucet right in our driveway." }
   ]);
 
   const [toastMsg, setToastMsg] = useState("");
   const [toastOpen, setToastOpen] = useState(false);
 
-  useEffect(() => {
-    Promise.all([getTechnician(), getBookingsMock()]).then(([techRes, bookRes]) => {
+  const fetchTrackingDetails = () => {
+    Promise.all([getTechnician(), getBookingById(bookingId)]).then(([techRes, bookRes]) => {
       setTech(techRes);
       setBooking(bookRes);
       setLoading(false);
     });
-  }, [bookingId]);
-
-  const getBookingsMock = () => {
-    const found = MOCK_BOOKINGS.find(b => b.id === bookingId);
-    return Promise.resolve(found || MOCK_BOOKINGS[0]);
   };
+
+  useEffect(() => {
+    fetchTrackingDetails();
+
+    const handleDataChanged = () => {
+      fetchTrackingDetails();
+    };
+
+    window.addEventListener('carDetailingDataChanged', handleDataChanged);
+    return () => {
+      window.removeEventListener('carDetailingDataChanged', handleDataChanged);
+    };
+  }, [bookingId]);
 
   const handleCall = () => {
     setToastMsg(`Calling technician ${tech.name} at ${tech.phone}...`);
@@ -51,19 +63,26 @@ export default function CarDetailingTrackingPage() {
     setChatHistory(prev => [...prev, { sender: "user", msg: chatMsg }]);
     setChatMsg("");
 
-    // Simulate reply after 1.5s
     setTimeout(() => {
-      setChatHistory(prev => [...prev, { sender: "tech", msg: "Perfect, thank you! I'm leaving the workshop now and will arrive shortly." }]);
+      setChatHistory(prev => [...prev, { sender: "tech", msg: "Awesome, thank you! I'm on my way and will arrive shortly." }]);
     }, 1500);
+  };
+
+  const handleSimulateCompletion = async () => {
+    await updateBookingStatus(bookingId, "Completed");
+    setToastMsg("🎉 Notification: Detailing Service Completed! Your vehicle is showroom ready.");
+    setToastOpen(true);
   };
 
   if (loading) {
     return (
       <div className="h-[400px] w-full bg-zinc-50 border border-zinc-200 rounded-24 animate-pulse flex items-center justify-center">
-        <span className="text-zinc-400 font-bold">Loading Tracking Coordinates...</span>
+        <span className="text-zinc-400 font-bold">Loading Detailing GPS Tracking...</span>
       </div>
     );
   }
+
+  const isCompleted = booking?.status === "Completed";
 
   return (
     <motion.div
@@ -72,20 +91,62 @@ export default function CarDetailingTrackingPage() {
       exit={{ opacity: 0 }}
       className="space-y-8 max-w-4xl mx-auto text-zinc-800"
     >
-      {/* Back to Bookings */}
-      <button
-        onClick={() => navigate('/car-detailing/my-bookings')}
-        className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-800 transition-colors font-bold"
-      >
-        <ArrowLeft className="w-4.5 h-4.5" />
-        <span>Back to My Bookings</span>
-      </button>
+      {/* Back to Bookings Header */}
+      <div className="flex justify-between items-center">
+        <button
+          onClick={() => navigate('/car-detailing/my-bookings')}
+          className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-800 transition-colors font-bold"
+        >
+          <ArrowLeft className="w-4.5 h-4.5" />
+          <span>Back to My Bookings</span>
+        </button>
+
+        <button
+          onClick={() => setShowInvoiceModal(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-700 text-xs font-bold rounded-16 shadow-sm transition-all"
+        >
+          <FileText className="w-4 h-4 text-luxury-emerald" />
+          <span>GST Invoice</span>
+        </button>
+      </div>
+
+      {/* Service Completion Notification Banner */}
+      {isCompleted && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-6 bg-emerald-500 text-white rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 relative overflow-hidden"
+        >
+          <div className="flex items-center gap-4 z-10">
+            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 backdrop-blur-md">
+              <PartyPopper className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <span className="text-xs bg-white/20 text-white font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                SERVICE COMPLETION NOTIFICATION
+              </span>
+              <h2 className="text-xl font-black mt-1">Detailing Completed & Verified!</h2>
+              <p className="text-xs text-white/90 font-medium">
+                Your vehicle has been detailed to showroom perfection with 100% satisfaction guarantee.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowInvoiceModal(true)}
+            className="py-3 px-5 bg-white text-emerald-700 hover:bg-emerald-50 rounded-20 text-xs font-extrabold shadow-lg transition-all flex items-center gap-2 z-10 flex-shrink-0"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Download Tax Invoice</span>
+          </button>
+        </motion.div>
+      )}
 
       {/* Grid: Map on Left, Details on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
-        {/* Left Side: Mock Map Container (7 columns) */}
-        <div className="lg:col-span-7 flex flex-col justify-between">
+        {/* Left Side: Live GPS Map Container (7 columns) */}
+        <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
           <div className="relative h-[360px] md:h-[420px] rounded-24 border border-zinc-200 overflow-hidden bg-slate-50 shadow-premium">
             
             {/* Custom map visual */}
@@ -114,23 +175,23 @@ export default function CarDetailingTrackingPage() {
               <div className="w-8 h-8 rounded-full bg-white border border-zinc-250 flex items-center justify-center shadow-premium backdrop-blur-md">
                 <span className="text-[10px]">🏪</span>
               </div>
-              <span className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-wider">Shop</span>
+              <span className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-wider">Studio</span>
             </div>
 
             {/* Tech Moving Vehicle icon */}
             <motion.div
               animate={{
-                x: [340, 360, 350, 340],
-                y: [180, 195, 190, 180]
+                x: isCompleted ? 530 : [340, 360, 350, 340],
+                y: isCompleted ? 280 : [180, 195, 190, 180]
               }}
-              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              transition={{ repeat: isCompleted ? 0 : Infinity, duration: 8, ease: "easeInOut" }}
               className="absolute top-0 left-0 z-10 flex flex-col items-center"
             >
               <div className="w-10 h-10 rounded-full bg-luxury-emerald border border-luxury-emeraldLight/30 flex items-center justify-center shadow-premium text-white animate-bounce">
                 <Navigation className="w-5 h-5 rotate-45 fill-current" />
               </div>
               <span className="text-[10px] bg-luxury-emerald text-white font-extrabold px-2.5 py-0.5 rounded-full mt-1.5 shadow-premium border border-white/10">
-                Detailer Van
+                {isCompleted ? "Detailing Complete" : "Detailer Van"}
               </span>
             </motion.div>
 
@@ -140,7 +201,7 @@ export default function CarDetailingTrackingPage() {
                 <MapPin className="w-5.5 h-5.5 text-blue-500 fill-current" />
               </div>
               <span className="text-[10px] bg-blue-600 text-white font-extrabold px-2.5 py-0.5 rounded-full mt-1.5 shadow-premium">
-                My Home
+                Service Location
               </span>
             </div>
 
@@ -149,8 +210,10 @@ export default function CarDetailingTrackingPage() {
               <div className="flex items-center gap-3">
                 <Clock className="w-5 h-5 text-luxury-emerald" />
                 <div>
-                  <span className="text-[10px] text-zinc-400 block font-bold uppercase">Estimated Arrival</span>
-                  <span className="text-sm font-extrabold text-zinc-800">ETA {booking.eta} (En Route)</span>
+                  <span className="text-[10px] text-zinc-400 block font-bold uppercase">Estimated Timeline</span>
+                  <span className="text-sm font-extrabold text-zinc-800">
+                    {isCompleted ? "Service Finished Successfully" : `ETA ${booking?.eta || '30 mins'} (${booking?.status || 'In Progress'})`}
+                  </span>
                 </div>
               </div>
               <span className="text-[10px] bg-luxury-emerald/10 text-luxury-emerald border border-luxury-emerald/20 font-extrabold uppercase py-1 px-2.5 rounded-full">
@@ -159,9 +222,25 @@ export default function CarDetailingTrackingPage() {
             </div>
 
           </div>
+
+          {/* Quick Progress Simulation Control */}
+          {!isCompleted && (
+            <div className="bg-zinc-50 border border-zinc-200 rounded-20 p-3.5 flex justify-between items-center text-xs">
+              <span className="text-zinc-600 font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-luxury-emerald" />
+                <span>Simulate detailing completion:</span>
+              </span>
+              <button
+                onClick={handleSimulateCompletion}
+                className="py-1.5 px-3 bg-luxury-emerald text-white font-bold rounded-16 text-xs hover:bg-luxury-emeraldHover transition-all shadow-sm"
+              >
+                Complete Detailing Job
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Right Side: Tech Profile & Timeline (5 columns) */}
+        {/* Right Side: Detailer Info & Live Stepper (5 columns) */}
         <div className="lg:col-span-5 space-y-6 flex flex-col justify-between">
           
           {/* Tech Card */}
@@ -209,13 +288,13 @@ export default function CarDetailingTrackingPage() {
 
           {/* Detailed timeline indicator */}
           <div className="bg-white border border-zinc-200/85 rounded-24 p-6 space-y-4 shadow-premium flex-grow">
-            <h3 className="font-bold text-sm text-zinc-800 border-b border-zinc-100 pb-2">detailing Timeline</h3>
+            <h3 className="font-bold text-sm text-zinc-800 border-b border-zinc-100 pb-2">Detailing Progress Stepper</h3>
             <div className="relative pl-6 space-y-4 text-xs font-semibold text-zinc-500">
               
               {/* Vertical connector line */}
               <div className="absolute left-2.5 top-2 bottom-2 w-[1px] bg-zinc-200" />
 
-              {booking.timeline.map((t, idx) => (
+              {(booking?.timeline || []).map((t, idx) => (
                 <div key={idx} className="relative flex justify-between items-start gap-4">
                   {/* Circle check badge */}
                   <div className={`absolute -left-5 w-3.5 h-3.5 rounded-full border transition-all ${
@@ -235,6 +314,13 @@ export default function CarDetailingTrackingPage() {
         </div>
 
       </div>
+
+      {/* Invoice Modal */}
+      <CarDetailingInvoiceModal
+        isOpen={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        booking={booking}
+      />
 
       {/* Chat messages Drawer bottom sheet */}
       <Drawer

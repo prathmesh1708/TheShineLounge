@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Search } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 import CarDetailingHero from '../components/carDetailingHero';
 import CarDetailingCard from '../components/carDetailingCard';
@@ -9,7 +9,6 @@ import { getServicesSync } from '../services/carDetailingApi';
 
 export default function CarDetailingHomePage() {
   const navigate = useNavigate();
-  const [searchVal, setSearchVal] = useState("");
   const [servicesList, setServicesList] = useState(getServicesSync());
 
   useEffect(() => {
@@ -22,15 +21,6 @@ export default function CarDetailingHomePage() {
     };
   }, []);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchVal.trim()) {
-      navigate(`/car-detailing/services?search=${encodeURIComponent(searchVal)}`);
-    } else {
-      navigate('/car-detailing/services');
-    }
-  };
-
   const activeServices = servicesList.filter(s => s.status !== 'inactive');
 
   return (
@@ -40,27 +30,7 @@ export default function CarDetailingHomePage() {
       transition={{ duration: 0.5 }}
       className="space-y-6 md:space-y-8 text-zinc-800"
     >
-      {/* 1. Header Search Bar (matching provided screenshot) */}
-      <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
-        <div className="relative flex-grow">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
-          <input
-            type="text"
-            value={searchVal}
-            onChange={(e) => setSearchVal(e.target.value)}
-            placeholder="Search detailing treatments, steam..."
-            className="w-full py-3.5 pl-12 pr-4 bg-white border border-zinc-200 focus:border-[#FF6B00] rounded-full outline-none text-xs sm:text-sm text-zinc-800 placeholder-zinc-400 shadow-xs transition-all"
-          />
-        </div>
-        <button
-          type="submit"
-          className="px-6 py-3.5 bg-[#FF6B00] hover:bg-[#E66000] text-white text-xs sm:text-sm font-bold rounded-full transition-all shadow-sm flex items-center justify-center"
-        >
-          Search
-        </button>
-      </form>
-
-      {/* 2. Hero Carousel */}
+      {/* Hero Carousel */}
       <CarDetailingHero />
 
       {/* 3. Our Detailing Menu Section */}

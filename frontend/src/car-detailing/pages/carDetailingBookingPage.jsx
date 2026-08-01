@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Car, Package, Calendar, MapPin, Sparkles, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle, Lock, CreditCard, Smartphone, QrCode, Loader2, CheckCircle2, Check, Clock, Tag } from 'lucide-react';
+import { Car, Package, MapPin, ShieldCheck, ChevronRight, ChevronLeft, HelpCircle, Lock, CreditCard, Smartphone, QrCode, Loader2, CheckCircle2, Check, Tag } from 'lucide-react';
 import { useForm } from 'react-hook-form';
+import apiClient from '../../common/utils/apiClient';
 
-import { PrimaryButton, SecondaryButton, FormInput, FormSelect, DatePicker, Toast } from '../components/carDetailingUI';
-import { SERVICES, PACKAGES, OFFERS } from '../services/carDetailingApi';
-
-const ADD_ONS = [
-  { id: "add-engine", name: "Engine Bay Steam Clean", price: 1500, desc: "Safe degreasing and satin polish" },
-  { id: "add-glass", name: "Rain-Repellent Windshield Shield", price: 800, desc: "Aero-nano coating for monsoon rains" },
-  { id: "add-leather", name: "Fine Leather Nourish Wrap", price: 1200, desc: "Aloe-based deep cream leather massage" },
-  { id: "add-light", name: "Oxidized Headlight Correct", price: 2500, desc: "Wet sanding + UV coating clarity" }
-];
+import { PrimaryButton, SecondaryButton, FormInput, FormSelect, Toast } from '../components/carDetailingUI';
+import CarDetailingPaymentGateway from '../components/carDetailingPaymentGateway';
+import { SERVICES, PACKAGES, OFFERS, addBooking, getVehicleTypes, saveVehicleType } from '../services/carDetailingApi';
 
 export default function CarDetailingBookingPage() {
   const navigate = useNavigate();
@@ -21,22 +16,23 @@ export default function CarDetailingBookingPage() {
   const [step, setStep] = useState(1);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [formData, setFormData] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState("card"); // card, upi, pod
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [upiId, setUpiId] = useState("");
+  const [vehicleTypes, setVehicleTypes] = useState(getVehicleTypes());
+
+  useEffect(() => {
+    const syncTypes = () => setVehicleTypes(getVehicleTypes());
+    window.addEventListener('carDetailingVehicleTypesChanged', syncTypes);
+    return () => window.removeEventListener('carDetailingVehicleTypesChanged', syncTypes);
+  }, []);
+
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm({
     defaultValues: {
       vehicleBrand: "",
       vehicleModel: "",
       vehicleType: "Sedan",
+      customVehicleType: "",
       vehicleNumber: "",
       serviceSelection: searchParams.get("service") || SERVICES[0].id,
       packageSelection: searchParams.get("package") || "none",
-      bookingDate: new Date().toISOString().split('T')[0],
-      bookingTime: "08:30 AM - 12:30 PM (Morning)",
       address: "",
       landmark: "",
       pincode: "",
@@ -44,7 +40,6 @@ export default function CarDetailingBookingPage() {
     }
   });
 
-  const [selectedAddons, setSelectedAddons] = useState([]);
   const [discount, setDiscount] = useState(0);
   const [appliedCoupon, setAppliedCoupon] = useState("");
   const [toastMsg, setToastMsg] = useState("");
@@ -55,8 +50,7 @@ export default function CarDetailingBookingPage() {
   const watchedPackage = watch("packageSelection");
   const watchedBrand = watch("vehicleBrand");
   const watchedModel = watch("vehicleModel");
-  const watchedDate = watch("bookingDate");
-  const watchedTime = watch("bookingTime");
+  const watchedVehicleType = watch("vehicleType");
   const watchedCoupon = watch("couponCode");
 
   // Load initial coupon from URL if present
@@ -66,14 +60,6 @@ export default function CarDetailingBookingPage() {
       handleApplyCoupon(urlCoupon);
     }
   }, [searchParams]);
-
-  const toggleAddon = (addon) => {
-    setSelectedAddons(prev =>
-      prev.some(a => a.id === addon.id)
-        ? prev.filter(a => a.id !== addon.id)
-        : [...prev, addon]
-    );
-  };
 
   // Find prices
   const getBasePrice = () => {
@@ -86,12 +72,8 @@ export default function CarDetailingBookingPage() {
     }
   };
 
-  const getAddonsTotal = () => {
-    return selectedAddons.reduce((acc, a) => acc + a.price, 0);
-  };
-
   const getSubtotal = () => {
-    return getBasePrice() + getAddonsTotal();
+    return getBasePrice();
   };
 
   const getTax = () => {
@@ -141,52 +123,120 @@ export default function CarDetailingBookingPage() {
   const prevStep = () => setStep(prev => prev - 1);
 
   const onSubmit = (data) => {
-    setFormData(data);
+    const effectiveVehicleType = data.vehicleType === "Other" && data.customVehicleType
+      ? data.customVehicleType.trim()
+      : data.vehicleType;
+
+    if (data.vehicleType === "Other" && data.customVehicleType?.trim()) {
+      saveVehicleType(data.customVehicleType.trim());
+    }
+
+    const processedData = {
+      ...data,
+      vehicleType: effectiveVehicleType
+    };
+
+    setFormData(processedData);
     setShowPaymentModal(true);
   };
 
-  const handlePaymentSuccess = () => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setShowPaymentModal(false);
-      
-      const selectedItem = watchedPackage !== "none"
-        ? PACKAGES.find(p => p.id === watchedPackage)?.name
-        : SERVICES.find(s => s.id === watchedService)?.name;
+  const handlePaymentSuccess = async (paymentResult = {}) => {
+    const selectedItem = watchedPackage !== "none"
+      ? PACKAGES.find(p => p.id === watchedPackage)?.name
+      : SERVICES.find(s => s.id === watchedService)?.name;
 
-      navigate('/car-detailing/success', {
-        state: {
-          bookingId: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-          vehicle: `${formData.vehicleBrand} ${formData.vehicleModel}`,
-          item: selectedItem,
-          date: formData.bookingDate,
-          time: formData.bookingTime,
-          price: getFinalTotal(),
-          address: `${formData.address}, ${formData.landmark || ''} (Pin: ${formData.pincode})`
-        }
-      });
-    }, 1500);
+    const generatedBookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const totalFinal = getFinalTotal();
+    const isDeposit = paymentResult.paymentOption === "deposit";
+    const depositAmount = paymentResult.paidAmount || (isDeposit ? Math.round(totalFinal * 0.25) : totalFinal);
+    const remainingAmount = paymentResult.remainingAmount || (isDeposit ? totalFinal - depositAmount : 0);
+    const paymentStatusText = paymentResult.paymentStatus || (isDeposit ? "Deposit Paid" : "Fully Paid");
+
+    const bookingObject = {
+      id: generatedBookingId,
+      package: selectedItem || 'Paint Protection Film (PPF)',
+      price: totalFinal,
+      paymentType: paymentStatusText,
+      depositAmount: depositAmount,
+      remainingAmount: remainingAmount,
+      paymentStatus: paymentStatusText,
+      customerName: formData?.fullName || 'Car Owner',
+      vehicle: `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`.trim() || 'Vehicle',
+      vehicleNo: formData?.vehicleNumber || 'MP-09-AB-1234',
+      vehicleType: formData?.vehicleType || 'Sedan',
+      location: `${formData?.address || ''}, ${formData?.landmark || ''} (Pin: ${formData?.pincode || ''})`,
+    };
+
+    // Save into localStorage persistent store
+    await addBooking(bookingObject);
+
+    const payload = {
+      bookingId: generatedBookingId,
+      serviceKey: 'car-detailing',
+      serviceName: 'Car Detailing',
+      packageName: selectedItem || 'Paint Protection Film (PPF)',
+      price: totalFinal,
+      customerName: formData?.fullName || 'Car Owner',
+      customerEmail: formData?.email || '',
+      vehicleNo: formData?.vehicleNumber || `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`.trim() || 'MP-09-AB-1234',
+      vehicleType: formData?.vehicleType || 'Car'
+    };
+
+    try {
+      await apiClient.post('/bookings', payload);
+    } catch (err) {
+      console.warn('Error creating car detailing booking in DB:', err.message);
+    }
+
+    setShowPaymentModal(false);
+
+    navigate('/car-detailing/success', {
+      state: {
+        bookingId: generatedBookingId,
+        vehicle: `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`,
+        item: selectedItem,
+        price: totalFinal,
+        paidAmount: depositAmount,
+        remainingAmount: remainingAmount,
+        paymentStatus: paymentStatusText,
+        address: `${formData?.address || ''}, ${formData?.landmark || ''} (Pin: ${formData?.pincode || ''})`
+      }
+    });
   };
 
-  const stepsList = ["Vehicle", "Service Selection", "Date & Slots", "Add-ons", "Address", "Checkout"];
+  const stepsList = ["Vehicle", "Service Selection", "Address", "Checkout"];
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="max-w-4xl mx-auto space-y-8 text-zinc-800"
+      className="max-w-4xl mx-auto space-y-4 sm:space-y-6 text-zinc-800"
     >
-      {/* Back Button */}
-      <div className="flex items-center">
-        <button
-          onClick={() => navigate('/car-detailing')}
-          className="flex items-center justify-center w-10 h-10 bg-white border border-zinc-200/80 rounded-full text-zinc-650 hover:bg-zinc-50 shadow-sm transition-all"
-          aria-label="Back"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
+      {/* Header Bar with Back Button */}
+      <div className="flex items-center justify-between gap-3 bg-white border border-zinc-200/80 rounded-20 p-3.5 sm:p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/car-detailing')}
+            className="flex items-center justify-center w-9 h-9 bg-zinc-50 border border-zinc-200 rounded-full text-zinc-700 hover:bg-zinc-100 transition-all shrink-0"
+            aria-label="Back"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-base sm:text-lg font-black text-zinc-900 tracking-tight leading-tight">
+              Book Car Detailing
+            </h1>
+            <p className="text-[11px] text-zinc-400 font-semibold hidden sm:block">
+              Showroom detailing treatment & customization
+            </p>
+          </div>
+        </div>
+
+        <span className="text-xs font-extrabold text-luxury-emerald bg-luxury-emerald/10 px-3 py-1 rounded-full border border-luxury-emerald/20 shrink-0">
+          Step {step} of 4: {stepsList[step - 1]}
+        </span>
       </div>
 
       {/* Steps Indicator Progress Bar */}
@@ -260,7 +310,7 @@ export default function CarDetailingBookingPage() {
                     name="vehicleType"
                     register={register}
                     errors={errors}
-                    options={["Hatchback", "Sedan", "SUV", "Luxury / Sports"]}
+                    options={[...vehicleTypes, "Other"]}
                     required
                   />
                   <FormInput
@@ -272,6 +322,27 @@ export default function CarDetailingBookingPage() {
                     required
                   />
                 </div>
+
+                {watchedVehicleType === "Other" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-20 space-y-2"
+                  >
+                    <FormInput
+                      label="Specify Custom Vehicle Type"
+                      name="customVehicleType"
+                      placeholder="e.g. Pickup Truck, Convertible, Off-Road 4x4, Van"
+                      register={register}
+                      errors={errors}
+                      required
+                    />
+                    <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
+                      <span>💡 This vehicle type will be saved with your booking and registered for detailers & admin management.</span>
+                    </p>
+                  </motion.div>
+                )}
               </motion.div>
             )}
 
@@ -320,101 +391,10 @@ export default function CarDetailingBookingPage() {
               </motion.div>
             )}
 
-            {/* Step 3: Date & Slots */}
+            {/* Step 3: Address Form */}
             {step === 3 && (
               <motion.div
                 key="step3"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="space-y-6"
-              >
-                <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
-                  <Calendar className="w-5 h-5 text-luxury-emerald" />
-                  <span>3. Booking Date & Time Slot</span>
-                </h3>
-
-                <DatePicker
-                  value={watchedDate}
-                  onChange={(dateStr) => setValue("bookingDate", dateStr)}
-                />
-
-                <div className="space-y-3.5">
-                  <label className="text-sm font-semibold text-zinc-650 ml-1">Choose Time Slot</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {["08:30 AM - 12:30 PM (Morning)", "01:00 PM - 05:00 PM (Afternoon)"].map((slot, idx) => {
-                      const isSelected = watchedTime === slot;
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setValue("bookingTime", slot)}
-                          className={`py-3.5 px-4 text-xs font-bold rounded-20 border transition-all ${
-                            isSelected
-                              ? 'bg-luxury-emerald border-luxury-emerald text-white'
-                              : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 shadow-sm'
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Step 4: Add-ons */}
-            {step === 4 && (
-              <motion.div
-                key="step4"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="space-y-5"
-              >
-                <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
-                  <Sparkles className="w-5 h-5 text-luxury-emerald" />
-                  <span>4. Choose Optional Add-ons</span>
-                </h3>
-                <p className="text-xs text-zinc-500 font-semibold">Add these detailers specialties to complete your car preservation.</p>
-
-                <div className="space-y-3">
-                  {ADD_ONS.map((addon) => {
-                    const isChecked = selectedAddons.some(a => a.id === addon.id);
-                    return (
-                      <div
-                        key={addon.id}
-                        onClick={() => toggleAddon(addon)}
-                        className={`p-4 rounded-20 border cursor-pointer flex justify-between items-center transition-all shadow-sm ${
-                          isChecked
-                            ? 'bg-luxury-emerald/5 border-luxury-emerald'
-                            : 'bg-white border-zinc-200 hover:border-zinc-300'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <h4 className="font-bold text-sm text-zinc-800">{addon.name}</h4>
-                          <p className="text-[11px] text-zinc-500 font-medium">{addon.desc}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-extrabold text-sm text-zinc-800">+₹{addon.price}</span>
-                          <div className={`w-5 h-5 rounded-full border mt-1.5 flex items-center justify-center mx-auto transition-colors ${
-                            isChecked ? 'bg-luxury-emerald border-luxury-emerald text-white' : 'border-zinc-300'
-                          }`}>
-                            {isChecked && <span className="text-[9px]">✔</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
-
-            {/* Step 5: Address Form */}
-            {step === 5 && (
-              <motion.div
-                key="step5"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
@@ -422,7 +402,7 @@ export default function CarDetailingBookingPage() {
               >
                 <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
                   <MapPin className="w-5 h-5 text-luxury-emerald" />
-                  <span>5. Address & Landmark details</span>
+                  <span>3. Address & Landmark details</span>
                 </h3>
 
                 <FormInput
@@ -436,7 +416,7 @@ export default function CarDetailingBookingPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormInput
-                    label="Landmark (Optional)"
+                    label="Landmark"
                     name="landmark"
                     placeholder="e.g. Near Vijay Nagar Police Station"
                     register={register}
@@ -454,10 +434,10 @@ export default function CarDetailingBookingPage() {
               </motion.div>
             )}
 
-            {/* Step 6: Booking Summary & Final Coupon Check */}
-            {step === 6 && (
+            {/* Step 4: Booking Summary & Final Coupon Check */}
+            {step === 4 && (
               <motion.div
-                key="step6"
+                key="step4"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
@@ -465,7 +445,7 @@ export default function CarDetailingBookingPage() {
               >
                 <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
                   <ShieldCheck className="w-5 h-5 text-luxury-emerald" />
-                  <span>6. Review & Checkout</span>
+                  <span>4. Review & Checkout</span>
                 </h3>
 
                 {/* Info summary layout */}
@@ -475,10 +455,6 @@ export default function CarDetailingBookingPage() {
                     <strong className="text-zinc-800">{watchedBrand} {watchedModel}</strong>
                   </div>
                   <div className="flex justify-between border-b border-zinc-150 pb-2">
-                    <span className="text-zinc-500 font-semibold">Scheduled slot</span>
-                    <strong className="text-zinc-800">{watchedDate} @ {watchedTime}</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-zinc-150 pb-2">
                     <span className="text-zinc-500 font-semibold">Detailing Choice</span>
                     <strong className="text-zinc-800">
                       {watchedPackage !== "none"
@@ -486,15 +462,6 @@ export default function CarDetailingBookingPage() {
                         : SERVICES.find(s => s.id === watchedService)?.name}
                     </strong>
                   </div>
-                  
-                  {selectedAddons.length > 0 && (
-                    <div className="flex justify-between border-b border-zinc-150 pb-2">
-                      <span className="text-zinc-500 font-semibold">Add-ons Selected</span>
-                      <span className="text-right text-zinc-800 font-bold">
-                        {selectedAddons.map(a => a.name).join(", ")}
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Coupon Code section */}
@@ -541,7 +508,7 @@ export default function CarDetailingBookingPage() {
               </SecondaryButton>
             )}
 
-            {step < 6 ? (
+            {step < 4 ? (
               <PrimaryButton onClick={nextStep} className={step === 1 ? 'w-full' : 'w-1/2'} icon={<ChevronRight className="w-5 h-5" />}>
                 <span>Continue</span>
               </PrimaryButton>
@@ -565,13 +532,6 @@ export default function CarDetailingBookingPage() {
               <span>Detailing Base Price</span>
               <span className="text-zinc-800">₹{getBasePrice()}</span>
             </div>
-
-            {selectedAddons.length > 0 && (
-              <div className="flex justify-between">
-                <span>Add-ons Total</span>
-                <span className="text-zinc-800">+₹{getAddonsTotal()}</span>
-              </div>
-            )}
 
             <div className="flex justify-between">
               <span>GST Tax (18%)</span>
@@ -603,207 +563,18 @@ export default function CarDetailingBookingPage() {
 
       </form>
 
-      {/* Secure Payment Modal */}
-      <AnimatePresence>
-        {showPaymentModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-white border border-zinc-200 rounded-24 p-6 sm:p-8 max-w-md w-full shadow-2xl relative overflow-hidden flex flex-col justify-between"
-            >
-              {isProcessing ? (
-                <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
-                  <Loader2 className="w-12 h-12 text-luxury-emerald animate-spin" />
-                  <h3 className="text-xl font-extrabold text-zinc-800">Processing Payment</h3>
-                  <p className="text-sm text-zinc-500 font-semibold max-w-xs">
-                    Please do not close this window or refresh the page while we authenticate your transaction with your bank...
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Header */}
-                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800">
-                      <Lock className="w-5 h-5 text-luxury-emerald" />
-                      <span>Secure Payment Gateway</span>
-                    </h3>
-                    <button
-                      onClick={() => setShowPaymentModal(false)}
-                      className="text-zinc-450 hover:text-zinc-600 text-sm font-bold p-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  {/* Pricing summary */}
-                  <div className="bg-luxury-emerald/5 border border-luxury-emerald/10 rounded-20 p-4 flex justify-between items-center">
-                    <span className="text-sm text-zinc-600 font-bold">Total Amount (INR)</span>
-                    <span className="text-2xl font-extrabold text-luxury-emerald">₹{getFinalTotal()}</span>
-                  </div>
-
-                  {/* Payment Method Selector */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("card")}
-                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
-                        paymentMethod === "card"
-                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
-                          : "border-zinc-200 text-zinc-500 bg-white"
-                      }`}
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span>Card</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("upi")}
-                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
-                        paymentMethod === "upi"
-                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
-                          : "border-zinc-200 text-zinc-500 bg-white"
-                      }`}
-                    >
-                      <Smartphone className="w-4 h-4" />
-                      <span>UPI / QR</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("pod")}
-                      className={`py-2 px-3 border rounded-16 text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
-                        paymentMethod === "pod"
-                          ? "border-luxury-emerald bg-luxury-emerald/5 text-luxury-emerald"
-                          : "border-zinc-200 text-zinc-500 bg-white"
-                      }`}
-                    >
-                      <MapPin className="w-4 h-4" />
-                      <span>Pay Later</span>
-                    </button>
-                  </div>
-
-                  {/* Forms based on method */}
-                  <div className="space-y-4 pt-2 border-t border-zinc-100 min-h-[160px] flex flex-col justify-center">
-                    {paymentMethod === "card" && (
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">Card Number</label>
-                          <input
-                            type="text"
-                            placeholder="4111 2222 3333 4444"
-                            maxLength={19}
-                            value={cardNumber}
-                            onChange={(e) => {
-                              const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                              const matches = v.match(/\d{4,16}/g);
-                              const match = matches && matches[0] || '';
-                              const parts = [];
-                              for (let i=0, len=match.length; i<len; i+=4) {
-                                parts.push(match.substring(i, i+4));
-                              }
-                              if (parts.length > 0) {
-                                setCardNumber(parts.join(' '));
-                              } else {
-                                setCardNumber(v);
-                              }
-                            }}
-                            className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">Expiry Date</label>
-                            <input
-                              type="text"
-                              placeholder="MM/YY"
-                              maxLength={5}
-                              value={cardExpiry}
-                              onChange={(e) => {
-                                const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                                if (v.length >= 2) {
-                                  setCardExpiry(v.substring(0,2) + '/' + v.substring(2,4));
-                                } else {
-                                  setCardExpiry(v);
-                                }
-                              }}
-                              className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">CVV</label>
-                            <input
-                              type="password"
-                              placeholder="123"
-                              maxLength={3}
-                              value={cardCvv}
-                              onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/gi, ''))}
-                              className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {paymentMethod === "upi" && (
-                      <div className="space-y-4 flex flex-col items-center">
-                        <div className="space-y-1 w-full">
-                          <label className="text-[10px] font-bold text-zinc-400 uppercase ml-1">UPI ID</label>
-                          <input
-                            type="text"
-                            placeholder="username@upi"
-                            value={upiId}
-                            onChange={(e) => setUpiId(e.target.value)}
-                            className="w-full py-3 px-4 bg-zinc-50 border border-zinc-200 rounded-16 outline-none focus:border-luxury-emerald text-sm text-zinc-800 font-semibold"
-                          />
-                        </div>
-                        <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-20 p-3 w-full">
-                          <QrCode className="w-10 h-10 text-luxury-emerald flex-shrink-0" />
-                          <div className="text-[10px] sm:text-xs font-semibold text-zinc-500">
-                            Or scan the dynamic QR code during checkout. Confirm booking after complete scanning.
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {paymentMethod === "pod" && (
-                      <div className="text-center p-4 bg-zinc-50 border border-zinc-200 rounded-20 space-y-1.5">
-                        <h4 className="font-bold text-sm text-zinc-800">Pay on Detailing (POD)</h4>
-                        <p className="text-xs text-zinc-500 leading-relaxed font-semibold">
-                          Book now and pay via UPI, Card, or Cash on site once the detailing is completed by our technician.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer CTAs */}
-                  <div className="flex gap-4 border-t border-zinc-150 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowPaymentModal(false)}
-                      className="w-1/2 py-3.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold rounded-20 text-xs sm:text-sm shadow-sm transition-all"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePaymentSuccess}
-                      className="w-1/2 py-3.5 bg-luxury-emerald hover:bg-luxury-emeraldHover text-white font-bold rounded-20 text-xs sm:text-sm shadow-premium transition-all"
-                    >
-                      {paymentMethod === "pod" ? "Confirm Booking" : "Pay & Confirm"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Responsive Payment Gateway Modal */}
+      <CarDetailingPaymentGateway
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        totalAmount={getFinalTotal()}
+        bookingDetails={{
+          item: watchedPackage !== "none"
+            ? PACKAGES.find(p => p.id === watchedPackage)?.name
+            : SERVICES.find(s => s.id === watchedService)?.name
+        }}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
 
       {/* Feedback Toast */}
       <Toast

@@ -18,7 +18,11 @@ import {
   Scissors,
   Upload,
   Link as LinkIcon,
-  X
+  X,
+  UserPlus,
+  Phone,
+  Mail,
+  MapPin
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,6 +38,7 @@ import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import apiClient from '../../../common/utils/apiClient';
 import {
   getServicesSync,
   saveService,
@@ -58,7 +63,10 @@ export default function SalonAdminHubPage() {
     addServicePlan,
     deleteServicePlan,
     addBooking,
+    updateBookingStatus,
     addStaff,
+    updateStaff,
+    deleteStaff,
     addBanner,
     addInventoryItem,
     showToast
@@ -73,6 +81,20 @@ export default function SalonAdminHubPage() {
   const [salonTimeSlots, setSalonTimeSlots] = useState(getTimeSlotsSync());
   const categoriesList = getCategoriesSync();
 
+  // Dynamic Staff State
+  const [dbStaff, setDbStaff] = useState([]);
+
+  const fetchLiveStaff = async () => {
+    try {
+      const res = await apiClient.get('/users/staff?serviceKey=salon');
+      if (res.data && res.data.staff) {
+        setDbStaff(res.data.staff);
+      }
+    } catch (err) {
+      console.warn('Could not fetch live salon staff list:', err.message);
+    }
+  };
+
   useEffect(() => {
     if (searchParams.get('tab')) {
       setActiveTabState(searchParams.get('tab'));
@@ -80,6 +102,7 @@ export default function SalonAdminHubPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    fetchLiveStaff();
     const syncData = () => {
       setSalonServices(getServicesSync());
       setSalonTimeSlots(getTimeSlotsSync());
@@ -90,7 +113,6 @@ export default function SalonAdminHubPage() {
     };
   }, []);
 
-
   const handleTabChange = (tabId) => {
     setActiveTabState(tabId);
     setSearchParams({ tab: tabId });
@@ -99,8 +121,19 @@ export default function SalonAdminHubPage() {
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
   const serviceMain = services.find(s => s.key === serviceKey) || services[0];
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
+  const serviceBookings = bookings.filter(b => b.serviceKey === 'salon' || (b.serviceName && b.serviceName.toLowerCase().includes('salon')));
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
+
+  const allSalonStaffMap = new Map();
+  dbStaff.forEach(s => allSalonStaffMap.set(s.email || s._id || s.id, s));
+  serviceStaff.forEach(s => {
+    const key = s.email || s.id || s._id;
+    if (key && !allSalonStaffMap.has(key)) {
+      allSalonStaffMap.set(key, s);
+    }
+  });
+  const mergedSalonStaff = Array.from(allSalonStaffMap.values());
+
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
@@ -108,6 +141,281 @@ export default function SalonAdminHubPage() {
   const [editingPriceModal, setEditingPriceModal] = useState(false);
   const [selectedServiceItem, setSelectedServiceItem] = useState(null);
   const [newPrice, setNewPrice] = useState(0);
+
+  const [addBookingModal, setAddBookingModal] = useState(false);
+  const [newBookingForm, setNewBookingForm] = useState({
+    customerName: '',
+    phone: '',
+    stylist: 'Tahir Khan',
+    plan: 'Executive Haircut',
+    amount: 499,
+    timeSlot: 'Today 03:00 PM'
+  });
+
+  const handleCreateBooking = (e) => {
+    e.preventDefault();
+    if (!newBookingForm.customerName) return;
+
+    addBooking({
+      serviceKey: 'salon',
+      serviceName: 'Men\'s Salon',
+      customerName: newBookingForm.customerName,
+      phone: newBookingForm.phone,
+      vehicleNo: `Stylist: ${newBookingForm.stylist || 'Any Specialist'}`,
+      plan: newBookingForm.plan,
+      amount: Number(newBookingForm.amount),
+      timeSlot: newBookingForm.timeSlot
+    });
+
+    setAddBookingModal(false);
+    setNewBookingForm({
+      customerName: '',
+      phone: '',
+      stylist: 'Tahir Khan',
+      plan: 'Executive Haircut',
+      amount: 499,
+      timeSlot: 'Today 03:00 PM'
+    });
+  };
+
+  // Add Staff Modal State
+  const [addStaffModal, setAddStaffModal] = useState(false);
+  const [staffForm, setStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Salon Styling Master',
+    salary: '₹45,000 / month',
+    leaveBalance: 12,
+    photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
+    permissions: ['bookings', 'orders']
+  });
+
+  // Edit Staff Modal States
+  const [editStaffModal, setEditStaffModal] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [editStaffForm, setEditStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Salon Styling Master',
+    salary: '₹45,000 / month',
+    leaveBalance: 12,
+    photo: '',
+    permissions: []
+  });
+  const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details');
+
+  const handleGeneratePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+    let pwd = '';
+    for (let i = 0; i < 10; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setStaffForm(prev => ({ ...prev, password: pwd }));
+  };
+
+  const handleStaffPhotoUpload = (e, isEdit = false) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        if (showToast) showToast('Image size should be less than 5MB', 'error');
+        else alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (isEdit) {
+          setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+        } else {
+          setStaffForm(prev => ({ ...prev, photo: reader.result }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePermissionToggle = (perm) => {
+    setStaffForm(prev => {
+      const current = prev.permissions;
+      if (current.includes(perm)) {
+        return { ...prev, permissions: current.filter(p => p !== perm) };
+      } else {
+        return { ...prev, permissions: [...current, perm] };
+      }
+    });
+  };
+
+  const handleSaveNewStaff = async (e) => {
+    e.preventDefault();
+    if (!staffForm.fullName || !staffForm.email || !staffForm.password) {
+      alert('Please fill out Name, Email ID, and Password');
+      return;
+    }
+
+    try {
+      const res = await apiClient.post('/users/staff', {
+        fullName: staffForm.fullName,
+        email: staffForm.email,
+        password: staffForm.password,
+        mobile: staffForm.mobile,
+        department: 'Men\'s Salon',
+        serviceKey: 'salon',
+        staffRole: staffForm.staffRole,
+        salary: staffForm.salary,
+        leaveBalance: Number(staffForm.leaveBalance),
+        photo: staffForm.photo,
+        permissions: staffForm.permissions
+      });
+
+      if (res.data && res.data.success) {
+        alert(`✅ Staff member onboarded successfully!\n\nStaff Email: ${staffForm.email}\nPassword: ${staffForm.password}\n\nStaff can now log in at /staff/login.`);
+        
+        // Sync with global AdminContext & localStorage
+        addStaff({
+          fullName: staffForm.fullName,
+          name: staffForm.fullName,
+          email: staffForm.email,
+          mobile: staffForm.mobile,
+          serviceKey: 'salon',
+          department: 'Men\'s Salon',
+          staffRole: staffForm.staffRole,
+          role: staffForm.staffRole,
+          salary: staffForm.salary,
+          photo: staffForm.photo,
+          permissions: staffForm.permissions
+        });
+
+        fetchLiveStaff();
+        setAddStaffModal(false);
+        setStaffForm({
+          fullName: '',
+          email: '',
+          password: '',
+          mobile: '',
+          staffRole: 'Salon Styling Master',
+          salary: '₹45,000 / month',
+          leaveBalance: 12,
+          photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
+          permissions: ['bookings', 'orders']
+        });
+      } else {
+        alert(`Error: ${res.data?.message || 'Could not create staff'}`);
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
+      alert(`Error: ${errMsg}`);
+    }
+  };
+
+  const handleOpenEditStaff = async (stf) => {
+    setSelectedStaff(stf);
+    setEditStaffForm({
+      fullName: stf.fullName || stf.name || '',
+      email: stf.email || '',
+      password: '',
+      mobile: stf.mobile || '',
+      staffRole: stf.staffRole || stf.role || 'Salon Styling Master',
+      salary: stf.salary || '₹45,000 / month',
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      photo: stf.photo || stf.avatar || stf.profileImage || '',
+      permissions: stf.permissions || []
+    });
+    setStaffAttendanceLogs([]);
+    setActiveStaffModalTab('details');
+    setEditStaffModal(true);
+
+    const sId = stf._id || stf.id;
+    if (sId && !sId.toString().startsWith('STF-')) {
+      try {
+        const res = await apiClient.get(`/attendance/staff/${sId}`);
+        if (res.data && res.data.attendance) {
+          setStaffAttendanceLogs(res.data.attendance);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff attendance history:', err.message);
+      }
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!selectedStaff) return;
+
+    const payload = {
+      fullName: editStaffForm.fullName,
+      name: editStaffForm.fullName,
+      email: editStaffForm.email,
+      mobile: editStaffForm.mobile,
+      staffRole: editStaffForm.staffRole,
+      role: editStaffForm.staffRole,
+      salary: editStaffForm.salary,
+      leaveBalance: Number(editStaffForm.leaveBalance),
+      photo: editStaffForm.photo,
+      permissions: editStaffForm.permissions
+    };
+    if (editStaffForm.password) {
+      payload.password = editStaffForm.password;
+    }
+
+    // 1. Update local AdminContext & LocalStorage
+    if (updateStaff) {
+      updateStaff(sId, payload);
+    }
+
+    // Update local dbStaff state so UI reflects changes immediately
+    setDbStaff(prev => prev.map(st => (st._id === sId || st.id === sId || (st.email && st.email.toLowerCase() === editStaffForm.email.toLowerCase())) ? { ...st, ...payload } : st));
+
+    // 2. Try updating backend database if valid ID
+    try {
+      if (sId && String(sId).length === 24) {
+        const res = await apiClient.put(`/users/staff/${sId}`, payload);
+        if (res.data && res.data.success) {
+          fetchLiveStaff();
+        }
+      }
+    } catch (err) {
+      console.warn('Backend update failed, using local update fallback:', err.message);
+    }
+
+    if (showToast) showToast(`✅ Staff member updated successfully!`);
+    else alert('✅ Staff member updated successfully!');
+    setEditStaffModal(false);
+  };
+
+  const handleDeleteStaff = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!selectedStaff) return;
+
+    const confirmDel = window.confirm(`Are you sure you want to delete "${editStaffForm.fullName || selectedStaff.fullName || selectedStaff.name}"?`);
+    if (!confirmDel) return;
+
+    // 1. Remove from local AdminContext & LocalStorage
+    if (deleteStaff) {
+      deleteStaff(sId, editStaffForm.email);
+    }
+
+    // Update local dbStaff state immediately
+    setDbStaff(prev => prev.filter(st => st._id !== sId && st.id !== sId && st.email?.toLowerCase() !== editStaffForm.email?.toLowerCase()));
+
+    // 2. Try deleting from backend if valid ID
+    try {
+      if (sId && String(sId).length === 24) {
+        await apiClient.delete(`/users/staff/${sId}`);
+        fetchLiveStaff();
+      }
+    } catch (err) {
+      console.warn('Backend delete failed, using local delete fallback:', err.message);
+    }
+
+    if (showToast) showToast(`✅ Staff member deleted successfully!`, 'error');
+    else alert('✅ Staff member deleted successfully!');
+    setEditStaffModal(false);
+  };
 
   const [addServiceModal, setAddServiceModal] = useState(false);
   const [serviceForm, setServiceForm] = useState({
@@ -583,32 +891,129 @@ export default function SalonAdminHubPage() {
 
       {/* TAB 3: BOOKINGS */}
       {activeTab === 'bookings' && (
-        <DataTable
-          columns={[
-            { header: 'ID', accessorKey: 'id' },
-            { header: 'Customer', accessorKey: 'customerName' },
-            { header: 'Service', accessorKey: 'service' },
-            { header: 'Slot', accessorKey: 'timeSlot' },
-            { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total || r.amount}</span> },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceBookings}
-          searchPlaceholder="Search Bookings..."
-        />
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Salon Appointments ({serviceBookings.length})</h3>
+              <p className="text-xs text-gray-500">Live view and status tracking for hair, beard & grooming appointments</p>
+            </div>
+            <button
+              onClick={() => setAddBookingModal(true)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" /> New Salon Booking
+            </button>
+          </div>
+
+          <DataTable
+            columns={[
+              { header: 'Booking ID', accessorKey: 'id', cell: (r) => <span className="font-mono font-bold text-gray-900">{r.id}</span> },
+              { header: 'Customer & Stylist', accessorKey: 'customerName', cell: (r) => (
+                <div>
+                  <p className="font-bold text-gray-900">{r.customerName}</p>
+                  <p className="text-[10px] text-gray-400 font-semibold">{r.vehicleNo || r.phone || 'Salon Client'}</p>
+                </div>
+              )},
+              { header: 'Treatment / Service', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },
+              { header: 'Date & Slot', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.date || r.timeSlot || 'Today'}</span> },
+              { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+              { header: 'Status', accessorKey: 'status', cell: (r) => (
+                <select
+                  value={r.status || 'Confirmed'}
+                  onChange={(e) => updateBookingStatus(r.id, e.target.value)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold cursor-pointer border-0 shadow-xs focus:ring-2 focus:ring-amber-500 ${
+                    r.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                    r.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                    r.status === 'Confirmed' ? 'bg-amber-100 text-amber-800' :
+                    r.status === 'Cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              )}
+            ]}
+            data={serviceBookings}
+            searchPlaceholder="Search Salon Bookings..."
+          />
+        </div>
       )}
 
       {/* TAB 4: STAFF */}
       {activeTab === 'staff' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {serviceStaff.map(stf => (
-            <div key={stf.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
-              <img src={stf.avatar} className="w-12 h-12 rounded-full object-cover" />
-              <div>
-                <h4 className="font-bold text-xs">{stf.name}</h4>
-                <p className="text-[10px] text-gray-500">{stf.role}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900">
+                Men's Salon Department Staff ({mergedSalonStaff.length})
+              </h3>
+              <p className="text-xs text-gray-500">
+                Onboard styling specialists & barbers, generate email login credentials & assign module access
+              </p>
             </div>
-          ))}
+            <button
+              onClick={() => setAddStaffModal(true)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <UserPlus className="w-4 h-4" /> Onboard New Staff Member
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {mergedSalonStaff.map((stf) => (
+              <div 
+                key={stf._id || stf.id} 
+                onClick={() => handleOpenEditStaff(stf)}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <img
+                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80"}
+                    alt={stf.fullName || stf.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                  />
+                  <div className="space-y-1 overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {stf.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Salon Styling Master'}</p>
+                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                    <span className="font-bold text-gray-800 flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98210 77777'}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                    <span className="font-bold text-emerald-700">{stf.salary || '₹45,000 / month'}</span>
+                  </div>
+                </div>
+
+                {stf.permissions && stf.permissions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {stf.permissions.map(p => (
+                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1148,6 +1553,478 @@ export default function SalonAdminHubPage() {
             {selectedSlotItem ? "Update Time Slot" : "Save & Add Time Slot"}
           </button>
         </form>
+      </AdminModal>
+
+      {/* MODAL: ADD SALON BOOKING */}
+      <AdminModal isOpen={addBookingModal} onClose={() => setAddBookingModal(false)} title="New Salon Booking">
+        <form onSubmit={handleCreateBooking} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Customer Name *</label>
+            <input
+              type="text"
+              required
+              value={newBookingForm.customerName}
+              onChange={e => setNewBookingForm({ ...newBookingForm, customerName: e.target.value })}
+              className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              placeholder="e.g. Sanjay Dutt"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Phone Number</label>
+              <input
+                type="text"
+                value={newBookingForm.phone}
+                onChange={e => setNewBookingForm({ ...newBookingForm, phone: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="+91 99300 44556"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Stylist / Specialist</label>
+              <input
+                type="text"
+                value={newBookingForm.stylist}
+                onChange={e => setNewBookingForm({ ...newBookingForm, stylist: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="Tahir Khan"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Treatment / Service</label>
+            <input
+              type="text"
+              value={newBookingForm.plan}
+              onChange={e => setNewBookingForm({ ...newBookingForm, plan: e.target.value })}
+              className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              placeholder="e.g. Executive Haircut"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Total Amount (₹)</label>
+              <input
+                type="number"
+                required
+                value={newBookingForm.amount}
+                onChange={e => setNewBookingForm({ ...newBookingForm, amount: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Time Slot / Schedule</label>
+              <input
+                type="text"
+                value={newBookingForm.timeSlot}
+                onChange={e => setNewBookingForm({ ...newBookingForm, timeSlot: e.target.value })}
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="Today 03:00 PM"
+              />
+            </div>
+          </div>
+          <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAddBookingModal(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs"
+            >
+              Create Salon Booking
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Onboard New Staff Member */}
+      <AdminModal isOpen={addStaffModal} onClose={() => setAddStaffModal(false)} title="Onboard New Staff Member">
+        <form onSubmit={handleSaveNewStaff} className="space-y-4 text-xs p-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.fullName}
+                onChange={e => setStaffForm({ ...staffForm, fullName: e.target.value })}
+                placeholder="e.g. Tahir Khan"
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.staffRole}
+                onChange={e => setStaffForm({ ...staffForm, staffRole: e.target.value })}
+                placeholder="Salon Styling Master"
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+              <input
+                type="email"
+                required
+                value={staffForm.email}
+                onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
+                placeholder="tahir@theshinelounge.com"
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="font-bold text-gray-700">Login Password *</label>
+                <button
+                  type="button"
+                  onClick={handleGeneratePassword}
+                  className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                >
+                  ⚡ Auto Generate
+                </button>
+              </div>
+              <input
+                type="text"
+                required
+                value={staffForm.password}
+                onChange={e => setStaffForm({ ...staffForm, password: e.target.value })}
+                placeholder="Staff!@#123"
+                className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-amber-50/40"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+              <input
+                type="text"
+                value={staffForm.mobile}
+                onChange={e => setStaffForm({ ...staffForm, mobile: e.target.value })}
+                placeholder="+91 98210 77777"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <input
+                type="text"
+                value={staffForm.salary}
+                onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
+                placeholder="₹45,000 / month"
+                className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <input
+                type="number"
+                value={staffForm.leaveBalance}
+                onChange={e => setStaffForm({ ...staffForm, leaveBalance: e.target.value })}
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Staff Profile Photo</label>
+            <div className="flex items-center gap-3 p-2 bg-gray-50 border rounded-xl">
+              <img
+                src={staffForm.photo || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80"}
+                alt="Staff Preview"
+                className="w-12 h-12 rounded-full object-cover border border-amber-500/40 shrink-0"
+              />
+              <div className="flex-1 space-y-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleStaffPhotoUpload(e, false)}
+                  className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-white hover:file:bg-amber-600 cursor-pointer"
+                />
+                <p className="text-[10px] text-gray-400">Upload JPG, PNG or WEBP (Max 5MB)</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1.5">Module Permissions (Sidebar Navigation Access)</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
+              {[
+                { id: 'bookings', label: 'Service Bookings' },
+                { id: 'orders', label: 'Live Orders' },
+                { id: 'inventory', label: 'Inventory Stock' },
+                { id: 'customers', label: 'Customer CRM' }
+              ].map(perm => (
+                <label key={perm.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={staffForm.permissions.includes(perm.id)}
+                    onChange={() => handlePermissionToggle(perm.id)}
+                    className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                  />
+                  <span>{perm.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" /> Generate Credentials & Onboard Staff Member
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Staff Member & Shift Attendance Logs */}
+      <AdminModal 
+        isOpen={editStaffModal} 
+        onClose={() => setEditStaffModal(false)} 
+        title={`Manage Staff: ${editStaffForm.fullName || 'Member'}`}
+      >
+        <div className="space-y-4 text-xs p-1">
+          {/* Modal Sub-Tabs */}
+          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('details')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Staff Profile Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('attendance')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Shift Attendance Logs ({staffAttendanceLogs.length})
+            </button>
+          </div>
+
+          {activeStaffModalTab === 'details' && (
+            <form onSubmit={handleUpdateStaff} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.fullName}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, fullName: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.staffRole}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, staffRole: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editStaffForm.email}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, email: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-gray-700">Update Password</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+                        let pwd = '';
+                        for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+                        setEditStaffForm(prev => ({ ...prev, password: pwd }));
+                      }}
+                      className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                    >
+                      ⚡ Auto Generate
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={editStaffForm.password}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, password: e.target.value })}
+                    placeholder="Enter new password if resetting"
+                    className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.mobile}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, mobile: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.salary}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <input
+                    type="number"
+                    value={editStaffForm.leaveBalance}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, leaveBalance: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Staff Profile Photo</label>
+                <div className="flex items-center gap-3 p-2 bg-gray-50 border rounded-xl">
+                  <img
+                    src={editStaffForm.photo || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80"}
+                    alt="Staff Preview"
+                    className="w-12 h-12 rounded-full object-cover border border-amber-500/40 shrink-0"
+                  />
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleStaffPhotoUpload(e, true)}
+                      className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-white hover:file:bg-amber-600 cursor-pointer"
+                    />
+                    <p className="text-[10px] text-gray-400">Upload JPG, PNG or WEBP (Max 5MB)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={handleDeleteStaff}
+                  className="px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Staff Member
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-amber-500 text-white hover:bg-amber-600 rounded-xl font-bold transition-all text-xs uppercase shadow-xs"
+                >
+                  Save Staff Details
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeStaffModalTab === 'attendance' && (
+            <div className="space-y-3">
+              {staffAttendanceLogs.length > 0 ? (
+                <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                  {staffAttendanceLogs.map((log) => {
+                    const formatTime = (timeVal) => {
+                      if (!timeVal) return 'In Progress';
+                      if (typeof timeVal === 'string') {
+                        const trimmed = timeVal.trim();
+                        if (trimmed.includes('AM') || trimmed.includes('PM') || trimmed.toLowerCase().includes('progress')) {
+                          return trimmed;
+                        }
+                      }
+                      const parsed = new Date(timeVal);
+                      if (!isNaN(parsed.getTime())) {
+                        return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      }
+                      return String(timeVal);
+                    };
+
+                    const checkIn = formatTime(log.checkInTime);
+                    const checkOut = formatTime(log.checkOutTime);
+                    const isActive = !log.checkOutTime || log.checkOutTime === 'In Progress' || log.status === 'Active Shift';
+
+                    return (
+                      <div key={log._id || log.id} className="p-3.5 bg-gray-50/80 border border-gray-200/80 rounded-2xl flex justify-between items-center shadow-xs">
+                        <div className="space-y-1.5 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-sm text-gray-900">{log.date || '2026-07-30'}</span>
+                            <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                              isActive ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {isActive ? 'Active Shift' : 'Shift Completed'}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                            <span>
+                              check-in: <strong className="text-gray-900">{checkIn}</strong> | checkout: <strong className="text-gray-900">{checkOut}</strong>
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 italic">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                            <span>{log.location || '19.0760° N, 72.8777° E (Main Branch)'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-1 shrink-0">
+                          <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-wider">Selfie</span>
+                          <img
+                            src={log.photoUrl || log.selfie || log.photo || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150"}
+                            alt="Staff Selfie"
+                            className="w-11 h-11 rounded-xl object-cover border border-gray-200 shadow-xs"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center bg-gray-50 rounded-2xl border text-gray-400">
+                  No shift attendance records logged yet for this staff member.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </AdminModal>
     </div>
   );

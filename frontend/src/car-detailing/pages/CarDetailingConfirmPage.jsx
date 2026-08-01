@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import apiClient from '../../common/utils/apiClient';
 
 export default function CarDetailingConfirmPage() {
   const location = useLocation();
@@ -12,15 +13,13 @@ export default function CarDetailingConfirmPage() {
     price: stateData.price || stateData.service?.price || 490,
     duration: stateData.duration || stateData.service?.duration || '45 mins'
   };
-  const slot = {
-    label: stateData.time || stateData.slot?.label || 'Today 4:30 PM'
-  };
   const vehicle = {
     name: stateData.vehicle || 'Tesla Model 3 (TSL-3000)',
     icon: '🚗'
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Price calculations
   const basePrice = service.price;
@@ -30,7 +29,41 @@ export default function CarDetailingConfirmPage() {
   const gst = Math.round(taxableAmount * taxRate);
   const finalTotal = taxableAmount + gst;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    let customerName = 'Car Owner';
+    let customerEmail = '';
+    try {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.name) customerName = u.name;
+        if (u.email) customerEmail = u.email;
+      }
+    } catch (e) {}
+
+    const generatedBookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const payload = {
+      bookingId: generatedBookingId,
+      serviceKey: 'car-detailing',
+      serviceName: 'Car Detailing',
+      packageName: service.name || 'Paint Protection Film (PPF)',
+      price: finalTotal,
+      customerName,
+      customerEmail,
+      vehicleNo: vehicle.name || 'MH-01-AB-1234',
+      vehicleType: 'Car'
+    };
+
+    try {
+      await apiClient.post('/bookings', payload);
+    } catch (err) {
+      console.warn('Error creating car detailing booking in DB:', err.message);
+    }
+
     setBookingConfirmed(true);
     setTimeout(() => {
       navigate('/car-detailing/my-bookings');
@@ -75,7 +108,7 @@ export default function CarDetailingConfirmPage() {
             </div>
           </div>
 
-          {/* Vehicle & Slot details */}
+          {/* Vehicle details */}
           <div className="confirm-section-card">
             <h3 className="confirm-card-heading">Booking Details</h3>
             <div className="confirm-details-list">
@@ -84,10 +117,6 @@ export default function CarDetailingConfirmPage() {
                 <span className="confirm-detail-value">
                   {vehicle.icon} {vehicle.name}
                 </span>
-              </div>
-              <div className="confirm-detail-item">
-                <span className="confirm-detail-label">Schedule Slot</span>
-                <span className="confirm-detail-value">{slot.label}</span>
               </div>
             </div>
           </div>

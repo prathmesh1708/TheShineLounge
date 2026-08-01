@@ -82,7 +82,7 @@ export default function SalonServiceDetailsPage() {
             />
             {/* Absolute pricing tag */}
             <span className="absolute bottom-6 right-6 bg-white/95 backdrop-blur-xs py-2 px-4 rounded-full text-base md:text-lg font-extrabold text-zinc-850 shadow-premium border border-white/20">
-              ${service.price}
+              ₹{service.price}
             </span>
           </div>
 
@@ -152,7 +152,7 @@ export default function SalonServiceDetailsPage() {
             <div className="space-y-2">
               <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider block">Estimated Price</span>
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-zinc-850">${service.price}</span>
+                <span className="text-3xl font-extrabold text-zinc-850">₹{service.price}</span>
                 <span className="text-xs text-zinc-400 font-semibold uppercase">starting rate</span>
               </div>
               <p className="text-[10px] text-zinc-400 font-semibold leading-relaxed pt-1">

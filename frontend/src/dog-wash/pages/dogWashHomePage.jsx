@@ -2,6 +2,30 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import serviceApi from '../../common/services/serviceApi';
 import dogWashVideo from '../../assets/images/dog-wash-banner.mp4';
+import { getMachineConfig } from '../services/dogWashApi';
+
+const DEFAULT_FAQS = [
+  {
+    q: "How does the Self-Serve Dog Wash machine work?",
+    a: "Our machine is an easy 4-step automated hydrobath kiosk. Simply secure your dog with the safety harness, select your desired wash duration on the touchscreen, use the warm water shampoo wand, and finish with the silent warm air dryer."
+  },
+  {
+    q: "Is the water temperature safe for my pet?",
+    a: "Yes! Water temperature is automatically thermostatically regulated at a comfortable 36°C - 38°C (96.8°F - 100.4°F) suitable for dogs of all breeds and sizes."
+  },
+  {
+    q: "What safety features are included in the machine?",
+    a: "The station includes non-slip rubber flooring, an adjustable safety tether latch, an Emergency Stop button, and automatic tub disinfection after every session."
+  },
+  {
+    q: "Do I need to bring my own shampoo or towels?",
+    a: "No! All washes automatically infuse organic pH-balanced tearless shampoo and conditioner through the spray wand. Fresh sanitized microfiber towels are also provided at the kiosk."
+  },
+  {
+    q: "What are the kiosk operating hours?",
+    a: "Our self-serve dog wash stations operate daily from 08:00 AM to 10:00 PM IST (Monday to Sunday)."
+  }
+];
 
 export default function DogWashHomePage() {
   const navigate = useNavigate();
@@ -13,10 +37,19 @@ export default function DogWashHomePage() {
   };
 
   const [dbService, setDbService] = useState(null);
+  const [machineConfig, setMachineConfig] = useState(getMachineConfig());
   const [selectedService, setSelectedService] = useState(
     { id: '2-min', name: '2 Minutes Wash', price: 100 }
   );
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
+  const [faqSearchQuery, setFaqSearchQuery] = useState('');
+  const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+  useEffect(() => {
+    const handleMachineChange = () => setMachineConfig(getMachineConfig());
+    window.addEventListener('dogWashMachineConfigChanged', handleMachineChange);
+    return () => window.removeEventListener('dogWashMachineConfigChanged', handleMachineChange);
+  }, []);
 
   // Video fallback and media checks
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -61,6 +94,14 @@ export default function DogWashHomePage() {
       }
     };
     fetchServiceData();
+
+    const handleDataChange = () => {
+      fetchServiceData();
+    };
+    window.addEventListener('dogWashDataChanged', handleDataChange);
+    return () => {
+      window.removeEventListener('dogWashDataChanged', handleDataChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -118,25 +159,28 @@ export default function DogWashHomePage() {
     description: p.description || (p.features && p.features.join(', '))
   }));
 
+  const activeVideoSrc = dbService?.heroVideo || dbService?.bannerVideo || dogWashVideo;
+
   return (
-    <div className="carwash-booking-container">
+    <div className="carwash-booking-container space-y-6">
       
-      {/* 1. Hero Section */}
+      {/* 1. Hero Section & Service Information */}
       <div className="carwash-hero">
         {!prefersReducedMotion ? (
           <video 
             ref={videoRef}
-            src={dogWashVideo}
+            key={activeVideoSrc}
+            src={activeVideoSrc}
             autoPlay 
             muted 
             loop 
             playsInline 
             className="carwash-hero-video"
-            poster={dbService?.bannerImage || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=800&q=80"}
+            poster={dbService?.bannerImage || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=800&q=80"}
           />
         ) : (
           <img 
-            src={dbService?.bannerImage || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=800&q=80"} 
+            src={dbService?.bannerImage || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=800&q=80"} 
             alt="Dog wash fallback"
             className="carwash-hero-fallback-img"
           />
@@ -181,9 +225,33 @@ export default function DogWashHomePage() {
         )}
       </div>
 
-      {/* 3. Dynamic Pricing Plans */}
+      {/* 3. Machine Location & Operating Hours */}
+      <div className="bg-white border border-teal-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📍</span>
+            <div>
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Machine Location</h3>
+              <p className="text-xs text-gray-600 font-semibold">{machineConfig?.location || dbService?.location || "Palasia Main Rd, Scheme 54, Indore (Kiosk #04)"}</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-extrabold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">
+            {machineConfig?.status || "Self-Serve Kiosk"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-gray-600 font-medium pt-0.5">
+          <span className="text-base">🕒</span>
+          <div>
+            <span className="font-bold text-gray-800">Operating Hours: </span>
+            <span>{machineConfig?.workingHours || dbService?.workingHours || "08:00 AM - 10:00 PM IST (Mon - Sun)"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Pricing Plans */}
       <div className="carwash-section-block">
-        <h2 className="carwash-section-title">Choose a plan</h2>
+        <h2 className="carwash-section-title">Select Pricing Plan</h2>
         <div className="carwash-plans-list">
 
           {/* Pricing Options */}
@@ -204,18 +272,60 @@ export default function DogWashHomePage() {
             </div>
           ))}
 
+          {/* Booking Button perfectly aligned in the plan list flex layout */}
+          <div className="carwash-cta-wrapper">
+            <button 
+              className="carwash-book-btn"
+              onClick={handleBook}
+              style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
+            >
+              <span className="carwash-book-btn-text">Book {selectedService.name}</span>
+              <span className="carwash-book-btn-price">₹{selectedService.price}</span>
+            </button>
+          </div>
+
         </div>
       </div>
 
-      {/* Sticky Booking Button */}
-      <div className="carwash-cta-wrapper">
-        <button 
-          className="carwash-book-btn"
-          onClick={handleBook}
-          style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
-        >
-          Book {selectedService.name} · ₹{selectedService.price}
-        </button>
+      {/* 5. Instructions for Using the Machine */}
+      <div className="space-y-3">
+        <h2 className="carwash-section-title">Instructions for Using the Machine</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {(machineConfig?.instructions && machineConfig.instructions.length > 0 ? machineConfig.instructions : [
+            { step: '1', title: 'Secure Your Pet', desc: 'Place your dog inside the non-slip tub & latch the safety tether lead.' },
+            { step: '2', title: 'Select Duration & Pay', desc: 'Choose 2, 5, or 12 minute wash duration on the touchscreen kiosk.' },
+            { step: '3', title: 'Hydrobath & Shampoo', desc: 'Use the warm spray nozzle to rinse & infuse gentle organic shampoo.' },
+            { step: '4', title: 'Warm Blow Dry', desc: 'Use the two-speed silent warm air dryer for a fluffy, dry coat finish.' }
+          ]).map((item, idx) => (
+            <div key={item.step || idx} className="p-3.5 bg-teal-50/40 border border-teal-100 rounded-2xl flex items-start gap-3">
+              <div className="w-7 h-7 rounded-xl bg-teal-600 text-white flex items-center justify-center text-xs font-black shrink-0">
+                {item.step || idx + 1}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-gray-900">{item.title}</h4>
+                <p className="text-[11px] text-gray-500 font-medium leading-snug mt-0.5">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 6. Safety Instructions */}
+      <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-2 mb-6">
+        <h3 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+          <span>🛡️</span>
+          <span>Safety Instructions & Pet Protection</span>
+        </h3>
+        <ul className="text-xs text-amber-800 font-semibold space-y-1.5 list-disc list-inside">
+          {(machineConfig?.safetyGuidelines && machineConfig.safetyGuidelines.length > 0 ? machineConfig.safetyGuidelines : [
+            "Keep your pet leashed and latched to the safety tether at all times inside the tub.",
+            "Thermostatic temperature safety lock keeps water safely below 38°C (100°F).",
+            "Press the red Emergency Stop button on the kiosk console if needed.",
+            "Automatic UV & sanitization flush runs after every completed wash session."
+          ]).map((rule, idx) => (
+            <li key={idx}>{rule}</li>
+          ))}
+        </ul>
       </div>
 
     </div>

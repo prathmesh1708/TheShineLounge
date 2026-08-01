@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Sparkles, ArrowRight, Star, Clock, Heart } from 'lucide-react';
+import { Sparkles, ArrowRight, Star, Clock, Heart } from 'lucide-react';
 
-import SalonServiceCard from '../components/salonServiceCard';
 import { PrimaryButton } from '../components/salonUI';
 
-import { getServicesSync, getCategoriesSync, OFFERS, REVIEWS } from '../services/salonApi';
+import { getServicesSync, getCategoriesSync } from '../services/salonApi';
 import serviceApi from '../../common/services/serviceApi';
 
 const HERO_SLIDES = [
@@ -153,26 +152,6 @@ export default function SalonHomePage() {
         </div>
       </section>
 
-      {/* Search Bar */}
-      <section className="px-2 max-w-2xl mx-auto">
-        <form onSubmit={handleSearchSubmit} className="relative">
-          <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-3.5" />
-          <input 
-            type="text"
-            placeholder="Search haircuts, facials, beard styling, hair coloring..."
-            value={searchVal}
-            onChange={(e) => setSearchVal(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border border-zinc-200 rounded-2xl text-xs sm:text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
-          <button 
-            type="submit"
-            className="absolute right-2 top-2 px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800"
-          >
-            Search
-          </button>
-        </form>
-      </section>
-
       {/* Category Icons Grid */}
       <section className="px-2 space-y-4">
         <h2 className="text-xl font-black text-zinc-900">Explore Grooming Tiers</h2>
@@ -186,48 +165,6 @@ export default function SalonHomePage() {
               <span className="text-2xl">{cat.icon}</span>
               <span className="text-xs font-bold text-zinc-800">{cat.name}</span>
             </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Dynamic Services Showcase */}
-      <section className="px-2 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-black text-zinc-900">Featured Grooming Packages</h2>
-            <p className="text-xs text-zinc-500">Popular treatments requested by our lounge guests</p>
-          </div>
-          <button 
-            onClick={() => navigate('/salon/services')}
-            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
-          >
-            View All <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {activeServices.slice(0, 6).map((service, idx) => (
-            <div key={service.id || idx} className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md uppercase">Executive Care</span>
-                  <span className="text-xs font-bold text-zinc-500">⭐ {service.rating || '4.9'}</span>
-                </div>
-                <h3 className="text-base font-bold text-zinc-900">{service.title || service.name}</h3>
-                <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{service.description}</p>
-              </div>
-
-              <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
-                <span className="text-lg font-black text-zinc-900">₹{service.price}</span>
-                <button
-                  onClick={() => navigate('/salon/booking', { state: { service } })}
-                  className="px-3.5 py-1.5 text-xs font-bold text-white rounded-xl shadow-sm transition-transform active:scale-95"
-                  style={{ backgroundColor: dbService?.theme?.buttonColor || '#00b8b0' }}
-                >
-                  Book Session
-                </button>
-              </div>
-            </div>
           ))}
         </div>
       </section>

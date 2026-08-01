@@ -136,11 +136,8 @@ function MainAppContent() {
               <Route path="/car-wash" element={<CarWashPage />} />
               <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
               <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-              <Route path="/car-detailing" element={<CarDetailingPage />} />
               <Route path="/dog-wash/*" element={<DogWashPage />} />
-              <Route path="/dog-wash" element={<DogWashPage />} />
               <Route path="/salon/*" element={<SalonPage />} />
-              <Route path="/salon" element={<SalonPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/profile" element={<ProfilePage />} />

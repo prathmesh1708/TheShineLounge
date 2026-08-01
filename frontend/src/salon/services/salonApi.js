@@ -624,8 +624,51 @@ export const getPackagesSync = () => {
 export const getPackages = () => Promise.resolve(getPackagesSync());
 
 export const getBookings = () => Promise.resolve(MOCK_BOOKINGS);
-export const getStylists = () => Promise.resolve(STYLISTS);
-export const getStylistById = (id) => Promise.resolve(STYLISTS.find(s => s.id === id));
+
+export const getStylistsSync = () => {
+  try {
+    const adminStaff = localStorage.getItem('tsl_admin_staff_list');
+    const salonStaffLocal = localStorage.getItem('tsl_salon_staff');
+
+    let custom = [];
+
+    if (adminStaff) {
+      const parsed = JSON.parse(adminStaff);
+      const filtered = parsed.filter(s => !s.serviceKey || s.serviceKey === 'salon' || (s.department && s.department.toLowerCase().includes('salon')));
+      custom.push(...filtered);
+    }
+    if (salonStaffLocal) {
+      const parsedLocal = JSON.parse(salonStaffLocal);
+      parsedLocal.forEach(st => {
+        if (!custom.some(c => (c.email && st.email && c.email.toLowerCase() === st.email.toLowerCase()) || c.id === st.id || c._id === st._id)) {
+          custom.push(st);
+        }
+      });
+    }
+
+    if (custom.length > 0) {
+      return custom.map((st, idx) => ({
+        id: st._id || st.id || `st-admin-${idx}`,
+        _id: st._id || st.id || `st-admin-${idx}`,
+        name: st.fullName || st.name || 'Salon Stylist',
+        fullName: st.fullName || st.name || 'Salon Stylist',
+        specialization: st.staffRole || st.role || 'Salon Styling Master',
+        staffRole: st.staffRole || st.role || 'Salon Styling Master',
+        rating: st.rating || 4.9,
+        experience: st.experience || '5+ years',
+        avatar: st.photo || st.profileImage || st.avatar || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150",
+        phone: st.mobile || "+91 98210 77777",
+        timeSlots: ["09:30 AM", "10:30 AM", "11:30 AM", "01:30 PM", "03:00 PM", "04:30 PM"]
+      }));
+    }
+  } catch (err) {
+    console.warn('Error reading local stylists:', err);
+  }
+  return STYLISTS;
+};
+
+export const getStylists = () => Promise.resolve(getStylistsSync());
+export const getStylistById = (id) => Promise.resolve(getStylistsSync().find(s => s.id === id || s._id === id));
 export const getOffers = () => Promise.resolve(OFFERS);
 export const getReviews = () => Promise.resolve(REVIEWS);
 export const getFAQs = () => Promise.resolve(FAQS);

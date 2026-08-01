@@ -1,10 +1,216 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Calendar as CalIcon, Clock, User as UserIcon, Tag, MapPin, CheckCircle, Shield } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Calendar as CalIcon, Clock, User as UserIcon, Tag, MapPin, CheckCircle, Shield, ChevronDown, Check } from 'lucide-react';
 
-import { SERVICES, STYLISTS, OFFERS, getTimeSlotsSync } from '../services/salonApi';
+import { SERVICES, STYLISTS, OFFERS, getTimeSlotsSync, getServicesSync, getStylistsSync } from '../services/salonApi';
 import { PrimaryButton, FormInput } from '../components/salonUI';
+import apiClient from '../../common/utils/apiClient';
+
+// Custom Mobile Responsive Service Selector
+function CustomServiceSelect({ services, selectedService, onSelect }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <label className="text-xs font-bold text-zinc-450 uppercase tracking-wider block mb-1.5 ml-1 select-none">
+        Select Service
+      </label>
+      
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100/90 border border-zinc-200 focus:border-primary text-zinc-800 rounded-20 outline-none transition-all shadow-xs text-left group"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+          {selectedService?.image ? (
+            <img
+              src={selectedService.image}
+              alt={selectedService.name}
+              className="w-10 h-10 rounded-12 object-cover border border-zinc-200/80 shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-12 bg-primary/10 text-primary flex items-center justify-center font-extrabold text-sm shrink-0">
+              ✂️
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="font-extrabold text-xs sm:text-sm text-zinc-850 truncate block">
+              {selectedService?.name || 'Choose Service'}
+            </span>
+            <span className="text-[10px] text-zinc-450 font-bold uppercase block tracking-wider truncate">
+              {selectedService?.category || 'Service'} {selectedService?.duration ? `• ${selectedService.duration}` : ''}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="py-1 px-2.5 bg-primary/10 text-primary text-xs font-extrabold rounded-lg">
+            ₹{selectedService?.price || 0}
+          </span>
+          <ChevronDown className={`w-4 h-4 text-zinc-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
+        </div>
+      </button>
+
+      {/* Dropdown Menu */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 4, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-0 right-0 top-full z-50 mt-1.5 bg-white border border-zinc-200/90 rounded-24 shadow-2xl overflow-hidden max-h-72 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-zinc-200"
+          >
+            {services.map((s) => {
+              const isSelected = (s.id || s._id) === (selectedService?.id || selectedService?._id);
+              return (
+                <button
+                  key={s.id || s._id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(s);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-18 transition-all text-left ${
+                    isSelected ? 'bg-primary/10 border border-primary/20 text-primary font-bold' : 'hover:bg-zinc-50 text-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 pr-2">
+                    {s.image ? (
+                      <img src={s.image} alt={s.name} className="w-9 h-9 rounded-12 object-cover border border-zinc-200 shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-12 bg-zinc-100 text-zinc-600 flex items-center justify-center font-bold text-xs shrink-0">
+                        ✂️
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-xs text-zinc-850 truncate">{s.name}</p>
+                      <p className="text-[10px] text-zinc-400 font-semibold truncate">{s.category} {s.duration ? `• ${s.duration}` : ''}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-extrabold text-zinc-850">₹{s.price || 0}</span>
+                    {isSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
+                  </div>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Custom Mobile Responsive Stylist Selector
+function CustomStylistSelect({ stylists, selectedStylist, onSelect }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <label className="text-xs font-bold text-zinc-450 uppercase tracking-wider block mb-1.5 ml-1 select-none">
+        Assign Stylist
+      </label>
+
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100/90 border border-zinc-200 focus:border-primary text-zinc-800 rounded-20 outline-none transition-all shadow-xs text-left group"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+          <img
+            src={selectedStylist?.avatar || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150"}
+            alt={selectedStylist?.name || selectedStylist?.fullName}
+            className="w-10 h-10 rounded-full object-cover border border-primary/20 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <span className="font-extrabold text-xs sm:text-sm text-zinc-850 truncate block">
+              {selectedStylist?.name || selectedStylist?.fullName || 'Select Specialist'}
+            </span>
+            <span className="text-[10px] text-zinc-450 font-bold uppercase block tracking-wider truncate">
+              {selectedStylist?.specialization || selectedStylist?.staffRole || 'Salon Specialist'}
+            </span>
+          </div>
+        </div>
+
+        <ChevronDown className={`w-4 h-4 text-zinc-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
+      </button>
+
+      {/* Dropdown Menu */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 4, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-0 right-0 top-full z-50 mt-1.5 bg-white border border-zinc-200/90 rounded-24 shadow-2xl overflow-hidden max-h-72 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-zinc-200"
+          >
+            {stylists.map((st) => {
+              const isSelected = (st.id || st._id) === (selectedStylist?.id || selectedStylist?._id);
+              const name = st.name || st.fullName;
+              const role = st.specialization || st.staffRole || 'Salon Specialist';
+
+              return (
+                <button
+                  key={st.id || st._id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(st);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-18 transition-all text-left ${
+                    isSelected ? 'bg-primary/10 border border-primary/20 text-primary font-bold' : 'hover:bg-zinc-50 text-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 pr-2">
+                    <img
+                      src={st.avatar || st.photo || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150"}
+                      alt={name}
+                      className="w-9 h-9 rounded-full object-cover border border-zinc-200 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-xs text-zinc-850 truncate">{name}</p>
+                      <p className="text-[10px] text-zinc-400 font-semibold truncate">{role}</p>
+                    </div>
+                  </div>
+
+                  {isSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function SalonBookingPage() {
   const [searchParams] = useSearchParams();
@@ -15,23 +221,77 @@ export default function SalonBookingPage() {
   const stylistQuery = searchParams.get("stylist") || "";
   const timeQuery = searchParams.get("time") || "";
 
-  // Dynamic Salon Time Slots
+  // Dynamic Salon Time Slots, Services & Stylists
   const [allSlots, setAllSlots] = useState(getTimeSlotsSync());
+  const [salonServices, setSalonServices] = useState(getServicesSync());
+  const [salonStylists, setSalonStylists] = useState(() => getStylistsSync());
 
   useEffect(() => {
     const handleSync = () => {
       setAllSlots(getTimeSlotsSync());
+      setSalonServices(getServicesSync());
+      setSalonStylists(getStylistsSync());
     };
     window.addEventListener('salonDataChanged', handleSync);
     return () => window.removeEventListener('salonDataChanged', handleSync);
   }, []);
 
+  // Fetch staff created by admin in Salon Staff
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        let dbList = [];
+        const res = await apiClient.get('/users/staff?serviceKey=salon');
+        if (res.data && res.data.staff && res.data.staff.length > 0) {
+          dbList = res.data.staff.map(st => ({
+            id: st._id || st.id,
+            _id: st._id || st.id,
+            name: st.fullName || st.name,
+            specialization: st.staffRole || st.role || 'Salon Specialist',
+            avatar: st.photo || st.profileImage || st.avatar || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150",
+            phone: st.mobile || "+91 98210 77777",
+            timeSlots: ["09:30 AM", "10:30 AM", "11:30 AM", "01:30 PM", "03:00 PM", "04:30 PM"]
+          }));
+        }
+
+        const localList = getStylistsSync();
+        
+        // Merge dbList and localList without duplicates
+        const map = new Map();
+        dbList.forEach(s => map.set(s.name?.toLowerCase() || s.id, s));
+        localList.forEach(s => {
+          const key = s.name?.toLowerCase() || s.id;
+          if (!map.has(key)) {
+            map.set(key, s);
+          }
+        });
+
+        const merged = Array.from(map.values());
+        if (merged.length > 0) {
+          setSalonStylists(merged);
+        }
+      } catch (err) {
+        console.warn('Could not fetch live salon staff, using local list:', err.message);
+        setSalonStylists(getStylistsSync());
+      }
+    };
+    fetchStaff();
+  }, []);
+
   // Filter active time slots
-  const activeSlots = allSlots.filter(s => s.status !== 'inactive').map(s => s.time);
+  const activeSlots = useMemo(() => {
+    return allSlots.filter(s => s.status !== 'inactive').map(s => s.time);
+  }, [allSlots]);
 
   // State hooks
-  const [selectedService, setSelectedService] = useState(SERVICES.find(s => s.id === serviceQuery) || SERVICES[0]);
-  const [selectedStylist, setSelectedStylist] = useState(STYLISTS.find(s => s.id === stylistQuery) || STYLISTS[0]);
+  const [selectedService, setSelectedService] = useState(() => {
+    const initial = getServicesSync();
+    return initial.find(s => (s.id || s._id) === serviceQuery) || initial[0] || SERVICES[0];
+  });
+  const [selectedStylist, setSelectedStylist] = useState(() => {
+    const initialStylists = getStylistsSync();
+    return initialStylists.find(st => (st.id || st._id) === stylistQuery) || initialStylists[0];
+  });
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState(timeQuery || "");
   const [couponCode, setCouponCode] = useState("");
@@ -41,7 +301,9 @@ export default function SalonBookingPage() {
   const [couponSuccess, setCouponSuccess] = useState("");
 
   // Determine slot list (use dynamic active salon slots, or fallback to stylist slots)
-  const displaySlots = activeSlots.length > 0 ? activeSlots : (selectedStylist?.timeSlots || []);
+  const displaySlots = useMemo(() => {
+    return activeSlots.length > 0 ? activeSlots : (selectedStylist?.timeSlots || []);
+  }, [activeSlots, selectedStylist]);
 
   // Generate next 7 days dynamically
   const dates = [];
@@ -63,25 +325,32 @@ export default function SalonBookingPage() {
     }
   }, [dates, selectedDate]);
 
-  // Set default timeslot if stylist or slot list changes
+  // Set default timeslot ONLY if no slot is currently selected
   useEffect(() => {
-    if (!timeQuery && displaySlots.length > 0) {
+    if (!selectedTime && displaySlots.length > 0) {
       setSelectedTime(displaySlots[0]);
     }
-  }, [selectedStylist, timeQuery, displaySlots]);
+  }, [displaySlots]);
 
-
-  // Sync selected service if query changes
+  // Sync selected service if query changes or list changes
   useEffect(() => {
-    const s = SERVICES.find(item => item.id === serviceQuery);
-    if (s) setSelectedService(s);
-  }, [serviceQuery]);
+    if (serviceQuery) {
+      const s = salonServices.find(item => (item.id || item._id) === serviceQuery);
+      if (s) setSelectedService(s);
+    } else if (salonServices.length > 0 && (!selectedService || !salonServices.some(s => (s.id || s._id) === (selectedService.id || selectedService._id)))) {
+      setSelectedService(salonServices[0]);
+    }
+  }, [serviceQuery, salonServices]);
 
-  // Sync selected stylist if query changes
+  // Sync selected stylist if query changes or staff list changes
   useEffect(() => {
-    const st = STYLISTS.find(item => item.id === stylistQuery);
-    if (st) setSelectedStylist(st);
-  }, [stylistQuery]);
+    if (stylistQuery) {
+      const st = salonStylists.find(item => (item.id || item._id) === stylistQuery);
+      if (st) setSelectedStylist(st);
+    } else if (salonStylists.length > 0 && (!selectedStylist || !salonStylists.some(st => (st.id || st._id) === (selectedStylist.id || selectedStylist._id)))) {
+      setSelectedStylist(salonStylists[0]);
+    }
+  }, [stylistQuery, salonStylists]);
 
   // Billing Calculations
   const subtotal = selectedService ? selectedService.price : 0;
@@ -96,7 +365,7 @@ export default function SalonBookingPage() {
     const matched = OFFERS.find(o => o.code.toLowerCase() === couponCode.trim().toLowerCase());
     if (matched) {
       if (subtotal < matched.minAmount) {
-        setCouponError(`Min purchase of $${matched.minAmount} required.`);
+        setCouponError(`Min purchase of ₹${matched.minAmount} required.`);
       } else {
         setAppliedCoupon(matched);
         setDiscount(matched.value);
@@ -107,18 +376,51 @@ export default function SalonBookingPage() {
     }
   };
 
-  const handleBookingSubmit = () => {
+  const handleBookingSubmit = async () => {
     if (!selectedDate || !selectedTime) return;
 
-    // Simulate saving booking to localStorage
+    const newBookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    let customerName = 'Salon Client';
+    let customerEmail = '';
+    try {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.name) customerName = u.name;
+        if (u.email) customerEmail = u.email;
+      }
+    } catch (e) {}
+
+    const payload = {
+      bookingId: newBookingId,
+      serviceKey: 'salon',
+      serviceName: 'Men\'s Salon',
+      packageName: selectedService?.name || 'Executive Haircut',
+      price: totalAmount,
+      date: selectedDate,
+      timeSlot: selectedTime,
+      customerName,
+      customerEmail,
+      vehicleNo: `Stylist: ${selectedStylist?.name || 'Any Specialist'}`,
+      vehicleType: 'Salon Client'
+    };
+
+    try {
+      await apiClient.post('/bookings', payload);
+    } catch (err) {
+      console.warn('Error creating salon booking in DB:', err.message);
+    }
+
+    // Save booking to localStorage for client-side my-bookings
     const newBooking = {
-      id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-      package: selectedService.name,
+      id: newBookingId,
+      package: selectedService?.name,
       status: "Upcoming",
       date: selectedDate,
       time: selectedTime,
-      service: selectedService.name,
-      stylist: selectedStylist.name,
+      service: selectedService?.name,
+      stylist: selectedStylist?.name,
       location: "Shine Lounge Salon, Vijay Nagar, Indore",
       price: totalAmount,
       timeline: [
@@ -131,7 +433,7 @@ export default function SalonBookingPage() {
     localStorage.setItem("salon_bookings", JSON.stringify([newBooking, ...existing]));
 
     // Navigate to success screen
-    navigate(`/salon/success?id=${newBooking.id}&price=${totalAmount}`);
+    navigate(`/salon/success?id=${newBookingId}&price=${totalAmount}`);
   };
 
   return (
@@ -163,37 +465,19 @@ export default function SalonBookingPage() {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Service selection dropdown */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-450 uppercase tracking-wider block ml-1 select-none">
-                  Select Service
-                </label>
-                <select
-                  value={selectedService.id}
-                  onChange={(e) => setSelectedService(SERVICES.find(s => s.id === e.target.value))}
-                  className="w-full py-3.5 px-4 bg-zinc-50 border border-zinc-200 focus:border-primary text-zinc-800 rounded-20 outline-none text-sm font-semibold transition-all shadow-sm"
-                >
-                  {SERVICES.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} (${s.price})</option>
-                  ))}
-                </select>
-              </div>
+              {/* Custom Mobile Responsive Service Selector */}
+              <CustomServiceSelect
+                services={salonServices}
+                selectedService={selectedService}
+                onSelect={(s) => setSelectedService(s)}
+              />
 
-              {/* Stylist selection dropdown */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-450 uppercase tracking-wider block ml-1 select-none">
-                  Assign Stylist
-                </label>
-                <select
-                  value={selectedStylist.id}
-                  onChange={(e) => setSelectedStylist(STYLISTS.find(st => st.id === e.target.value))}
-                  className="w-full py-3.5 px-4 bg-zinc-50 border border-zinc-200 focus:border-primary text-zinc-800 rounded-20 outline-none text-sm font-semibold transition-all shadow-sm"
-                >
-                  {STYLISTS.map((st) => (
-                    <option key={st.id} value={st.id}>{st.name} ({st.specialization})</option>
-                  ))}
-                </select>
-              </div>
+              {/* Custom Mobile Responsive Stylist Selector */}
+              <CustomStylistSelect
+                stylists={salonStylists}
+                selectedStylist={selectedStylist}
+                onSelect={(st) => setSelectedStylist(st)}
+              />
             </div>
           </div>
 
@@ -240,11 +524,12 @@ export default function SalonBookingPage() {
                   return (
                     <button
                       key={idx}
+                      type="button"
                       onClick={() => setSelectedTime(slot)}
-                      className={`py-3 text-xs font-bold rounded-15 border transition-all ${
+                      className={`py-3 text-xs font-bold rounded-15 border transition-all cursor-pointer select-none active:scale-95 ${
                         isSelected
-                          ? 'bg-primary border-primary text-white shadow-sm'
-                          : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700'
+                          ? 'bg-primary border-primary text-white shadow-sm ring-2 ring-primary/20 font-extrabold'
+                          : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700 hover:bg-zinc-100'
                       }`}
                     >
                       {slot}
@@ -305,11 +590,11 @@ export default function SalonBookingPage() {
             <div className="space-y-3.5 text-xs text-zinc-550 font-semibold">
               <div className="flex justify-between items-center text-zinc-700">
                 <span>Selected Service</span>
-                <span className="font-bold text-zinc-850 truncate max-w-[140px]">{selectedService.name}</span>
+                <span className="font-bold text-zinc-850 truncate max-w-[140px]">{selectedService?.name || 'Selected Service'}</span>
               </div>
               <div className="flex justify-between items-center text-zinc-700">
                 <span>Stylist</span>
-                <span className="font-bold text-zinc-850">{selectedStylist.name}</span>
+                <span className="font-bold text-zinc-850">{selectedStylist?.name || 'Selected Specialist'}</span>
               </div>
               <div className="flex justify-between items-center text-zinc-700">
                 <span>Date & Time</span>
@@ -320,16 +605,16 @@ export default function SalonBookingPage() {
 
               <div className="flex justify-between items-center">
                 <span>Subtotal Rate</span>
-                <span className="text-zinc-800 font-extrabold">${subtotal}</span>
+                <span className="text-zinc-800 font-extrabold">₹{subtotal}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span>Booking Fee</span>
-                <span className="text-zinc-800 font-extrabold">${convenienceFee}</span>
+                <span className="text-zinc-800 font-extrabold">₹{convenienceFee}</span>
               </div>
               {appliedCoupon && (
                 <div className="flex justify-between items-center text-emerald-500">
                   <span>Discount ({discount}%)</span>
-                  <span className="font-extrabold">-${discountAmount}</span>
+                  <span className="font-extrabold">-₹{discountAmount}</span>
                 </div>
               )}
 
@@ -337,7 +622,7 @@ export default function SalonBookingPage() {
 
               <div className="flex justify-between items-end text-zinc-850">
                 <span className="font-extrabold text-sm">Total Payable</span>
-                <span className="font-extrabold text-2xl text-primary leading-none">${totalAmount}</span>
+                <span className="font-extrabold text-2xl text-primary leading-none">₹{totalAmount}</span>
               </div>
             </div>
 

@@ -246,7 +246,8 @@ export default function CarWashPage() {
           onClick={handleBook}
           style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
         >
-          Book {selectedService.name} · ₹{selectedService.price}
+          <span className="carwash-book-btn-text">Book {selectedService.name}</span>
+          <span className="carwash-book-btn-price">₹{selectedService.price}</span>
         </button>
       </div>
 

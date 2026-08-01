@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import apiClient from '../../common/utils/apiClient';
 
 export default function DogWashConfirmPage() {
   const location = useLocation();
@@ -22,6 +23,7 @@ export default function DogWashConfirmPage() {
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Price calculations
   const basePrice = service.price;
@@ -31,7 +33,43 @@ export default function DogWashConfirmPage() {
   const gst = Math.round(taxableAmount * taxRate);
   const finalTotal = taxableAmount + gst;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    let customerName = 'Pet Owner';
+    let customerEmail = '';
+    try {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.name) customerName = u.name;
+        if (u.email) customerEmail = u.email;
+      }
+    } catch (e) {}
+
+    const generatedBookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const payload = {
+      bookingId: generatedBookingId,
+      serviceKey: 'dog-wash',
+      serviceName: 'Dog Wash',
+      packageName: service.name || service.title || 'Dog Hydrobath',
+      price: finalTotal,
+      date: stateData.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      timeSlot: 'Walk-In',
+      customerName,
+      customerEmail,
+      vehicleNo: `${vehicle.name} (${vehicle.plate || vehicle.breed || 'Golden Retriever'})`,
+      vehicleType: 'Dog'
+    };
+
+    try {
+      await apiClient.post('/bookings', payload);
+    } catch (err) {
+      console.warn('Error creating dog wash booking in DB:', err.message);
+    }
+
     setBookingConfirmed(true);
     setTimeout(() => {
       navigate('/bookings');
@@ -76,7 +114,7 @@ export default function DogWashConfirmPage() {
             </div>
           </div>
 
-          {/* Vehicle & Slot details */}
+          {/* Vehicle details */}
           <div className="confirm-section-card">
             <h3 className="confirm-card-heading">Booking Details</h3>
             <div className="confirm-details-list">
@@ -86,12 +124,6 @@ export default function DogWashConfirmPage() {
                   {vehicle.icon || '🐕'} {vehicle.name} ({vehicle.plate || vehicle.breed || 'Golden Retriever'})
                 </span>
               </div>
-              {slot?.label && (
-                <div className="confirm-detail-item">
-                  <span className="confirm-detail-label">Schedule Slot</span>
-                  <span className="confirm-detail-value">{slot.label}</span>
-                </div>
-              )}
             </div>
           </div>
 

@@ -69,10 +69,6 @@ export default function DogWashSuccessPage() {
             <Calendar className="w-4.5 h-4.5 text-grooming-primary flex-shrink-0" />
             <span>Date: <strong className="text-zinc-800">{booking.date}</strong></span>
           </div>
-          <div className="flex items-center gap-3">
-            <Clock className="w-4.5 h-4.5 text-grooming-primary flex-shrink-0" />
-            <span>Time Window: <strong className="text-zinc-800">{booking.time}</strong></span>
-          </div>
           <div className="flex items-start gap-3">
             <MapPin className="w-4.5 h-4.5 text-grooming-primary flex-shrink-0 mt-0.5" />
             <span>Location: <span className="text-zinc-800 font-bold">{booking.address}</span></span>
