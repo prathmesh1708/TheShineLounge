@@ -26,6 +26,16 @@ const membershipSchema = new mongoose.Schema({
   displayOrder: { type: Number, default: 0 }
 }, { _id: true });
 
+// Sub-schema for Menu Sections (e.g. for Cafe)
+const menuSectionSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  subtitle: { type: String, default: '' },
+  description: { type: String, default: '' },
+  bgColor: { type: String, default: 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)' },
+  image: { type: String, default: '' },
+  displayOrder: { type: Number, default: 0 }
+}, { _id: true });
+
 // Sub-schema for Plans / Sub-Service Packages
 const planSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -36,7 +46,12 @@ const planSchema = new mongoose.Schema({
   images: [{ type: String }],
   recommended: { type: Boolean, default: false },
   displayOrder: { type: Number, default: 0 },
-  status: { type: String, enum: ['active', 'inactive'], default: 'active' }
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  // Extended fields for cafe menu items
+  section: { type: String, default: 'Main Menu' },
+  weight: { type: String, default: '' },
+  subcat: { type: String, default: '' },
+  image: { type: String, default: '' }
 }, { _id: true });
 
 // Sub-schema for Features
@@ -145,6 +160,7 @@ const serviceSchema = new mongoose.Schema({
   plans: [planSchema],
   features: [featureSchema],
   faqs: [faqSchema],
+  menuSections: [menuSectionSchema],
 
   // SEO Info
   seoTitle: { type: String, default: '' },

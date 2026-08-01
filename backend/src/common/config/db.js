@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { MONGO_URI } = require('./env');
 const seedAdmin = require('../../utils/seedAdmin');
 const seedServices = require('../../utils/seedServices');
+const seedRealData = require('../../utils/seedRealData');
 
 const connectDB = async () => {
   try {
@@ -11,6 +12,7 @@ const connectDB = async () => {
     // Seed initial admin & initial services catalog on successful connection
     await seedAdmin();
     await seedServices();
+    await seedRealData();
   } catch (error) {
     console.error(`MongoDB connection error: ${error.message}`);
     process.exit(1);

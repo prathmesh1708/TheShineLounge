@@ -22,12 +22,12 @@ const AdminContext = createContext();
 export const AdminProvider = ({ children }) => {
   // Global State
   const [stats, setStats] = useState(initialDashboardStats);
-  const [services, setServices] = useState(initialServices);
+  const [services, setServices] = useState([]);
   const [banners, setBanners] = useState(initialBanners);
   const [memberships, setMemberships] = useState(initialMemberships);
-  const [staffList, setStaffList] = useState(initialStaff);
-  const [bookings, setBookings] = useState(initialBookings);
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [staffList, setStaffList] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [inventory, setInventory] = useState(initialInventory);
   const [coupons, setCoupons] = useState(initialCoupons);
   const [notifications, setNotifications] = useState(initialNotifications);
@@ -76,23 +76,103 @@ export const AdminProvider = ({ children }) => {
           notes: b.notes,
           photos: b.photos
         }));
-
-        // Merge with initialBookings mock seeds
-        const merged = [...mapped, ...initialBookings.filter(ib => !mapped.some(m => m.id === ib.id))];
-        setBookings(merged);
+        setBookings(mapped);
       }
     } catch (err) {
       console.warn('Could not fetch bookings list:', err.message);
     }
   };
 
+  const fetchStaffList = async () => {
+    try {
+      const res = await apiClient.get('/users/staff');
+      if (res.data && res.data.staff) {
+        const mapped = res.data.staff.map(s => ({
+          _id: s._id,
+          id: s.email,
+          name: s.fullName,
+          fullName: s.fullName,
+          email: s.email,
+          mobile: s.mobile || '',
+          department: s.department || 'Car Wash',
+          staffRole: s.staffRole || 'Specialist',
+          salary: s.salary || '',
+          leaveBalance: s.leaveBalance || 12,
+          photo: s.photo || '',
+          permissions: s.permissions || [],
+          isActive: s.isActive
+        }));
+        setStaffList(mapped);
+      }
+    } catch (err) {
+      console.warn('Could not fetch staff list:', err.message);
+    }
+  };
+
+  const fetchCustomersList = async () => {
+    try {
+      const res = await apiClient.get('/users/customers');
+      if (res.data && res.data.customers) {
+        const mapped = res.data.customers.map(c => ({
+          _id: c._id,
+          id: c.email || c._id,
+          name: c.fullName,
+          fullName: c.fullName,
+          email: c.email,
+          mobile: c.mobile || '',
+          role: c.role,
+          createdAt: c.createdAt
+        }));
+        setCustomers(mapped);
+      }
+    } catch (err) {
+      console.warn('Could not fetch customers list:', err.message);
+    }
+  };
+
+  const fetchServicesList = async () => {
+    try {
+      const res = await serviceApi.getServices();
+      if (res && res.services) {
+        setServices(res.services);
+      }
+    } catch (err) {
+      console.warn('Could not fetch services list:', err.message);
+    }
+  };
+
   useEffect(() => {
     fetchBookingsList();
+    fetchStaffList();
+    fetchCustomersList();
+    fetchServicesList();
 
     // Poll for live booking updates from staff every 5 seconds
     const interval = setInterval(fetchBookingsList, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Compute dynamic stats based on database records
+  useEffect(() => {
+    const pending = bookings.filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
+    const lowStock = inventory.filter(i => {
+      const qty = parseInt(i.quantity) || 0;
+      const min = parseInt(i.minStock) || 5;
+      return qty <= min;
+    }).length;
+
+    // Calculate dynamic revenue stats
+    const totalRev = bookings.reduce((sum, b) => b.status === 'Completed' ? sum + b.total : sum, 0);
+
+    setStats(prev => ({
+      ...prev,
+      pendingBookings: pending,
+      lowStockItems: lowStock,
+      totalRevenue: totalRev,
+      activeCustomers: customers.length,
+      activeStaff: staffList.filter(s => s.isActive).length
+    }));
+  }, [bookings, inventory, customers, staffList]);
 
   // --- CRUD ACTIONS ---
 
@@ -139,57 +219,88 @@ export const AdminProvider = ({ children }) => {
   };
 
   const addServicePlan = async (serviceId, newPlan) => {
-    setServices(prev => prev.map(s => {
-      if (s.id === serviceId || s.key === serviceId) {
-        return {
-          ...s,
-          plans: [...(s.plans || []), { id: `p-${Date.now()}`, ...newPlan }]
-        };
-      }
-      return s;
-    }));
-    showToast('New sub-service plan added!');
-
     try {
       const res = await serviceApi.getServices();
       if (res.success && res.services) {
-        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.key === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
         if (target) {
           await serviceApi.addPlan(target._id, {
             name: newPlan.name,
             price: Number(newPlan.price),
             description: newPlan.description || '',
-            duration: newPlan.billing || 'per service'
+            duration: newPlan.duration || '30 mins',
+            features: newPlan.features || [],
+            recommended: newPlan.recommended || false,
+            // Extended fields
+            section: newPlan.section || 'Main Menu',
+            weight: newPlan.weight || '',
+            subcat: newPlan.subcat || '',
+            image: newPlan.image || ''
           });
+          showToast('New sub-service plan added!');
+          await fetchServicesList();
         }
       }
     } catch (err) {
       console.warn('API sync add plan error:', err.message);
+      showToast('Error adding item', 'error');
     }
   };
 
   const deleteServicePlan = async (serviceId, planId) => {
-    setServices(prev => prev.map(s => {
-      if (s.id === serviceId || s.key === serviceId) {
-        return {
-          ...s,
-          plans: (s.plans || []).filter(p => p.id !== planId && p._id !== planId)
-        };
-      }
-      return s;
-    }));
-    showToast('Plan removed', 'error');
-
     try {
       const res = await serviceApi.getServices();
       if (res.success && res.services) {
-        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.key === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
         if (target) {
           await serviceApi.deletePlan(target._id, planId);
+          showToast('Plan removed', 'error');
+          await fetchServicesList();
         }
       }
     } catch (err) {
       console.warn('API sync delete plan error:', err.message);
+      showToast('Error removing item', 'error');
+    }
+  };
+
+  const addServiceSection = async (serviceId, newSection) => {
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.key === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        if (target) {
+          await apiClient.post(`/services/${target._id}/sections`, {
+            title: newSection.title,
+            subtitle: newSection.subtitle || '',
+            description: newSection.description || '',
+            bgColor: newSection.bgColor || 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)',
+            image: newSection.image || ''
+          });
+          showToast('New menu section added!');
+          await fetchServicesList();
+        }
+      }
+    } catch (err) {
+      console.warn('API sync add section error:', err.message);
+      showToast('Error adding section', 'error');
+    }
+  };
+
+  const deleteServiceSection = async (serviceId, sectionId) => {
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.key === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        if (target) {
+          await apiClient.delete(`/services/${target._id}/sections/${sectionId}`);
+          showToast('Menu section removed', 'error');
+          await fetchServicesList();
+        }
+      }
+    } catch (err) {
+      console.warn('API sync delete section error:', err.message);
+      showToast('Error removing section', 'error');
     }
   };
 
@@ -451,6 +562,8 @@ export const AdminProvider = ({ children }) => {
       updateServicePrice,
       addServicePlan,
       deleteServicePlan,
+      addServiceSection,
+      deleteServiceSection,
       addBanner,
       toggleBannerStatus,
       updateBanner,

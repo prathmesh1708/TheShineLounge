@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { servicesData } from '../../common/data/servicesData';
+import apiClient from '../../common/utils/apiClient';
 
 // Import local image assets
 import gourmetHero from '../../assets/images/gourmet_hero.png';
@@ -19,68 +20,61 @@ export default function CafePage() {
   const [activeSubFilter, setActiveSubFilter] = useState('All');
   const [savedItems, setSavedItems] = useState([]);
 
-  // Mock mapping of categories to display banners
-  const categoriesList = [
-    {
-      id: 'main-menu',
-      title: 'Main Menu',
-      subtitle: 'Complete list of premium lounge meals',
-      desc: 'Prepared fresh, served within 15 minutes',
-      bgColor: 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)', // Yellow-orange gradient
-      image: gourmetHero,
-      items: [
-        { name: 'Sourdough Avocado Toast', price: 11.00, weight: '220g', image: gourmetToast, subcat: 'Brunch' },
-        { name: 'Truffle Mushroom Panini', price: 14.00, weight: '250g', image: gourmetChicken, subcat: 'Mains' },
-        { name: 'Pesto Chicken Focaccia', price: 15.00, weight: '280g', image: gourmetHero, subcat: 'Mains' },
-        { name: 'Smoked Salmon Bagel', price: 13.50, weight: '240g', image: gourmetToast, subcat: 'Brunch' },
-        { name: 'Shine Lounge Caesar Salad', price: 12.50, weight: '200g', image: gourmetDessert, subcat: 'Mains' }
-      ]
-    },
-    {
-      id: 'express-menu',
-      title: 'Express Menu',
-      subtitle: 'Fast barista brews and fresh croissants',
-      desc: 'Ready in 2 minutes for immediate pickup',
-      bgColor: 'linear-gradient(135deg, #FA541C 0%, #D4380D 100%)', // Bright orange gradient
-      image: gourmetToast,
-      items: [
-        { name: 'Espresso Double Shot', price: 3.50, weight: '60ml', image: gourmetHero, subcat: 'Coffee' },
-        { name: 'Cortado / Macchiato', price: 4.00, weight: '80ml', image: gourmetHero, subcat: 'Coffee' },
-        { name: 'Classic Cappuccino', price: 4.50, weight: '180ml', image: gourmetHero, subcat: 'Coffee' },
-        { name: 'Madagascar Vanilla Latte', price: 5.00, weight: '220ml', image: gourmetHero, subcat: 'Coffee' },
-        { name: 'Ceremonial Matcha Latte', price: 5.50, weight: '220ml', image: gourmetHero, subcat: 'Tea' },
-        { name: 'Shaken Iced Espresso', price: 4.75, weight: '240ml', image: gourmetHero, subcat: 'Iced' },
-        { name: 'Cold Brew Blend', price: 4.50, weight: '240ml', image: gourmetHero, subcat: 'Iced' },
-        { name: 'Almond Croissant', price: 5.50, weight: '110g', image: gourmetToast, subcat: 'Bakery' }
-      ]
-    },
-    {
-      id: 'custom-cakes',
-      title: 'Cakes & Sweet Tarts',
-      subtitle: 'Chef-crafted desserts and sweet plates',
-      desc: 'Prepared and decorated within 12 minutes',
-      bgColor: 'linear-gradient(135deg, #B7094C 0%, #800E13 100%)', // Deep plum/crimson gradient
-      image: gourmetDessert,
-      items: [
-        { name: 'Salted Caramel Chocolate Tart', price: 6.50, weight: '120g', image: gourmetDessert, subcat: 'Tarts' },
-        { name: 'Classic Tiramisu Slice', price: 7.00, weight: '140g', image: gourmetDessert, subcat: 'Cakes' },
-        { name: 'Dark Chocolate Fudge Brownie', price: 5.00, weight: '90g', image: gourmetDessert, subcat: 'Cakes' }
-      ]
-    },
-    {
-      id: 'hot-bakery',
-      title: 'Oven-Hot Bakery',
-      subtitle: 'Savory pies and warm artisan pastries',
-      desc: 'Freshly baked and served hot from the oven',
-      bgColor: 'linear-gradient(135deg, #A06A42 0%, #704224 100%)', // Deep tan/brown gradient
-      image: gourmetChicken,
-      items: [
-        { name: 'Almond Croissant (Warm)', price: 5.50, weight: '110g', image: gourmetToast, subcat: 'Sweet' },
-        { name: 'Truffle Mushroom Pie', price: 14.00, weight: '250g', image: gourmetChicken, subcat: 'Savory' },
-        { name: 'Smoked Salmon Bagel (Toasted)', price: 13.50, weight: '240g', image: gourmetToast, subcat: 'Savory' }
-      ]
-    }
-  ];
+  // Live database state
+  const [serviceMain, setServiceMain] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCafeService = async () => {
+      try {
+        const res = await apiClient.get('/services/cafe');
+        if (res.data && res.data.service) {
+          setServiceMain(res.data.service);
+        }
+      } catch (err) {
+        console.warn('Error loading Cafe service:', err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCafeService();
+  }, []);
+
+  // Dynamically map categories & dishes from the database
+  const categoriesList = serviceMain?.menuSections?.map((sec, idx) => {
+    // Fallback default assets if cover/banner image not set
+    const defaultAssets = [gourmetHero, gourmetToast, gourmetDessert, gourmetChicken];
+    const imageAsset = sec.image || defaultAssets[idx % defaultAssets.length];
+
+    return {
+      id: sec._id || `sec-${idx}`,
+      title: sec.title,
+      subtitle: sec.subtitle || sec.description,
+      desc: sec.description || sec.subtitle,
+      bgColor: sec.bgColor || 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)',
+      image: imageAsset,
+      items: (serviceMain.plans || [])
+        .filter(p => p.section === sec.title && p.status === 'active')
+        .map(p => ({
+          name: p.name,
+          price: p.price,
+          weight: p.weight || '220g',
+          image: p.image || imageAsset,
+          subcat: p.subcat || 'Mains'
+        }))
+    };
+  }) || [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#fffbeb] text-amber-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-amber-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-black tracking-wide opacity-80">Loading Premium Menu...</span>
+        </div>
+      </div>
+    );
+  }
 
   const toggleSaveItem = (itemName, e) => {
     e.stopPropagation();

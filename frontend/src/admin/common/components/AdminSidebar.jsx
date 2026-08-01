@@ -104,6 +104,16 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
       ];
     }
 
+    if (key === 'cafe' || key === 'drive-through-cafe') {
+      return [
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
+        { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
+      ];
+    }
+
     return [
       { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
       { id: 'packages', label: 'Packages & Pricing', icon: Wrench },

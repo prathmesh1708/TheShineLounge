@@ -21,7 +21,9 @@ import {
   Shield,
   Phone,
   Mail,
-  Calendar
+  Calendar,
+  Upload,
+  X
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -81,7 +83,7 @@ export default function CarWashAdminHubPage() {
   };
 
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
-  const serviceMain = services.find(s => s.key === serviceKey) || services[0];
+  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
@@ -256,6 +258,36 @@ export default function CarWashAdminHubPage() {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setStaffForm(prev => ({ ...prev, password: pwd }));
+  };
+
+  const handleStaffPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setStaffForm(prev => ({ ...prev, photo: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditStaffPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handlePermissionToggle = (perm) => {
@@ -960,7 +992,36 @@ export default function CarWashAdminHubPage() {
             { header: 'Package', accessorKey: 'plan' },
             { header: 'Slot', accessorKey: 'timeSlot' },
             { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total}</span> },
-            { header: 'Status', accessorKey: 'status' }
+            {
+              header: 'Status',
+              accessorKey: 'status',
+              cell: (r) => {
+                const currentStatus = r.status || 'Pending';
+                // Normalize to handle case sensitivity differences if any
+                const normalizedStatus = currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1).toLowerCase();
+                
+                return (
+                  <select
+                    value={normalizedStatus}
+                    onChange={(e) => updateBookingStatus(r.id, e.target.value)}
+                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-black transition-all outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer ${
+                      normalizedStatus === 'Pending' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                      normalizedStatus === 'Confirmed' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                      normalizedStatus === 'In progress' || normalizedStatus === 'In Progress' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
+                      normalizedStatus === 'Completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                      normalizedStatus === 'Cancelled' ? 'bg-rose-50 border-rose-200 text-rose-700' :
+                      'bg-gray-50 border-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <option value="Pending" className="bg-white text-gray-800 font-bold">Pending</option>
+                    <option value="Confirmed" className="bg-white text-gray-800 font-bold">Confirmed</option>
+                    <option value="In Progress" className="bg-white text-gray-800 font-bold">In Progress</option>
+                    <option value="Completed" className="bg-white text-gray-800 font-bold">Completed</option>
+                    <option value="Cancelled" className="bg-white text-gray-800 font-bold">Cancelled</option>
+                  </select>
+                );
+              }
+            }
           ]}
           data={serviceBookings}
           searchPlaceholder="Search Bookings..."
@@ -1252,14 +1313,37 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Profile Photo URL</label>
-            <input
-              type="text"
-              value={staffForm.photo}
-              onChange={e => setStaffForm({ ...staffForm, photo: e.target.value })}
-              placeholder="https://..."
-              className="w-full p-2.5 border rounded-xl text-gray-600 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-            />
+            <label className="block font-bold text-gray-700 mb-1">Profile Photo</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                <Upload className="w-4 h-4 text-gray-500" />
+                <span>Upload Photo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleStaffPhotoChange}
+                  className="hidden"
+                />
+              </label>
+              
+              {staffForm.photo && (
+                <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                  <img
+                    src={staffForm.photo}
+                    alt="Staff Preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStaffForm({ ...staffForm, photo: '' })}
+                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                    title="Remove Photo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
@@ -1421,13 +1505,37 @@ export default function CarWashAdminHubPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Profile Photo URL</label>
-                <input
-                  type="text"
-                  value={editStaffForm.photo}
-                  onChange={e => setEditStaffForm({ ...editStaffForm, photo: e.target.value })}
-                  className="w-full p-2.5 border rounded-xl text-gray-600 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
+                <label className="block font-bold text-gray-700 mb-1">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                    <Upload className="w-4 h-4 text-gray-500" />
+                    <span>Upload Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditStaffPhotoChange}
+                      className="hidden"
+                    />
+                  </label>
+                  
+                  {editStaffForm.photo && (
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                      <img
+                        src={editStaffForm.photo}
+                        alt="Staff Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditStaffForm({ ...editStaffForm, photo: '' })}
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                        title="Remove Photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>

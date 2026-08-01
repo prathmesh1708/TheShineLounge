@@ -100,7 +100,7 @@ export default function CarDetailingAdminHubPage() {
   };
 
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
-  const serviceMain = services.find(s => s.key === serviceKey) || services[0];
+  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);

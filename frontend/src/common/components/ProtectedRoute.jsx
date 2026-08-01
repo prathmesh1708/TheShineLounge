@@ -52,12 +52,8 @@ export function StaffRoute({ children }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || role !== 'staff') {
     return <Navigate to="/staff/login" replace />;
-  }
-
-  if (role !== 'staff' && role !== 'admin') {
-    return <Navigate to="/" replace />;
   }
 
   return children;
