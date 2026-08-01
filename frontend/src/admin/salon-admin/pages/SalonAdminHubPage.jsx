@@ -119,7 +119,7 @@ export default function SalonAdminHubPage() {
   };
 
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
-  const serviceMain = services.find(s => s.key === serviceKey) || services[0];
+  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === 'salon' || (b.serviceName && b.serviceName.toLowerCase().includes('salon')));
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);

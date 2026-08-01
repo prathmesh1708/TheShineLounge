@@ -15,7 +15,10 @@ import {
   ToggleLeft,
   ToggleRight,
   Star,
-  ArrowUpRight
+  ArrowUpRight,
+  Upload,
+  X,
+  UserPlus
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -31,6 +34,7 @@ import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import apiClient from '../../../common/utils/apiClient';
 
 export default function CafeAdminHubPage() {
   const serviceKey = 'cafe';
@@ -44,6 +48,8 @@ export default function CafeAdminHubPage() {
     updateServicePrice,
     addServicePlan,
     deleteServicePlan,
+    addServiceSection,
+    deleteServiceSection,
     addBooking,
     updateBookingStatus,
     addStaff,
@@ -69,18 +75,68 @@ export default function CafeAdminHubPage() {
   };
 
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
-  const serviceMain = services.find(s => s.key === serviceKey) || services[0];
+  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
-  // Modals state
   const [editingPriceModal, setEditingPriceModal] = useState(false);
   const [newPrice, setNewPrice] = useState(serviceMain?.price || 0);
+  
+  // Dish Form state
   const [addPlanModal, setAddPlanModal] = useState(false);
-  const [planForm, setPlanForm] = useState({ name: '', price: '', description: '', billing: 'per service' });
+  const [planForm, setPlanForm] = useState({
+    name: '',
+    price: '',
+    description: '',
+    duration: '15 mins',
+    section: 'Main Menu',
+    subcat: 'Brunch',
+    weight: '220g',
+    image: ''
+  });
+
+  // Section Form state
+  const [addSectionModal, setAddSectionModal] = useState(false);
+  const [sectionForm, setSectionForm] = useState({
+    title: '',
+    subtitle: '',
+    description: '',
+    bgColor: 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)',
+    image: ''
+  });
+
+  const handleDishPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPlanForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSectionPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSectionForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const [addBookingModal, setAddBookingModal] = useState(false);
   const [bookingForm, setBookingForm] = useState({
@@ -95,12 +151,49 @@ export default function CafeAdminHubPage() {
 
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [staffForm, setStaffForm] = useState({
-    name: '',
-    role: `Cafe Barista`,
-    phone: '',
+    fullName: '',
     email: '',
-    salary: '₹35,000 / mo'
+    password: '',
+    mobile: '',
+    staffRole: 'Cafe Barista',
+    salary: '₹35,000 / month',
+    leaveBalance: 12,
+    photo: '',
+    permissions: ['bookings', 'orders']
   });
+
+  const [dbStaff, setDbStaff] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [editStaffModal, setEditStaffModal] = useState(false);
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details');
+  const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
+
+  const [editStaffForm, setEditStaffForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    mobile: '',
+    staffRole: 'Cafe Barista',
+    salary: '₹35,000 / month',
+    leaveBalance: 12,
+    photo: '',
+    permissions: []
+  });
+
+  const fetchLiveStaff = async () => {
+    try {
+      const res = await apiClient.get('/users/staff?serviceKey=cafe');
+      if (res.data && res.data.staff) {
+        setDbStaff(res.data.staff);
+      }
+    } catch (err) {
+      console.warn('Could not fetch live staff list:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveStaff();
+  }, []);
 
   const [addBannerModal, setAddBannerModal] = useState(false);
   const [bannerForm, setBannerForm] = useState({
@@ -131,14 +224,46 @@ export default function CafeAdminHubPage() {
 
   const handleSavePlan = () => {
     if (!planForm.name || !planForm.price) return;
-    addServicePlan(serviceMain.id, {
+    addServicePlan(serviceMain?._id || serviceMain?.id, {
       name: planForm.name,
       price: Number(planForm.price),
       description: planForm.description,
-      billing: planForm.billing
+      duration: planForm.duration,
+      section: planForm.section,
+      subcat: planForm.subcat,
+      weight: planForm.weight,
+      image: planForm.image
     });
     setAddPlanModal(false);
-    setPlanForm({ name: '', price: '', description: '', billing: 'per service' });
+    setPlanForm({
+      name: '',
+      price: '',
+      description: '',
+      duration: '15 mins',
+      section: serviceMain?.menuSections?.[0]?.title || 'Main Menu',
+      subcat: 'Brunch',
+      weight: '220g',
+      image: ''
+    });
+  };
+
+  const handleSaveSection = () => {
+    if (!sectionForm.title) return;
+    addServiceSection(serviceMain?._id || serviceMain?.id, {
+      title: sectionForm.title,
+      subtitle: sectionForm.subtitle,
+      description: sectionForm.description,
+      bgColor: sectionForm.bgColor,
+      image: sectionForm.image
+    });
+    setAddSectionModal(false);
+    setSectionForm({
+      title: '',
+      subtitle: '',
+      description: '',
+      bgColor: 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)',
+      image: ''
+    });
   };
 
   const handleCreateBooking = (e) => {
@@ -157,18 +282,171 @@ export default function CafeAdminHubPage() {
     setAddBookingModal(false);
   };
 
-  const handleAddStaff = (e) => {
+  const handleGeneratePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+    let pwd = '';
+    for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    setStaffForm(prev => ({ ...prev, password: pwd }));
+  };
+
+  const handleStaffPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setStaffForm(prev => ({ ...prev, photo: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditStaffPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveNewStaff = async (e) => {
     e.preventDefault();
-    addStaff({
-      name: staffForm.name,
-      role: staffForm.role,
-      department: serviceStats.serviceName,
-      serviceKey,
-      phone: staffForm.phone,
-      email: staffForm.email,
-      salary: staffForm.salary
+    if (!staffForm.fullName || !staffForm.email || !staffForm.password) {
+      alert('Please fill out Name, Email ID, and Password');
+      return;
+    }
+
+    try {
+      const res = await apiClient.post('/users/staff', {
+        fullName: staffForm.fullName,
+        email: staffForm.email,
+        password: staffForm.password,
+        mobile: staffForm.mobile,
+        department: 'Cafe',
+        serviceKey: 'cafe',
+        staffRole: staffForm.staffRole,
+        salary: staffForm.salary,
+        leaveBalance: Number(staffForm.leaveBalance),
+        photo: staffForm.photo,
+        permissions: staffForm.permissions
+      });
+
+      if (res.data && res.data.success) {
+        alert(`✅ Staff member created successfully!\n\nStaff Email: ${staffForm.email}\nPassword: ${staffForm.password}\n\nStaff can now log in at /staff/login.`);
+        fetchLiveStaff();
+        setAddStaffModal(false);
+        setStaffForm({
+          fullName: '',
+          email: '',
+          password: '',
+          mobile: '',
+          staffRole: 'Cafe Barista',
+          salary: '₹35,000 / month',
+          leaveBalance: 12,
+          photo: '',
+          permissions: ['bookings', 'orders']
+        });
+      } else {
+        alert('Error creating staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
+      alert(`Error: ${errMsg}`);
+    }
+  };
+
+  const handleOpenEditStaff = async (stf) => {
+    setSelectedStaff(stf);
+    setEditStaffForm({
+      fullName: stf.fullName || stf.name || '',
+      email: stf.email || '',
+      password: '',
+      mobile: stf.mobile || '',
+      staffRole: stf.staffRole || stf.role || 'Cafe Barista',
+      salary: stf.salary || '₹35,000 / month',
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      photo: stf.photo || stf.avatar || stf.profileImage || '',
+      permissions: stf.permissions || []
     });
-    setAddStaffModal(false);
+    setStaffAttendanceLogs([]);
+    setActiveStaffModalTab('details');
+    setEditStaffModal(true);
+
+    const sId = stf._id || stf.id;
+    if (sId && !sId.toString().startsWith('STF-')) {
+      try {
+        const res = await apiClient.get(`/attendance/staff/${sId}`);
+        if (res.data && res.data.attendance) {
+          setStaffAttendanceLogs(res.data.attendance);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff attendance history:', err.message);
+      }
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    try {
+      const payload = {
+        fullName: editStaffForm.fullName,
+        email: editStaffForm.email,
+        mobile: editStaffForm.mobile,
+        staffRole: editStaffForm.staffRole,
+        salary: editStaffForm.salary,
+        leaveBalance: Number(editStaffForm.leaveBalance),
+        photo: editStaffForm.photo,
+        permissions: editStaffForm.permissions
+      };
+      if (editStaffForm.password) {
+        payload.password = editStaffForm.password;
+      }
+
+      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member updated successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error updating staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error updating staff: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+
+    const confirmDel = window.confirm(`Are you sure you want to delete "${editStaffForm.fullName}"?`);
+    if (!confirmDel) return;
+
+    try {
+      const res = await apiClient.delete(`/users/staff/${sId}`);
+      if (res.data && res.data.success) {
+        alert('✅ Staff member deleted successfully!');
+        fetchLiveStaff();
+        setEditStaffModal(false);
+      } else {
+        alert('Error deleting staff: ' + (res.data?.message || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error deleting staff: ' + (err.response?.data?.message || err.message));
+    }
   };
 
   const handleAddBanner = (e) => {
@@ -249,7 +527,6 @@ export default function CafeAdminHubPage() {
         {[
           { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
           { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
-          { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
           { id: 'staff', label: `Department Staff (${serviceStaff.length})`, icon: Users },
           { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon },
           { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
@@ -309,58 +586,209 @@ export default function CafeAdminHubPage() {
       )}
 
       {activeTab === 'packages' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900">Packages</h3>
+        <div className="space-y-8">
+          {/* Menu Sections Header */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Menu Categories & Sections</h3>
+                <p className="text-xs text-gray-500">Create new sections and manage background configurations for menu displays</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAddSectionModal(true)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-xs select-none active:scale-[0.98]"
+                >
+                  + Add Menu Section
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setEditingPriceModal(true)} className="px-3.5 py-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100">
-                Edit Base Price
-              </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {serviceMain?.menuSections?.map((section) => (
+                <div
+                  key={section._id}
+                  style={{ background: section.bgColor || 'linear-gradient(135deg, #A06A42 0%, #704224 100%)' }}
+                  className="rounded-2xl p-4 text-white relative shadow-xs flex flex-col justify-between min-h-[120px] group overflow-hidden"
+                >
+                  {section.image && (
+                    <img src={section.image} alt="" className="absolute right-[-10px] bottom-[-10px] w-20 h-20 rounded-full object-cover opacity-20 pointer-events-none" />
+                  )}
+                  <div>
+                    <h4 className="font-black text-sm drop-shadow-xs">{section.title}</h4>
+                    <p className="text-[10px] opacity-90 font-medium leading-normal mt-1">{section.subtitle || section.description}</p>
+                  </div>
+                  <div className="mt-2 flex justify-between items-center z-10">
+                    <span className="text-[9px] bg-white/20 px-2 py-0.5 rounded-full font-bold select-none">
+                      {(serviceMain?.plans || []).filter(p => p.section === section.title).length} Items
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete the "${section.title}" section?`)) {
+                          deleteServiceSection(serviceMain._id || serviceMain.id, section._id);
+                        }
+                      }}
+                      className="text-white hover:text-red-200 p-1 rounded-lg hover:bg-white/10 transition-colors"
+                      title="Delete Section"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(!serviceMain?.menuSections || serviceMain.menuSections.length === 0) && (
+                <div className="col-span-full py-8 text-center text-xs text-gray-400 font-medium bg-gray-50 border border-dashed rounded-2xl">
+                  No custom menu sections created yet. Add one to start organizing your dishes!
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {serviceMain?.plans?.map((plan) => (
-              <div key={plan.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
-                <h4 className="text-lg font-black text-gray-900">{plan.name}</h4>
-                <p className="text-xs text-gray-500">{plan.description}</p>
-                <div className="pt-3 border-t flex items-center justify-between">
-                  <span className="text-2xl font-black text-amber-600">₹{plan.price}</span>
-                </div>
+          {/* Dishes & Items Grid */}
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Cafe Menu Dishes & Pricing</h3>
+                <p className="text-xs text-gray-500">Manage pricing, portion weights, and display categories for all dishes</p>
               </div>
-            ))}
+              <button
+                onClick={() => {
+                  if (!serviceMain?.menuSections || serviceMain.menuSections.length === 0) {
+                    alert('Please create at least one menu section first!');
+                    return;
+                  }
+                  setAddPlanModal(true);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-xs select-none active:scale-[0.98]"
+              >
+                + Add Dish / Drink
+              </button>
+            </div>
+
+            {/* List items categorized by sections */}
+            {(serviceMain?.menuSections || []).map((section) => {
+              const sectionItems = (serviceMain?.plans || []).filter(p => p.section === section.title);
+              return (
+                <div key={section._id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ background: section.bgColor }} />
+                      <h4 className="font-black text-sm text-gray-900">{section.title}</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                        {sectionItems.length} available
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    {sectionItems.map((plan) => (
+                      <div key={plan._id || plan.id} className="border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between bg-gray-50 group hover:border-amber-500/30 transition-all duration-200">
+                        <div className="relative aspect-video w-full bg-gray-100 overflow-hidden">
+                          {plan.image ? (
+                            <img src={plan.image} alt={plan.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 animate-fade-in" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100">
+                              <ImageIcon className="w-8 h-8 opacity-40" />
+                            </div>
+                          )}
+                          <span className="absolute top-2 left-2 text-[9px] bg-black/60 backdrop-blur-xs text-white px-2 py-0.5 rounded-full font-bold">
+                            {plan.subcat || 'General'}
+                          </span>
+                        </div>
+                        <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex justify-between items-start gap-1">
+                              <h5 className="font-black text-xs text-gray-900 leading-snug">{plan.name}</h5>
+                              {plan.weight && (
+                                <span className="text-[9px] text-gray-400 font-bold shrink-0">{plan.weight}</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 leading-relaxed">{plan.description || 'Premium chef-crafted item.'}</p>
+                          </div>
+                          <div className="flex justify-between items-center pt-3 border-t">
+                            <span className="text-base font-black text-amber-600">₹{plan.price}</span>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete "${plan.name}"?`)) {
+                                  deleteServicePlan(serviceMain._id || serviceMain.id, plan._id || plan.id);
+                                }
+                              }}
+                              className="text-gray-400 hover:text-red-500 p-1.5 rounded-xl hover:bg-red-50 transition-colors"
+                              title="Delete Dish"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {sectionItems.length === 0 && (
+                      <div className="col-span-full py-8 text-center text-[11px] text-gray-400 bg-gray-50 border border-dashed rounded-xl">
+                        No dishes added to this section yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {activeTab === 'bookings' && (
-        <DataTable
-          columns={[
-            { header: 'ID', accessorKey: 'id' },
-            { header: 'Customer', accessorKey: 'customerName' },
-            { header: 'Package', accessorKey: 'plan' },
-            { header: 'Slot', accessorKey: 'timeSlot' },
-            { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total}</span> },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceBookings}
-          searchPlaceholder="Search Bookings..."
-        />
-      )}
+
 
       {activeTab === 'staff' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {serviceStaff.map(stf => (
-            <div key={stf.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
-              <img src={stf.avatar} className="w-12 h-12 rounded-full object-cover" />
-              <div>
-                <h4 className="font-bold text-xs">{stf.name}</h4>
-                <p className="text-[10px] text-gray-500">{stf.role}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+            <div>
+              <h3 className="text-base font-black text-gray-900">Café Department Staff ({dbStaff.length || serviceStaff.length})</h3>
+              <p className="text-xs text-gray-500">Onboard café staff members, manage roles, salaries, and assign system access permissions</p>
             </div>
-          ))}
+            <button
+              onClick={() => setAddStaffModal(true)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 select-none active:scale-[0.98]"
+            >
+              <UserPlus className="w-4 h-4" /> Onboard New Staff Member
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
+              <div
+                key={stf._id || stf.id}
+                onClick={() => handleOpenEditStaff(stf)}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all duration-200"
+              >
+                <div className="flex items-start gap-3">
+                  <img
+                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                    alt={stf.fullName || stf.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                  />
+                  <div className="space-y-1 overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {stf.isActive !== false ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{stf.staffRole || stf.role}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{stf.email}</p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+                  <span>{stf.mobile || 'No Mobile Phone'}</span>
+                  <span className="text-emerald-700 font-bold">{stf.salary || 'Salary Not Configured'}</span>
+                </div>
+              </div>
+            ))}
+            {(!dbStaff.length && !serviceStaff.length) && (
+              <div className="col-span-full py-12 text-center text-xs text-gray-400 font-medium bg-gray-50 border border-dashed rounded-2xl">
+                No staff members onboarded for the Café Hub yet.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -395,6 +823,630 @@ export default function CafeAdminHubPage() {
         <div className="space-y-4 text-xs">
           <input type="number" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} className="w-full p-2 border rounded-xl" />
           <button onClick={handleSavePrice} className="w-full py-2 bg-amber-500 text-white rounded-xl">Save</button>
+        </div>
+      </AdminModal>
+
+      {/* Modal: Add Dish / Drink */}
+      <AdminModal isOpen={addPlanModal} onClose={() => setAddPlanModal(false)} title="Add New Dish / Drink">
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Dish / Drink Name</label>
+            <input
+              type="text"
+              value={planForm.name}
+              onChange={e => setPlanForm({ ...planForm, name: e.target.value })}
+              placeholder="e.g. Ceremonial Matcha Latte"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Price (₹)</label>
+              <input
+                type="number"
+                value={planForm.price}
+                onChange={e => setPlanForm({ ...planForm, price: e.target.value })}
+                placeholder="e.g. 240"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Menu Category Section</label>
+              <select
+                value={planForm.section}
+                onChange={e => setPlanForm({ ...planForm, section: e.target.value })}
+                className="w-full p-2.5 border rounded-xl bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                {serviceMain?.menuSections?.map(sec => (
+                  <option key={sec._id} value={sec.title}>{sec.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Sub-Category</label>
+              <input
+                type="text"
+                value={planForm.subcat}
+                onChange={e => setPlanForm({ ...planForm, subcat: e.target.value })}
+                placeholder="e.g. Coffee"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Weight/Size</label>
+              <input
+                type="text"
+                value={planForm.weight}
+                onChange={e => setPlanForm({ ...planForm, weight: e.target.value })}
+                placeholder="e.g. 220g"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Prep Duration</label>
+              <input
+                type="text"
+                value={planForm.duration}
+                onChange={e => setPlanForm({ ...planForm, duration: e.target.value })}
+                placeholder="e.g. 15 mins"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Dish Image</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                <Upload className="w-4 h-4 text-gray-500" />
+                <span>Upload Dish Image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleDishPhotoChange}
+                  className="hidden"
+                />
+              </label>
+
+              {planForm.image && (
+                <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                  <img
+                    src={planForm.image}
+                    alt="Dish Preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPlanForm({ ...planForm, image: '' })}
+                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                    title="Remove Photo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
+            <textarea
+              value={planForm.description}
+              onChange={e => setPlanForm({ ...planForm, description: e.target.value })}
+              placeholder="Enter dish ingredients or brief description..."
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none min-h-[60px]"
+            />
+          </div>
+
+          <button
+            onClick={handleSavePlan}
+            className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs select-none active:scale-[0.98] transition-all"
+          >
+            Save Item
+          </button>
+        </div>
+      </AdminModal>
+
+      {/* Modal: Add Menu Section */}
+      <AdminModal isOpen={addSectionModal} onClose={() => setAddSectionModal(false)} title="Create Custom Menu Section">
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Section Title</label>
+            <input
+              type="text"
+              value={sectionForm.title}
+              onChange={e => setSectionForm({ ...sectionForm, title: e.target.value })}
+              placeholder="e.g. Cakes & Sweet Tarts"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Tagline</label>
+            <input
+              type="text"
+              value={sectionForm.subtitle}
+              onChange={e => setSectionForm({ ...sectionForm, subtitle: e.target.value })}
+              placeholder="e.g. Chef-crafted premium desserts"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Background Gradient Color</label>
+              <select
+                value={sectionForm.bgColor}
+                onChange={e => setSectionForm({ ...sectionForm, bgColor: e.target.value })}
+                className="w-full p-2.5 border rounded-xl bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="linear-gradient(135deg, #F5A623 0%, #D48806 100%)">Warm Honey (Yellow-Orange)</option>
+                <option value="linear-gradient(135deg, #FA541C 0%, #D4380D 100%)">Fiery Copper (Orange-Red)</option>
+                <option value="linear-gradient(135deg, #B7094C 0%, #800E13 100%)">Royal Plum (Crimson-Purple)</option>
+                <option value="linear-gradient(135deg, #A06A42 0%, #704224 100%)">Artisan Oak (Tan-Brown)</option>
+                <option value="linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)">Deep Ocean (Cyan-Blue)</option>
+                <option value="linear-gradient(135deg, #11998e 0%, #38ef7d 100%)">Green Forest (Teal-Emerald)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Cover Image</label>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                  <Upload className="w-4 h-4 text-gray-500" />
+                  <span>Upload Icon/Cover</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSectionPhotoChange}
+                    className="hidden"
+                  />
+                </label>
+
+                {sectionForm.image && (
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                    <img
+                      src={sectionForm.image}
+                      alt="Section Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSectionForm({ ...sectionForm, image: '' })}
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                      title="Remove Photo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
+            <textarea
+              value={sectionForm.description}
+              onChange={e => setSectionForm({ ...sectionForm, description: e.target.value })}
+              placeholder="e.g. Prepared and decorated within 12 minutes"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none min-h-[60px]"
+            />
+          </div>
+
+          <button
+            onClick={handleSaveSection}
+            className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs select-none active:scale-[0.98] transition-all"
+          >
+            Create Section
+          </button>
+        </div>
+      </AdminModal>
+
+      {/* Modal: Onboard New Staff Member */}
+      <AdminModal isOpen={addStaffModal} onClose={() => setAddStaffModal(false)} title="Onboard New Staff Member">
+        <form onSubmit={handleSaveNewStaff} className="space-y-4 text-xs p-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.fullName}
+                onChange={e => setStaffForm({ ...staffForm, fullName: e.target.value })}
+                placeholder="e.g. Kabir Mehta"
+                className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+              <input
+                type="text"
+                required
+                value={staffForm.staffRole}
+                onChange={e => setStaffForm({ ...staffForm, staffRole: e.target.value })}
+                placeholder="e.g. Senior Barista"
+                className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+              <input
+                type="email"
+                required
+                value={staffForm.email}
+                onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
+                placeholder="kabir@theshinelounge.com"
+                className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="font-bold text-gray-700">Login Password *</label>
+                <button
+                  type="button"
+                  onClick={handleGeneratePassword}
+                  className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                >
+                  ⚡ Auto Generate
+                </button>
+              </div>
+              <input
+                type="text"
+                required
+                value={staffForm.password}
+                onChange={e => setStaffForm({ ...staffForm, password: e.target.value })}
+                placeholder="Staff!@#123"
+                className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-amber-50/40"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+              <input
+                type="text"
+                value={staffForm.mobile}
+                onChange={e => setStaffForm({ ...staffForm, mobile: e.target.value })}
+                placeholder="+91 98200 11223"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <input
+                type="text"
+                value={staffForm.salary}
+                onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
+                placeholder="₹35,000 / month"
+                className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <input
+                type="number"
+                value={staffForm.leaveBalance}
+                onChange={e => setStaffForm({ ...staffForm, leaveBalance: e.target.value })}
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Profile Photo</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                <Upload className="w-4 h-4 text-gray-500" />
+                <span>Upload Photo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleStaffPhotoChange}
+                  className="hidden"
+                />
+              </label>
+
+              {staffForm.photo && (
+                <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                  <img
+                    src={staffForm.photo}
+                    alt="Staff Preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStaffForm({ ...staffForm, photo: '' })}
+                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                    title="Remove Photo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1.5">Module Permissions (Sidebar Navigation Access)</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
+              {[
+                { id: 'bookings', label: 'Service Bookings' },
+                { id: 'orders', label: 'Live Orders' },
+                { id: 'inventory', label: 'Inventory Stock' },
+                { id: 'customers', label: 'Customer CRM' }
+              ].map(perm => (
+                <label key={perm.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={staffForm.permissions.includes(perm.id)}
+                    onChange={() => {
+                      const current = staffForm.permissions;
+                      if (current.includes(perm.id)) {
+                        setStaffForm({ ...staffForm, permissions: current.filter(p => p !== perm.id) });
+                      } else {
+                        setStaffForm({ ...staffForm, permissions: [...current, perm.id] });
+                      }
+                    }}
+                    className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                  />
+                  <span>{perm.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider select-none active:scale-[0.98]"
+          >
+            Create Staff Profile
+          </button>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit / Details Staff Member */}
+      <AdminModal isOpen={editStaffModal} onClose={() => setEditStaffModal(false)} title="Manage Staff Profile">
+        <div className="space-y-4 p-1 text-xs">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('details')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Staff Profile Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStaffModalTab('attendance')}
+              className={`pb-1.5 font-bold border-b-2 transition-all ${
+                activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Shift Attendance Logs ({staffAttendanceLogs.length})
+            </button>
+          </div>
+
+          {activeStaffModalTab === 'details' && (
+            <form onSubmit={handleUpdateStaff} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.fullName}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, fullName: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Staff Title / Role *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editStaffForm.staffRole}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, staffRole: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Email ID (Login Username) *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editStaffForm.email}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, email: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-gray-700">Update Password (Leave blank to keep same)</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+                        let pwd = '';
+                        for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+                        setEditStaffForm(prev => ({ ...prev, password: pwd }));
+                      }}
+                      className="text-[10px] text-amber-600 font-extrabold hover:underline"
+                    >
+                      ⚡ Auto Generate
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={editStaffForm.password}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, password: e.target.value })}
+                    placeholder="Enter new password if resetting"
+                    className="w-full p-2.5 border rounded-xl font-mono font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Mobile Number</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.mobile}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, mobile: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <input
+                    type="text"
+                    value={editStaffForm.salary}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <input
+                    type="number"
+                    value={editStaffForm.leaveBalance}
+                    onChange={e => setEditStaffForm({ ...editStaffForm, leaveBalance: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                    <Upload className="w-4 h-4 text-gray-500" />
+                    <span>Upload Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditStaffPhotoChange}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {editStaffForm.photo && (
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                      <img
+                        src={editStaffForm.photo}
+                        alt="Staff Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditStaffForm({ ...editStaffForm, photo: '' })}
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                        title="Remove Photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1.5">Module Permissions (Sidebar Navigation Access)</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
+                  {[
+                    { id: 'bookings', label: 'Service Bookings' },
+                    { id: 'orders', label: 'Live Orders' },
+                    { id: 'inventory', label: 'Inventory Stock' },
+                    { id: 'customers', label: 'Customer CRM' }
+                  ].map(perm => (
+                    <label key={perm.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={editStaffForm.permissions.includes(perm.id)}
+                        onChange={() => {
+                          const current = editStaffForm.permissions;
+                          if (current.includes(perm.id)) {
+                            setEditStaffForm({ ...editStaffForm, permissions: current.filter(p => p !== perm.id) });
+                          } else {
+                            setEditStaffForm({ ...editStaffForm, permissions: [...current, perm.id] });
+                          }
+                        }}
+                        className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                      />
+                      <span>{perm.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleDeleteStaff}
+                  className="px-4 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl transition-all flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Staff
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 select-none active:scale-[0.98]"
+                >
+                  Save Profile Changes
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeStaffModalTab === 'attendance' && (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {staffAttendanceLogs.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 font-medium">
+                  No shift attendance records found for this staff member.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {staffAttendanceLogs.map((log) => (
+                    <div key={log._id || log.id} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-800">{log.date}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                            log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 font-medium">
+                          Shift Check-in: <strong className="text-gray-700">{log.clockIn || '--:--'}</strong> | Check-out: <strong className="text-gray-700">{log.clockOut || '--:--'}</strong>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </AdminModal>
     </div>

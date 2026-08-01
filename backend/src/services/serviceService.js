@@ -218,6 +218,26 @@ class ServiceService {
     await service.save();
     return service;
   }
+
+  // Add Menu Section
+  async addSection(serviceId, sectionData) {
+    const service = await Service.findOne({ _id: serviceId, isDeleted: false });
+    if (!service) throw new Error('Service not found');
+
+    service.menuSections.push(sectionData);
+    await service.save();
+    return service;
+  }
+
+  // Delete Menu Section
+  async deleteSection(serviceId, sectionId) {
+    const service = await Service.findOne({ _id: serviceId, isDeleted: false });
+    if (!service) throw new Error('Service not found');
+
+    service.menuSections.pull({ _id: sectionId });
+    await service.save();
+    return service;
+  }
 }
 
 module.exports = new ServiceService();

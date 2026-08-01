@@ -176,14 +176,64 @@ const initialServices = [
       background: '#fffbeb',
       hoverColor: '#92400e'
     },
-    pricing: [
-      { title: 'Nitro Vanilla Sweet Cream Cold Brew', price: 240, gst: true, description: 'Velvety nitrogen infused dark roast espresso', displayOrder: 1 },
-      { title: 'Artisanal Caramel Macchiato', price: 260, gst: true, description: 'Steamed milk, vanilla syrup, espresso, caramel drizzle', displayOrder: 2 },
-      { title: 'Truffle Mushroom Sourdough Toast', price: 350, gst: true, description: 'Sauteed mushrooms, truffle butter on toasted sourdough', displayOrder: 3 }
+    pricing: [],
+    menuSections: [
+      {
+        title: 'Main Menu',
+        subtitle: 'Complete list of premium lounge meals',
+        description: 'Prepared fresh, served within 15 minutes',
+        bgColor: 'linear-gradient(135deg, #F5A623 0%, #D48806 100%)',
+        image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80',
+        displayOrder: 1
+      },
+      {
+        title: 'Express Menu',
+        subtitle: 'Fast barista brews and fresh croissants',
+        description: 'Ready in 2 minutes for immediate pickup',
+        bgColor: 'linear-gradient(135deg, #FA541C 0%, #D4380D 100%)',
+        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=400&q=80',
+        displayOrder: 2
+      },
+      {
+        title: 'Cakes & Sweet Tarts',
+        subtitle: 'Chef-crafted desserts and sweet plates',
+        description: 'Prepared and decorated within 12 minutes',
+        bgColor: 'linear-gradient(135deg, #B7094C 0%, #800E13 100%)',
+        image: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?auto=format&fit=crop&w=400&q=80',
+        displayOrder: 3
+      },
+      {
+        title: 'Oven-Hot Bakery',
+        subtitle: 'Savory pies and warm artisan pastries',
+        description: 'Freshly baked and served hot from the oven',
+        bgColor: 'linear-gradient(135deg, #A06A42 0%, #704224 100%)',
+        image: 'https://images.unsplash.com/photo-1608686207856-001b95cf60ca?auto=format&fit=crop&w=400&q=80',
+        displayOrder: 4
+      }
     ],
     plans: [
-      { name: 'Morning Brew Combo', price: 399, duration: 'Instant', features: ['Any Large Coffee', 'Butter Croissant or Danish'], recommended: true, displayOrder: 1 },
-      { name: 'Lounge Executive Meal Package', price: 649, duration: 'Instant', features: ['Artisan Gourmet Sandwich', 'Specialty Beverage', 'Signature Dessert'], recommended: false, displayOrder: 2 }
+      { name: 'Sourdough Avocado Toast', price: 11.00, weight: '220g', image: 'https://images.unsplash.com/photo-1541532713592-79a0317b6b77?auto=format&fit=crop&w=400&q=80', section: 'Main Menu', subcat: 'Brunch', duration: '15 mins', status: 'active', displayOrder: 1 },
+      { name: 'Truffle Mushroom Panini', price: 14.00, weight: '250g', image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=400&q=80', section: 'Main Menu', subcat: 'Mains', duration: '15 mins', status: 'active', displayOrder: 2 },
+      { name: 'Pesto Chicken Focaccia', price: 15.00, weight: '280g', image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80', section: 'Main Menu', subcat: 'Mains', duration: '15 mins', status: 'active', displayOrder: 3 },
+      { name: 'Smoked Salmon Bagel', price: 13.50, weight: '240g', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80', section: 'Main Menu', subcat: 'Brunch', duration: '15 mins', status: 'active', displayOrder: 4 },
+      { name: 'Shine Lounge Caesar Salad', price: 12.50, weight: '200g', image: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=400&q=80', section: 'Main Menu', subcat: 'Mains', duration: '15 mins', status: 'active', displayOrder: 5 },
+      
+      { name: 'Espresso Double Shot', price: 3.50, weight: '60ml', image: 'https://images.unsplash.com/photo-151097252790b-af4f902673a1?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Coffee', duration: '2 mins', status: 'active', displayOrder: 6 },
+      { name: 'Cortado / Macchiato', price: 4.00, weight: '80ml', image: 'https://images.unsplash.com/photo-1577968897966-3d4325b36b61?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Coffee', duration: '2 mins', status: 'active', displayOrder: 7 },
+      { name: 'Classic Cappuccino', price: 4.50, weight: '180ml', image: 'https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Coffee', duration: '2 mins', status: 'active', displayOrder: 8 },
+      { name: 'Madagascar Vanilla Latte', price: 5.00, weight: '220ml', image: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Coffee', duration: '2 mins', status: 'active', displayOrder: 9 },
+      { name: 'Ceremonial Matcha Latte', price: 5.50, weight: '220ml', image: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Tea', duration: '2 mins', status: 'active', displayOrder: 10 },
+      { name: 'Shaken Iced Espresso', price: 4.75, weight: '240ml', image: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Iced', duration: '2 mins', status: 'active', displayOrder: 11 },
+      { name: 'Cold Brew Blend', price: 4.50, weight: '240ml', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Iced', duration: '2 mins', status: 'active', displayOrder: 12 },
+      { name: 'Almond Croissant', price: 5.50, weight: '110g', image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=400&q=80', section: 'Express Menu', subcat: 'Bakery', duration: '2 mins', status: 'active', displayOrder: 13 },
+
+      { name: 'Salted Caramel Chocolate Tart', price: 6.50, weight: '120g', image: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?auto=format&fit=crop&w=400&q=80', section: 'Cakes & Sweet Tarts', subcat: 'Tarts', duration: '12 mins', status: 'active', displayOrder: 14 },
+      { name: 'Classic Tiramisu Slice', price: 7.00, weight: '140g', image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=400&q=80', section: 'Cakes & Sweet Tarts', subcat: 'Cakes', duration: '12 mins', status: 'active', displayOrder: 15 },
+      { name: 'Dark Chocolate Fudge Brownie', price: 5.00, weight: '90g', image: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=400&q=80', section: 'Cakes & Sweet Tarts', subcat: 'Cakes', duration: '12 mins', status: 'active', displayOrder: 16 },
+
+      { name: 'Almond Croissant (Warm)', price: 5.50, weight: '110g', image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=400&q=80', section: 'Oven-Hot Bakery', subcat: 'Sweet', duration: '5 mins', status: 'active', displayOrder: 17 },
+      { name: 'Truffle Mushroom Pie', price: 14.00, weight: '250g', image: 'https://images.unsplash.com/photo-1608686207856-001b95cf60ca?auto=format&fit=crop&w=400&q=80', section: 'Oven-Hot Bakery', subcat: 'Savory', duration: '5 mins', status: 'active', displayOrder: 18 },
+      { name: 'Smoked Salmon Bagel (Toasted)', price: 13.50, weight: '240g', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80', section: 'Oven-Hot Bakery', subcat: 'Savory', duration: '5 mins', status: 'active', displayOrder: 19 }
     ]
   },
   {
@@ -253,14 +303,16 @@ const initialServices = [
 
 const seedServices = async () => {
   try {
-    const existingCount = await Service.countDocuments({ isDeleted: false });
-    if (existingCount > 0) {
-      console.log(`Services catalog already seeded (${existingCount} services exist). Skipping seed.`);
-      return;
+    for (const serviceData of initialServices) {
+      const existing = await Service.findOne({ slug: serviceData.slug, isDeleted: false });
+      if (existing) {
+        // Update the fields while keeping the document ID
+        await Service.updateOne({ slug: serviceData.slug }, { $set: serviceData });
+      } else {
+        await Service.create(serviceData);
+      }
     }
-
-    await Service.insertMany(initialServices);
-    console.log(`✅ Seeded ${initialServices.length} dynamic services successfully!`);
+    console.log(`✅ Seeded & Synced ${initialServices.length} dynamic services successfully!`);
   } catch (error) {
     console.error('❌ Error seeding services:', error.message);
   }

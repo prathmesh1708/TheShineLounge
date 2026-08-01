@@ -16,7 +16,9 @@ const {
   addMembership,
   deleteMembership,
   addPlan,
-  deletePlan
+  deletePlan,
+  addSection,
+  deleteSection
 } = require('../controllers/serviceController');
 
 // Public Routes
@@ -37,5 +39,7 @@ router.post('/:id/memberships', authMiddleware, adminOnly, addMembership);
 router.delete('/:id/memberships/:memId', authMiddleware, adminOnly, deleteMembership);
 router.post('/:id/plans', authMiddleware, adminOnly, addPlan);
 router.delete('/:id/plans/:planId', authMiddleware, adminOnly, deletePlan);
+router.post('/:id/sections', authMiddleware, adminOnly, addSection);
+router.delete('/:id/sections/:sectionId', authMiddleware, adminOnly, deleteSection);
 
 module.exports = router;

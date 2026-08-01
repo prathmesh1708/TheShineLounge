@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
-const { adminOnly } = require('../middleware/roleMiddleware');
+const { adminOnly, staffOnly } = require('../middleware/roleMiddleware');
 const {
   createStaff,
   getStaffList,
@@ -27,8 +27,8 @@ router.patch('/staff/:id/status', authMiddleware, adminOnly, toggleStaffStatus);
 router.patch('/staff/:id/reset-password', authMiddleware, adminOnly, resetStaffPassword);
 router.delete('/staff/:id', authMiddleware, adminOnly, deleteStaff);
 
-// ─── Customer Management (Admin Only) ───────────────────────
-router.get('/customers', authMiddleware, adminOnly, getCustomers);
-router.get('/customers/:id', authMiddleware, adminOnly, getCustomerById);
+// ─── Customer Management (Admin & Staff) ───────────────────────
+router.get('/customers', authMiddleware, staffOnly, getCustomers);
+router.get('/customers/:id', authMiddleware, staffOnly, getCustomerById);
 
 module.exports = router;

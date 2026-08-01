@@ -28,17 +28,20 @@ export function StaffProvider({ children }) {
       const stored = localStorage.getItem('tsl_user');
       if (stored) {
         const u = JSON.parse(stored);
-        if (u) return formatStaffUser(u);
+        if (u && u.role === 'staff') return formatStaffUser(u);
       }
     } catch (err) {
       console.warn('Error parsing tsl_user in StaffContext:', err);
     }
-    return mockStaffMembers[2];
+    return null;
   };
 
   // Currently Logged-in Staff
   const [currentStaff, setCurrentStaff] = useState(getInitialStaff);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const initial = getInitialStaff();
+    return initial !== null;
+  });
 
   // Sync staff context whenever localStorage tsl_user changes or mounts
   useEffect(() => {
@@ -47,14 +50,17 @@ export function StaffProvider({ children }) {
         const stored = localStorage.getItem('tsl_user');
         if (stored) {
           const u = JSON.parse(stored);
-          if (u) {
+          if (u && u.role === 'staff') {
             setCurrentStaff(formatStaffUser(u));
             setIsAuthenticated(true);
+            return;
           }
         }
       } catch (err) {
         console.warn('Sync staff error:', err);
       }
+      setCurrentStaff(null);
+      setIsAuthenticated(false);
     };
 
     syncStaffUser();
@@ -63,9 +69,9 @@ export function StaffProvider({ children }) {
   }, []);
 
   // State
-  const [jobs, setJobs] = useState(mockAssignedJobs);
-  const [customers, setCustomers] = useState(mockCustomers);
-  const [attendance, setAttendance] = useState(mockAttendanceRecords);
+  const [jobs, setJobs] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [attendance, setAttendance] = useState([]);
   const [notifications, setNotifications] = useState(mockStaffNotifications);
   
   // Check-In State
@@ -119,13 +125,32 @@ export function StaffProvider({ children }) {
           staffId: b.assignedStaffId || 'STF-03',
           staffName: b.assignedStaffName || 'Rohan Deshmukh'
         }));
-
-        // Merge with mockAssignedJobs seeds
-        const merged = [...mapped, ...mockAssignedJobs.filter(mj => !mapped.some(m => m.id === mj.id))];
-        setJobs(merged);
+        setJobs(mapped);
       }
     } catch (err) {
       console.warn('Could not fetch jobs from database:', err.message);
+    }
+  };
+
+  const fetchLiveCustomers = async () => {
+    try {
+      const res = await apiClient.get('/users/customers');
+      if (res.data && res.data.customers) {
+        const mapped = res.data.customers.map(c => ({
+          id: c.email || c._id,
+          name: c.fullName,
+          fullName: c.fullName,
+          email: c.email,
+          mobile: c.mobile || '',
+          phone: c.mobile || '',
+          role: c.role,
+          vehicleNo: 'MH-02-CP-4455',
+          activePassesCount: 0
+        }));
+        setCustomers(mapped);
+      }
+    } catch (err) {
+      console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
   };
 
@@ -135,6 +160,7 @@ export function StaffProvider({ children }) {
         fetchLiveAttendance(currentStaff.id);
       }
       fetchLiveJobs();
+      fetchLiveCustomers();
     }
   }, [currentStaff]);
 

@@ -165,6 +165,24 @@ const deletePlan = async (req, res) => {
   }
 };
 
+const addSection = async (req, res) => {
+  try {
+    const service = await serviceService.addSection(req.params.id, req.body);
+    res.status(201).json({ success: true, message: 'Menu section added', service });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+const deleteSection = async (req, res) => {
+  try {
+    const service = await serviceService.deleteSection(req.params.id, req.params.sectionId);
+    res.status(200).json({ success: true, message: 'Menu section removed', service });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createService,
   getHomeServices,
@@ -178,5 +196,7 @@ module.exports = {
   addMembership,
   deleteMembership,
   addPlan,
-  deletePlan
+  deletePlan,
+  addSection,
+  deleteSection
 };

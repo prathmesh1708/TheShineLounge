@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
 import { useTheme } from '../common/context/ThemeContext';
 import { useAuth } from '../common/context/AuthContext';
+import apiClient from '../common/utils/apiClient';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -28,8 +29,39 @@ export default function ProfilePage() {
   const [notifications, setNotifications] = useState({
     sms: true,
     push: false,
-    email: true
+    email: true,
+    expiryNotif: true,
+    reminders: true,
+    promoOffers: false
   });
+
+  const [bookings, setBookings] = useState([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [invoiceModalItem, setInvoiceModalItem] = useState(null);
+
+  useEffect(() => {
+    const fetchMyBookings = async () => {
+      try {
+        let email = '';
+        const stored = localStorage.getItem('tsl_user');
+        if (stored) {
+          email = JSON.parse(stored).email;
+        }
+        const res = await apiClient.get('/bookings');
+        if (res.data && res.data.bookings) {
+          const filtered = email
+            ? res.data.bookings.filter(b => b.customerEmail === email)
+            : res.data.bookings;
+          setBookings(filtered);
+        }
+      } catch (err) {
+        console.warn('Could not load user bookings on profile page:', err.message);
+      } finally {
+        setLoadingBookings(false);
+      }
+    };
+    fetchMyBookings();
+  }, []);
 
   const [cards] = useState([
     { brand: 'Visa', last4: '4820', expiry: '12/28', type: 'Primary' },
@@ -72,6 +104,107 @@ export default function ProfilePage() {
     setNotifications(tempNotifs);
     setActiveModal(null);
     alert('Notification settings updated successfully!');
+  };
+
+  const activeMembership = bookings.find(b => 
+    b.packageName && 
+    (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass'))
+  );
+
+  const getDates = (membership) => {
+    if (!membership) return { start: '', expiry: '' };
+    const start = new Date(membership.date || Date.now());
+    const isYearly = (membership.packageName || '').toLowerCase().includes('yearly');
+    const expiry = new Date(start);
+    if (isYearly) {
+      expiry.setFullYear(start.getFullYear() + 1);
+    } else {
+      expiry.setDate(start.getDate() + 30);
+    }
+    const options = { month: 'long', day: 'numeric', year: 'numeric' };
+    return {
+      start: start.toLocaleDateString('en-US', options),
+      expiry: expiry.toLocaleDateString('en-US', options)
+    };
+  };
+
+  const washesLimit = activeMembership 
+    ? ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 4)
+    : 0;
+
+  const washesUsedCount = bookings.filter(b => 
+    b.serviceKey === 'car-wash' && 
+    b.packageName && 
+    !b.packageName.toLowerCase().includes('membership')
+  ).length;
+
+  const handleRenewMembership = async () => {
+    if (!activeMembership) return;
+    const confirmRenew = window.confirm(`Confirm renewal of your ${activeMembership.packageName}? Amount: ₹${activeMembership.price} (Incl. GST) will be charged to your primary Visa card ending in 4820.`);
+    if (!confirmRenew) return;
+
+    try {
+      // Simulate booking transaction
+      const payload = {
+        bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        serviceKey: activeMembership.serviceKey || 'car-wash',
+        serviceName: activeMembership.serviceName || 'Car Wash',
+        packageName: activeMembership.packageName,
+        price: activeMembership.price,
+        date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        timeSlot: '09:00 AM - 09:30 AM',
+        customerName: profile.name,
+        customerEmail: profile.email,
+        vehicleNo: 'TSL-3000',
+        vehicleType: 'Tesla Model 3'
+      };
+      
+      const res = await apiClient.post('/bookings', payload);
+      if (res.data && res.data.success) {
+        alert('🎉 Membership renewed successfully! Receipt generated.');
+        // Refresh bookings
+        const refresh = await apiClient.get('/bookings');
+        if (refresh.data && refresh.data.bookings) {
+          setBookings(refresh.data.bookings.filter(b => b.customerEmail === profile.email));
+        }
+      }
+    } catch (err) {
+      alert('Error renewing membership: ' + err.message);
+    }
+  };
+
+  const handleUpgradeMembership = async () => {
+    if (!activeMembership) return;
+    const confirmUpgrade = window.confirm(`Confirm upgrade to Yearly Elite Membership? Amount: ₹19,999 (plus 18% GST) will be charged to your primary Visa card.`);
+    if (!confirmUpgrade) return;
+
+    try {
+      const payload = {
+        bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        serviceKey: 'car-wash',
+        serviceName: 'Car Wash',
+        packageName: 'Yearly Membership',
+        price: 23599, // 19999 + 18% GST
+        date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        timeSlot: '09:00 AM - 09:30 AM',
+        customerName: profile.name,
+        customerEmail: profile.email,
+        vehicleNo: 'TSL-3000',
+        vehicleType: 'Tesla Model 3'
+      };
+      
+      const res = await apiClient.post('/bookings', payload);
+      if (res.data && res.data.success) {
+        alert('🎉 Upgraded to Yearly Elite Membership successfully!');
+        // Refresh bookings
+        const refresh = await apiClient.get('/bookings');
+        if (refresh.data && refresh.data.bookings) {
+          setBookings(refresh.data.bookings.filter(b => b.customerEmail === profile.email));
+        }
+      }
+    } catch (err) {
+      alert('Error upgrading membership: ' + err.message);
+    }
   };
 
   // --- Sub-view Renders ---
@@ -228,7 +361,10 @@ export default function ProfilePage() {
         {[
           { key: 'sms', label: 'SMS Booking Alerts', desc: 'Get slot confirmations via text message' },
           { key: 'push', label: 'Push Notifications', desc: 'Realtime updates when your wash/coffee is ready' },
-          { key: 'email', label: 'Email Invoices', desc: 'Receive GST invoices and transaction history' }
+          { key: 'email', label: 'Email Invoices', desc: 'Receive GST invoices and transaction history' },
+          { key: 'expiryNotif', label: 'Receive Membership Expiry Notification', desc: 'Alerts when your membership plan is expiring soon' },
+          { key: 'reminders', label: 'Receive Renewal Reminders', desc: 'Reminders to renew your active subscriptions' },
+          { key: 'promoOffers', label: 'Receive Promotional Offers', desc: 'Exclusive deals, discounts, and menu highlights' }
         ].map((item) => (
           <div 
             key={item.key}
@@ -271,6 +407,156 @@ export default function ProfilePage() {
     </form>
   );
 
+  const renderWashHistory = () => {
+    const washBookings = bookings.filter(b => 
+      b.serviceKey === 'car-wash' && 
+      (!b.packageName || !b.packageName.toLowerCase().includes('membership'))
+    );
+    return (
+      <div className="space-y-4 text-xs text-left">
+        <h3 className="text-sm font-extrabold text-gray-900 border-b pb-2">Complete Wash History</h3>
+        {washBookings.length === 0 ? (
+          <div className="text-center py-6 text-gray-400 font-bold">No wash sessions recorded yet.</div>
+        ) : (
+          <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            {washBookings.map((wash) => (
+              <div key={wash._id || wash.bookingId} className="bg-white border rounded-xl p-3 flex justify-between items-center shadow-2xs">
+                <div>
+                  <h4 className="font-extrabold text-gray-800 text-xs">{wash.packageName || wash.serviceName}</h4>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-0.5">{wash.date} • {wash.timeSlot}</p>
+                  <p className="text-[9px] text-amber-600 font-bold mt-1">Specialist: {wash.assignedStaffName || 'Assigned Agent'}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                  wash.status === 'Completed' || wash.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {wash.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPaymentHistory = () => {
+    const membershipPayments = bookings.filter(b => 
+      b.packageName && 
+      (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass'))
+    );
+    return (
+      <div className="space-y-4 text-xs text-left">
+        <h3 className="text-sm font-extrabold text-gray-900 border-b pb-2">Membership Payment History</h3>
+        {membershipPayments.length === 0 ? (
+          <div className="text-center py-6 text-gray-400 font-bold">No membership purchases recorded.</div>
+        ) : (
+          <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            {membershipPayments.map((pay) => (
+              <div key={pay._id || pay.bookingId} className="bg-white border rounded-xl p-3 flex justify-between items-center shadow-2xs">
+                <div>
+                  <h4 className="font-extrabold text-gray-800 text-xs">{pay.packageName}</h4>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Purchased on {pay.date}</p>
+                  <p className="text-[10px] text-emerald-700 font-black mt-1">₹{pay.price} (Incl. GST)</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInvoiceModalItem(pay);
+                    setActiveModal('invoice');
+                  }}
+                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[9px] rounded-lg transition-all"
+                >
+                  📄 Invoice
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderGSTInvoice = () => {
+    if (!invoiceModalItem) return null;
+    const item = invoiceModalItem;
+    const totalAmount = Number(item.price || 2499);
+    const taxRate = 0.18;
+    const taxableAmount = Math.round(totalAmount / (1 + taxRate));
+    const gstAmount = totalAmount - taxableAmount;
+    const cgst = Math.round(gstAmount / 2);
+    const sgst = Math.round(gstAmount / 2);
+    return (
+      <div className="space-y-4 text-xs text-left" id="gst-invoice-content">
+        <div className="flex justify-between items-start border-b pb-3">
+          <div>
+            <h3 className="font-black text-xs text-gray-900 tracking-wider">TAX INVOICE</h3>
+            <p className="text-[9px] text-gray-400 mt-1">Invoice: INV-{item._id ? item._id.substring(18) : '2026-9028'}</p>
+            <p className="text-[9px] text-gray-400">Date: {item.date}</p>
+          </div>
+          <div className="text-right">
+            <h4 className="font-black text-amber-600 text-xs tracking-tighter">THE SHINE LOUNGE</h4>
+            <p className="text-[8px] text-gray-400">GSTIN: 27AAAAA1111A1Z1</p>
+            <p className="text-[8px] text-gray-400">Maharashtra, IN</p>
+          </div>
+        </div>
+
+        <div className="bg-gray-50/50 p-2.5 rounded-xl border border-gray-100 space-y-0.5">
+          <p className="text-[8px] text-gray-400 font-black uppercase tracking-wider">Billed To</p>
+          <p className="font-bold text-gray-800 text-[10px]">{profile.name}</p>
+          <p className="text-gray-500 text-[9px]">{profile.email} • {profile.phone}</p>
+        </div>
+
+        <table className="w-full text-left border-collapse text-[9px]">
+          <thead>
+            <tr className="border-b bg-gray-50 text-gray-500 font-bold">
+              <th className="py-2 px-1">Description</th>
+              <th className="py-2 px-1 text-center">HSN/SAC</th>
+              <th className="py-2 px-1 text-right">Taxable</th>
+              <th className="py-2 px-1 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b font-semibold text-gray-700">
+              <td className="py-2 px-1">{item.packageName || item.packageName || 'Monthly Membership'}</td>
+              <td className="py-2 px-1 text-center">998714</td>
+              <td className="py-2 px-1 text-right">₹{taxableAmount}</td>
+              <td className="py-2 px-1 text-right">₹{taxableAmount}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="space-y-1.5 text-[9px] font-bold text-gray-700 ml-auto max-w-[180px] border-t pt-2">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Taxable Value:</span>
+            <span>₹{taxableAmount}</span>
+          </div>
+          <div className="flex justify-between text-gray-400 font-medium">
+            <span>CGST (9%):</span>
+            <span>₹{cgst}</span>
+          </div>
+          <div className="flex justify-between text-gray-400 font-medium">
+            <span>SGST (9%):</span>
+            <span>₹{sgst}</span>
+          </div>
+          <div className="flex justify-between border-t pt-1.5 font-black text-gray-900 text-xs">
+            <span>Invoice Total:</span>
+            <span className="text-amber-600">₹{totalAmount}</span>
+          </div>
+        </div>
+
+        <div className="pt-2 flex gap-2 no-print">
+          <button 
+            type="button"
+            onClick={() => window.print()}
+            className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-center select-none active:scale-[0.98] transition-all"
+          >
+            🖨️ Print / Save GST PDF
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="profile-page-container app-mobile-dashboard" style={{ gap: '0.75rem', position: 'relative' }}>
       
@@ -293,6 +579,131 @@ export default function ProfilePage() {
           <span className="profile-email" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{profile.email}</span>
         </div>
       </div>
+
+      {/* Dynamic Active Membership Dashboard Section */}
+      {activeMembership ? (
+        <div className="section-card border-amber-500/40 shadow-md" style={{ marginBottom: 0, padding: '1.5rem', textAlign: 'left' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem', marginBottom: '1.15rem' }}>
+            <div>
+              <span style={{ fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', tracking: '0.05em', color: 'var(--primary-orange)', backgroundColor: 'rgba(255, 140, 26, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '0.5rem', border: '1px solid rgba(255, 140, 26, 0.15)' }}>
+                Active Subscription
+              </span>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginTop: '0.4rem', color: 'var(--text-main)' }}>
+                {activeMembership.packageName}
+              </h3>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span className="text-[10px] text-gray-500 font-bold block">ID: {activeMembership.bookingId || 'B-9028'}</span>
+              <span className="text-[10px] text-emerald-600 font-extrabold block">Paid: ₹{activeMembership.price}</span>
+            </div>
+          </div>
+
+          {/* Membership Info Grids */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-xs">
+            {/* Start and Expiry Dates */}
+            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100/60 space-y-1">
+              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Validity Period</span>
+              <div className="flex justify-between font-semibold">
+                <span className="text-gray-500">Started:</span>
+                <span className="text-gray-800">{getDates(activeMembership).start}</span>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span className="text-gray-500">Expires:</span>
+                <span className="text-red-700 font-black">{getDates(activeMembership).expiry}</span>
+              </div>
+            </div>
+
+            {/* Washes Meter */}
+            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100/60 space-y-1">
+              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Wash Usage Meter</span>
+              <div className="flex justify-between font-semibold">
+                <span className="text-gray-500">Total Washes Used:</span>
+                <span className="text-amber-700 font-extrabold">
+                  {washesLimit === 'Unlimited' ? `${washesUsedCount} (Unlimited)` : `${Math.min(washesUsedCount, 4)} of 4 washes`}
+                </span>
+              </div>
+              {/* Progress bar */}
+              {washesLimit !== 'Unlimited' ? (
+                <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden mt-1.5">
+                  <div 
+                    className="bg-amber-500 h-full transition-all duration-300"
+                    style={{ width: `${(Math.min(washesUsedCount, 4) / 4) * 100}%` }}
+                  />
+                </div>
+              ) : (
+                <div className="text-[9px] text-emerald-600 font-extrabold mt-1">
+                  ✨ Elite Unlimited Pass Active
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Membership Actions Row */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 justify-between items-center text-[10px] font-bold">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleRenewMembership}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl shadow-xs transition-all active:scale-[0.98]"
+              >
+                🔄 Renew
+              </button>
+              {!(activeMembership.packageName || '').toLowerCase().includes('yearly') && (
+                <button
+                  type="button"
+                  onClick={handleUpgradeMembership}
+                  className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold rounded-xl transition-all"
+                >
+                  ⚡ Upgrade Plan
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleOpenModal('wash-history')}
+                className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
+              >
+                🚗 Wash Log
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenModal('payment-history')}
+                className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
+              >
+                💳 Payments
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInvoiceModalItem(activeMembership);
+                  setActiveModal('invoice');
+                }}
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition-all"
+              >
+                📄 GST Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="section-card bg-amber-50/20 border border-dashed border-amber-300 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left" style={{ marginBottom: 0 }}>
+          <div className="space-y-1">
+            <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">Become a Lounge Member</h4>
+            <p className="text-[11px] text-gray-500 font-semibold leading-relaxed max-w-sm">
+              Save up to 45% with our Monthly or Yearly Pass. Enjoy unlimited washes, ceramic protection, and premium complimentary coffee.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/car-wash')}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs select-none active:scale-[0.98] transition-all whitespace-nowrap"
+          >
+            Explore Plans
+          </button>
+        </div>
+      )}
 
       {/* Account Settings List */}
       <div className="profile-settings-card section-card" style={{ marginBottom: 0 }}>
@@ -448,6 +859,9 @@ export default function ProfilePage() {
                 {activeModal === 'payment' && renderPaymentOptions()}
                 {activeModal === 'preferences' && renderPreferences()}
                 {activeModal === 'notifications' && renderNotifications()}
+                {activeModal === 'wash-history' && renderWashHistory()}
+                {activeModal === 'payment-history' && renderPaymentHistory()}
+                {activeModal === 'invoice' && renderGSTInvoice()}
               </motion.div>
             </div>
           )}

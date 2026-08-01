@@ -122,11 +122,13 @@ function MainAppContent() {
     );
   }
 
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
+
   return (
     <div className="app-container">
-      <Navbar />
+      {!isAuthRoute && <Navbar />}
       
-      <main className="main-content">
+      <main className={isAuthRoute ? "w-full min-h-screen p-0 m-0" : "main-content"}>
         <ErrorBoundary>
           <PageTransition>
             <Routes>
@@ -148,11 +150,13 @@ function MainAppContent() {
         </ErrorBoundary>
       </main>
 
-      <footer className="footer">
-        <p className="footer-text">
-          &copy; {new Date().getFullYear()} The Shine Lounge. All rights reserved. Premium multi-service booking platform.
-        </p>
-      </footer>
+      {!isAuthRoute && (
+        <footer className="footer">
+          <p className="footer-text">
+            &copy; {new Date().getFullYear()} The Shine Lounge. All rights reserved. Premium multi-service booking platform.
+          </p>
+        </footer>
+      )}
 
       <BottomNavbar />
     </div>
