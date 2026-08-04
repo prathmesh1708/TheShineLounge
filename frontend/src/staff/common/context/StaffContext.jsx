@@ -30,22 +30,6 @@ const formatStaffUser = (u) => {
   const nameLower = (u.fullName || u.name || '').toLowerCase();
   const combinedStr = `${deptLower} ${roleLower} ${emailLower} ${nameLower}`;
 
-<<<<<<< HEAD
-  if (deptStr.includes('dog') || deptStr.includes('pet') || deptStr.includes('groom') || deptStr.includes('hydrobath')) {
-    serviceKey = 'dog-wash';
-  } else if (deptStr.includes('detailing') || deptStr.includes('ceramic') || deptStr.includes('ppf')) {
-    serviceKey = 'car-detailing';
-  } else if (deptStr.includes('drive-through') || deptStr.includes('drive thru')) {
-    serviceKey = 'drive-through-cafe';
-  } else if (deptStr.includes('cafe') || deptStr.includes('coffee')) {
-    serviceKey = 'cafe';
-  } else if (deptStr.includes('salon') || deptStr.includes('barber') || deptStr.includes('hair')) {
-    serviceKey = 'salon';
-  } else if (deptStr.includes('wash')) {
-    serviceKey = 'car-wash';
-  } else {
-    serviceKey = u.serviceKey || 'car-detailing';
-=======
   if (!key || !dept) {
     if (combinedStr.includes('drive')) {
       key = key || 'drive-through-cafe';
@@ -66,22 +50,15 @@ const formatStaffUser = (u) => {
       key = key || 'car-wash';
       dept = dept || 'Car Wash';
     }
->>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
   }
 
   return {
     id: u._id || u.id || 'STF-LIVE',
     employeeId: u.email || u.employeeId || 'STF-01',
     name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
-<<<<<<< HEAD
-    role: u.staffRole || (u.role === 'staff' ? (u.department || 'Detailing Specialist') : u.role) || 'Detailing Specialist',
-    department: u.department || (serviceKey === 'car-detailing' ? 'Car Detailing' : serviceKey === 'dog-wash' ? 'Dog Wash' : 'Car Wash'),
-    serviceKey: serviceKey,
-=======
     role: u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist',
     department: dept,
     serviceKey: key,
->>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
     email: u.email || '',
     mobile: u.mobile || '',
     salary: u.salary || '',
@@ -173,7 +150,6 @@ export function StaffProvider({ children }) {
     let apiMapped = [];
     try {
       const res = await apiClient.get('/bookings');
-<<<<<<< HEAD
       if (res.data && res.data.bookings) {
         apiMapped = res.data.bookings.map(b => {
           const sName = (b.serviceName || b.plan || b.packageName || '').toLowerCase();
@@ -201,11 +177,13 @@ export function StaffProvider({ children }) {
             serviceKey: resolvedKey,
             serviceName: b.serviceName || b.plan || b.package || (resolvedKey === 'dog-wash' ? 'Dog Wash' : 'Car Wash'),
             planName: b.packageName || b.package || b.serviceName || (resolvedKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Wash'),
+            itemsSummary: b.itemsSummary || b.packageName || 'Service Order',
+            items: b.items || [],
             vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
             customerName: b.customerName || b.user || 'Customer',
-            phone: b.customerEmail || b.phone || '+91 98200 12345',
+            phone: b.customerEmail || b.phone || b.mobile || '+91 98200 12345',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || b.time || '02:00 PM',
             amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
@@ -218,32 +196,6 @@ export function StaffProvider({ children }) {
             staffName: b.assignedStaffName || 'Specialist'
           };
         });
-=======
-      if (res.data && res.data.bookings && res.data.bookings.length > 0) {
-        apiMapped = res.data.bookings.map(b => ({
-          _id: b._id,
-          id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
-          serviceKey: b.serviceKey || (b.serviceName?.toLowerCase().includes('detail') || b.packageName?.toLowerCase().includes('detail') ? 'car-detailing' : 'car-wash'),
-          serviceName: b.serviceName || b.plan || b.package || 'Car Detailing Treatment',
-          planName: b.packageName || b.package || b.planName || 'Detailing Treatment',
-          itemsSummary: b.itemsSummary || b.packageName || 'Service Order',
-          items: b.items || [],
-          vehicleNo: b.vehicleNo || 'MH02CD5678',
-          vehicleModel: b.vehicleType || b.vehicle || 'Tesla Model 3',
-          customerName: b.customerName || b.user || 'Customer',
-          phone: b.customerEmail || b.phone || b.mobile || '+91 98200 12345',
-          date: b.date || new Date().toISOString().split('T')[0],
-          timeSlot: b.timeSlot || b.time || '02:00 PM - 05:00 PM',
-          amount: b.price || b.amount || 1490,
-          total: b.price || b.amount || b.total || 1490,
-          status: b.status || 'Confirmed',
-          stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-          notes: b.notes || '',
-          photos: b.photos || [],
-          staffId: b.assignedStaffId || 'STF-LIVE',
-          staffName: b.assignedStaffName || 'Detailing Specialist'
-        }));
->>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
       }
     } catch (err) {
       console.warn('Could not fetch jobs from database:', err.message);

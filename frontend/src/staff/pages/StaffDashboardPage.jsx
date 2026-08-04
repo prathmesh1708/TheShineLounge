@@ -185,14 +185,7 @@ export default function StaffDashboardPage() {
                       <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
                     </div>
                     <p className="text-[11px] font-bold text-blue-900 mt-0.5">
-<<<<<<< HEAD
-                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
-=======
-                      {job.serviceName || job.planName || 'Service Order'}
-                    </p>
-                    <p className="text-[10px] text-gray-500 font-medium">
-                      🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
->>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
+                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Service Order')}
                     </p>
                     <div className="text-[10px] text-gray-600 font-medium mt-0.5">
                       {job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
