@@ -216,7 +216,6 @@ export default function StaffDashboardPage() {
             </div>
           )}
         </div>
-        </div>
       </div>
     </div>
   );
