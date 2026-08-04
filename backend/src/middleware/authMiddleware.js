@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const { JWT_SECRET } = require('../common/config/env');
 
 const authMiddleware = async (req, res, next) => {
@@ -20,8 +21,11 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Get user from DB (exclude password)
-    const user = await User.findById(decoded.userId);
+    // Get user from DB (check User model, then Admin model)
+    let user = await User.findById(decoded.userId);
+    if (!user) {
+      user = await Admin.findById(decoded.userId);
+    }
 
     if (!user) {
       return res.status(401).json({

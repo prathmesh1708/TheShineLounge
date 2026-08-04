@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const { ADMIN_EMAIL, ADMIN_PASSWORD } = require('../common/config/env');
 
 const ALL_PERMISSIONS = [
@@ -14,13 +15,16 @@ const ALL_PERMISSIONS = [
 
 const seedAdmin = async () => {
   try {
-    const existingAdmin = await User.findOne({ email: ADMIN_EMAIL, isDeleted: false });
+    const targetEmail = ADMIN_EMAIL || 'admin@gmail.com';
+    const targetPass = ADMIN_PASSWORD || 'Admin!@#123';
 
-    if (!existingAdmin) {
-      const admin = await User.create({
+    // 1. Seed into Admin Model
+    const existingAdminDoc = await Admin.findOne({ email: targetEmail, isDeleted: false });
+    if (!existingAdminDoc) {
+      await Admin.create({
         fullName: 'Super Admin',
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
+        email: targetEmail,
+        password: targetPass,
         mobile: '+91 00000 00000',
         role: 'admin',
         department: 'Management',
@@ -28,15 +32,38 @@ const seedAdmin = async () => {
         isActive: true,
         branch: 'Main Branch'
       });
-      console.log(`✅ Super Admin seeded successfully (${admin.email})`);
+      console.log(`✅ Admin Model seeded successfully (${targetEmail})`);
     } else {
-      // Update password hash and permissions if needed
-      existingAdmin.password = ADMIN_PASSWORD;
-      existingAdmin.role = 'admin';
-      existingAdmin.isActive = true;
-      existingAdmin.permissions = ALL_PERMISSIONS;
-      await existingAdmin.save();
-      console.log(`✅ Super Admin account verified & updated (${existingAdmin.email})`);
+      existingAdminDoc.password = targetPass;
+      existingAdminDoc.role = 'admin';
+      existingAdminDoc.isActive = true;
+      existingAdminDoc.permissions = ALL_PERMISSIONS;
+      await existingAdminDoc.save();
+      console.log(`✅ Admin Model account verified & updated (${targetEmail})`);
+    }
+
+    // 2. Seed into User Model
+    const existingUserDoc = await User.findOne({ email: targetEmail, isDeleted: false });
+    if (!existingUserDoc) {
+      await User.create({
+        fullName: 'Super Admin',
+        email: targetEmail,
+        password: targetPass,
+        mobile: '+91 00000 00000',
+        role: 'admin',
+        department: 'Management',
+        permissions: ALL_PERMISSIONS,
+        isActive: true,
+        branch: 'Main Branch'
+      });
+      console.log(`✅ User Model Admin seeded successfully (${targetEmail})`);
+    } else {
+      existingUserDoc.password = targetPass;
+      existingUserDoc.role = 'admin';
+      existingUserDoc.isActive = true;
+      existingUserDoc.permissions = ALL_PERMISSIONS;
+      await existingUserDoc.save();
+      console.log(`✅ User Model Admin verified & updated (${targetEmail})`);
     }
   } catch (error) {
     console.error('❌ Error seeding admin:', error.message);
