@@ -25,16 +25,18 @@ const formatStaffUser = (u) => {
   let serviceKey = u.serviceKey;
   const deptStr = `${u.department || ''} ${u.staffRole || ''} ${u.role || ''} ${u.email || ''} ${u.fullName || u.name || ''}`.toLowerCase();
 
-  if (deptStr.includes('detailing') || deptStr.includes('ceramic') || deptStr.includes('ppf')) {
+  if (deptStr.includes('dog') || deptStr.includes('pet') || deptStr.includes('groom') || deptStr.includes('hydrobath')) {
+    serviceKey = 'dog-wash';
+  } else if (deptStr.includes('detailing') || deptStr.includes('ceramic') || deptStr.includes('ppf')) {
     serviceKey = 'car-detailing';
-  } else if (deptStr.includes('wash')) {
-    serviceKey = 'car-wash';
+  } else if (deptStr.includes('drive-through') || deptStr.includes('drive thru')) {
+    serviceKey = 'drive-through-cafe';
   } else if (deptStr.includes('cafe') || deptStr.includes('coffee')) {
     serviceKey = 'cafe';
-  } else if (deptStr.includes('dog') || deptStr.includes('pet') || deptStr.includes('groom')) {
-    serviceKey = 'dog-wash';
   } else if (deptStr.includes('salon') || deptStr.includes('barber') || deptStr.includes('hair')) {
     serviceKey = 'salon';
+  } else if (deptStr.includes('wash')) {
+    serviceKey = 'car-wash';
   } else {
     serviceKey = u.serviceKey || 'car-detailing';
   }
@@ -44,7 +46,7 @@ const formatStaffUser = (u) => {
     employeeId: u.email || u.employeeId || 'STF-01',
     name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
     role: u.staffRole || (u.role === 'staff' ? (u.department || 'Detailing Specialist') : u.role) || 'Detailing Specialist',
-    department: u.department || (serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+    department: u.department || (serviceKey === 'car-detailing' ? 'Car Detailing' : serviceKey === 'dog-wash' ? 'Dog Wash' : 'Car Wash'),
     serviceKey: serviceKey,
     email: u.email || '',
     mobile: u.mobile || '',
@@ -138,27 +140,49 @@ export function StaffProvider({ children }) {
     try {
       const res = await apiClient.get('/bookings');
       if (res.data && res.data.bookings) {
-        apiMapped = res.data.bookings.map(b => ({
-          _id: b._id,
-          id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
-          serviceKey: b.serviceKey || (b.serviceName?.toLowerCase().includes('detail') || b.packageName?.toLowerCase().includes('detail') ? 'car-detailing' : 'car-wash'),
-          serviceName: b.serviceName || b.plan || b.package || 'Car Detailing Treatment',
-          planName: b.packageName || b.package || 'Detailing Treatment',
-          vehicleNo: b.vehicleNo || 'MH02CD5678',
-          vehicleModel: b.vehicleType || b.vehicle || 'Tesla Model 3',
-          customerName: b.customerName || b.user || 'Customer',
-          phone: b.customerEmail || b.phone || '+91 98200 12345',
-          date: b.date || new Date().toISOString().split('T')[0],
-          timeSlot: b.timeSlot || b.time || '02:00 PM - 05:00 PM',
-          amount: b.price || b.amount || 1490,
-          total: b.price || b.amount || 1490,
-          status: b.status || 'Confirmed',
-          stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-          notes: b.notes || '',
-          photos: b.photos || [],
-          staffId: b.assignedStaffId || 'STF-LIVE',
-          staffName: b.assignedStaffName || 'Detailing Specialist'
-        }));
+        apiMapped = res.data.bookings.map(b => {
+          const sName = (b.serviceName || b.plan || b.packageName || '').toLowerCase();
+          const pName = (b.packageName || b.package || '').toLowerCase();
+          const vType = (b.vehicleType || '').toLowerCase();
+
+          let resolvedKey = b.serviceKey;
+          if (!resolvedKey) {
+            if (sName.includes('dog') || sName.includes('pet') || sName.includes('groom') || sName.includes('hydrobath') || pName.includes('dog') || vType.includes('dog')) {
+              resolvedKey = 'dog-wash';
+            } else if (sName.includes('salon') || sName.includes('hair') || sName.includes('barber') || pName.includes('salon')) {
+              resolvedKey = 'salon';
+            } else if (sName.includes('cafe') || sName.includes('coffee') || sName.includes('drive')) {
+              resolvedKey = 'cafe';
+            } else if (sName.includes('detail') || pName.includes('detail') || pName.includes('ceramic') || pName.includes('ppf')) {
+              resolvedKey = 'car-detailing';
+            } else {
+              resolvedKey = 'car-wash';
+            }
+          }
+
+          return {
+            _id: b._id,
+            id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
+            serviceKey: resolvedKey,
+            serviceName: b.serviceName || b.plan || b.package || (resolvedKey === 'dog-wash' ? 'Dog Wash' : 'Car Wash'),
+            planName: b.packageName || b.package || b.serviceName || (resolvedKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Wash'),
+            vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
+            vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
+            vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
+            customerName: b.customerName || b.user || 'Customer',
+            phone: b.customerEmail || b.phone || '+91 98200 12345',
+            date: b.date || new Date().toISOString().split('T')[0],
+            timeSlot: b.timeSlot || b.time || '02:00 PM',
+            amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
+            total: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
+            status: b.status || 'Confirmed',
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || '',
+            photos: b.photos || [],
+            staffId: b.assignedStaffId || 'STF-LIVE',
+            staffName: b.assignedStaffName || 'Specialist'
+          };
+        });
       }
     } catch (err) {
       console.warn('Could not fetch jobs from database:', err.message);
@@ -194,7 +218,39 @@ export function StaffProvider({ children }) {
       }
     } catch (e) {}
 
-    const combined = [...apiMapped, ...localDetailingJobs];
+    let localDogJobs = [];
+    try {
+      const storedDog = localStorage.getItem('tsl_dog_wash_bookings') || localStorage.getItem('shine_dog_wash_bookings');
+      if (storedDog) {
+        const parsedDog = JSON.parse(storedDog);
+        if (Array.isArray(parsedDog)) {
+          localDogJobs = parsedDog.map((b, idx) => ({
+            _id: b.id || b.bookingId || `BK-DOG-${idx}`,
+            id: b.bookingId || b.id || `BK-DOG-${9000 + idx}`,
+            serviceKey: 'dog-wash',
+            serviceName: b.serviceName || 'Dog Wash',
+            planName: b.packageName || b.package || 'Dog Hydrobath Spa',
+            vehicleNo: b.vehicleNo || b.vehicle || 'Max (Golden Retriever)',
+            vehicleModel: 'Pet',
+            vehicleType: 'Dog',
+            customerName: b.customerName || 'Pet Owner',
+            phone: b.phone || b.customerEmail || '+91 98212 34567',
+            date: b.date || new Date().toISOString().split('T')[0],
+            timeSlot: b.timeSlot || b.time || 'Walk-In',
+            amount: b.price || b.amount || 500,
+            total: b.price || b.amount || 500,
+            status: b.status || 'Confirmed',
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || 'Dog wash & hydrobath session scheduled.',
+            photos: b.photos || [],
+            staffId: b.staffId || currentStaff?.id || 'STF-07',
+            staffName: b.staffName || currentStaff?.name || 'Sneha Rao'
+          }));
+        }
+      }
+    } catch (e) {}
+
+    const combined = [...apiMapped, ...localDetailingJobs, ...localDogJobs];
     const finalJobsList = combined.length > 0 ? combined : mockAssignedJobs;
     setJobs(finalJobsList);
   };
@@ -429,12 +485,12 @@ export function StaffProvider({ children }) {
     return newCust;
   };
 
-  // Filter Jobs Relevant to Logged In Staff Role
+  // Filter Jobs Relevant strictly to Logged In Staff Role & Department
   const staffJobs = jobs.filter(job => {
     if (currentStaff.serviceKey === 'global' || currentStaff.role === 'Super Admin' || currentStaff.role === 'Branch Manager' || currentStaff.role === 'Cashier') {
       return true;
     }
-    return job.serviceKey === currentStaff.serviceKey || job.staffId === currentStaff.id;
+    return job.serviceKey === currentStaff.serviceKey;
   });
 
   return (

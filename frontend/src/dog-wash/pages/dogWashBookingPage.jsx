@@ -154,6 +154,17 @@ export default function DogWashBookingPage() {
       console.warn('Error saving dog wash booking in DB:', err.message);
     }
 
+    try {
+      const storedDog = localStorage.getItem('tsl_dog_wash_bookings');
+      let parsed = storedDog ? JSON.parse(storedDog) : [];
+      if (!Array.isArray(parsed)) parsed = [];
+      parsed.unshift(payload);
+      localStorage.setItem('tsl_dog_wash_bookings', JSON.stringify(parsed));
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('dogWashDataChanged'));
+    } catch (e) {}
+
     navigate('/dog-wash/success', {
       state: {
         bookingId,

@@ -99,7 +99,11 @@ export default function DriveThroughCafeAdminHubPage() {
       const res = await serviceApi.getServiceBySlug('drive-through-cafe');
       if (res.success && res.service) {
         setDbService(res.service);
-        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+        try {
+          localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+        } catch (storageErr) {
+          console.warn('Could not cache drive through cafe service:', storageErr);
+        }
         return;
       }
     } catch (err) {

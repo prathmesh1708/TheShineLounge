@@ -152,11 +152,27 @@ export default function StaffDashboardPage() {
                       <h4 className="font-extrabold text-xs text-gray-900">{job.customerName}</h4>
                     </div>
                     <p className="text-[11px] font-bold text-blue-900 mt-0.5">
-                      {job.serviceName || job.planName || 'Car Detailing Treatment'}
+                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
                     </p>
-                    <p className="text-[10px] text-gray-500 font-medium">
-                      🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
-                    </p>
+                    <div className="text-[10px] text-gray-600 font-medium mt-0.5">
+                      {job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
+                        <span className="flex items-center gap-1">
+                          🐶 <span className="font-bold text-emerald-800">{job.vehicleNo || 'Pet'}</span>
+                        </span>
+                      ) : job.serviceKey === 'salon' ? (
+                        <span className="flex items-center gap-1">
+                          ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
+                        </span>
+                      ) : job.serviceKey === 'cafe' ? (
+                        <span className="flex items-center gap-1">
+                          ☕ <span className="font-bold text-amber-800">{job.vehicleNo || 'Table / Order'}</span>
+                        </span>
+                      ) : (
+                        <span>
+                          🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">

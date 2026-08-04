@@ -101,7 +101,11 @@ export default function DogWashAdminHubPage() {
       const res = await serviceApi.getServiceBySlug('dog-wash');
       if (res.success && res.service) {
         setDbService(res.service);
-        localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+        try {
+          localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+        } catch (storageErr) {
+          console.warn('Could not cache dog wash service to localStorage:', storageErr);
+        }
         return;
       }
     } catch (err) {
@@ -281,7 +285,11 @@ export default function DogWashAdminHubPage() {
       };
 
       setDbService(updatedDb);
-      localStorage.setItem('tsl_dog_wash_service', JSON.stringify(updatedDb));
+      try {
+        localStorage.setItem('tsl_dog_wash_service', JSON.stringify(updatedDb));
+      } catch (storageErr) {
+        console.warn('LocalStorage quota exceeded when storing video; updated state live in-memory:', storageErr);
+      }
       window.dispatchEvent(new Event('dogWashDataChanged'));
 
       if (showToast) showToast('Dog Wash hero video updated live across frontend!');
