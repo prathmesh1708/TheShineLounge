@@ -1061,7 +1061,7 @@ export default function DogWashAdminHubPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-base font-black text-gray-900">
-                Dog Wash Department Staff ({dbStaff.length || serviceStaff.length})
+                Dog Wash Department Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => s.serviceKey === 'dog-wash' || (s.department && s.department.toLowerCase().includes('dog')) || (s.staffRole && s.staffRole.toLowerCase().includes('groomer'))).length})
               </h3>
               <p className="text-xs text-gray-500">
                 Onboard staff members, generate email login credentials & assign module access
@@ -1076,56 +1076,58 @@ export default function DogWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
-              <div 
-                key={stf._id || stf.id} 
-                onClick={() => handleOpenEditStaff(stf)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <img
-                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                    alt={stf.fullName || stf.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                  />
-                  <div className="space-y-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {stf.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
+              .filter(s => s.serviceKey === 'dog-wash' || (s.department && s.department.toLowerCase().includes('dog')) || (s.staffRole && s.staffRole.toLowerCase().includes('groomer')))
+              .map((stf) => (
+                <div 
+                  key={stf._id || stf.id} 
+                  onClick={() => handleOpenEditStaff(stf)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                      alt={stf.fullName || stf.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                    />
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Dog Wash Specialist'}</p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                      <span className="font-bold text-gray-800 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
                       </span>
                     </div>
-                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Dog Wash Specialist'}</p>
-                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
-                    </p>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / month'}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
-                    <span className="font-bold text-gray-800 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
-                    </span>
-                  </div>
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / month'}</span>
-                  </div>
+                  {stf.permissions && stf.permissions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {stf.permissions.map(p => (
+                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                {stf.permissions && stf.permissions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {stf.permissions.map(p => (
-                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}

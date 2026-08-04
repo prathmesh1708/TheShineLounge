@@ -8,35 +8,62 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem('tsl_token') || null);
   const [loading, setLoading] = useState(true);
 
-  // Validate existing token on mount
+  // Validate existing token on mount (Route-Aware: Customer vs Admin)
   useEffect(() => {
     const validateSession = async () => {
-      const storedToken = localStorage.getItem('tsl_token');
-      if (!storedToken) {
+      const isPathAdmin = window.location.pathname.startsWith('/admin');
+
+      let storedToken = localStorage.getItem('tsl_token');
+      const customerToken = localStorage.getItem('tsl_customer_token');
+      const adminToken = localStorage.getItem('tsl_admin_token');
+
+      // Select target token based on current route type
+      let targetToken = storedToken;
+      if (isPathAdmin && adminToken) {
+        targetToken = adminToken;
+      } else if (!isPathAdmin && customerToken) {
+        targetToken = customerToken;
+      }
+
+      if (!targetToken) {
         setLoading(false);
         return;
       }
+
+      // Sync active token for axios apiClient
+      localStorage.setItem('tsl_token', targetToken);
 
       try {
         const data = await authService.getMe();
         if (data.success) {
           setUser(data.user);
-          setToken(storedToken);
+          setToken(targetToken);
+
+          // Store scoped session backup
+          if (data.user.role === 'admin' || data.user.role === 'staff') {
+            localStorage.setItem('tsl_admin_token', targetToken);
+            localStorage.setItem('tsl_admin_user', JSON.stringify(data.user));
+          } else {
+            localStorage.setItem('tsl_customer_token', targetToken);
+            localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));
+          }
         } else {
           clearAuth();
         }
       } catch (err) {
-        // Only clear authentication if it is explicitly invalid/expired (401/403)
-        // If the server is restarting, offline, or returns 500, preserve the cached session
+        // Only clear authentication if explicitly invalid/expired (401/403)
         if (err.response && (err.response.status === 401 || err.response.status === 403)) {
           clearAuth();
         } else {
           try {
-            const cached = localStorage.getItem('tsl_user');
+            const cachedKey = (!isPathAdmin && localStorage.getItem('tsl_customer_user'))
+              ? 'tsl_customer_user'
+              : (isPathAdmin && localStorage.getItem('tsl_admin_user') ? 'tsl_admin_user' : 'tsl_user');
+            const cached = localStorage.getItem(cachedKey);
             if (cached) {
               const u = JSON.parse(cached);
               setUser(u);
-              setToken(storedToken);
+              setToken(targetToken);
             } else {
               clearAuth();
             }
@@ -57,6 +84,15 @@ export function AuthProvider({ children }) {
     setToken(null);
     localStorage.removeItem('tsl_token');
     localStorage.removeItem('tsl_user');
+
+    const isPathAdmin = window.location.pathname.startsWith('/admin');
+    if (isPathAdmin) {
+      localStorage.removeItem('tsl_admin_token');
+      localStorage.removeItem('tsl_admin_user');
+    } else {
+      localStorage.removeItem('tsl_customer_token');
+      localStorage.removeItem('tsl_customer_user');
+    }
   };
 
   const login = useCallback(async (email, password) => {
@@ -64,6 +100,15 @@ export function AuthProvider({ children }) {
     if (data.success) {
       localStorage.setItem('tsl_token', data.token);
       localStorage.setItem('tsl_user', JSON.stringify(data.user));
+
+      if (data.user?.role === 'admin' || data.user?.role === 'staff') {
+        localStorage.setItem('tsl_admin_token', data.token);
+        localStorage.setItem('tsl_admin_user', JSON.stringify(data.user));
+      } else {
+        localStorage.setItem('tsl_customer_token', data.token);
+        localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));
+      }
+
       setToken(data.token);
       setUser(data.user);
     }
@@ -75,6 +120,8 @@ export function AuthProvider({ children }) {
     if (data.success) {
       localStorage.setItem('tsl_token', data.token);
       localStorage.setItem('tsl_user', JSON.stringify(data.user));
+      localStorage.setItem('tsl_customer_token', data.token);
+      localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));
       setToken(data.token);
       setUser(data.user);
     }
@@ -105,11 +152,15 @@ export function AuthProvider({ children }) {
     token,
     loading,
     isAuthenticated: !!user && !!token,
+    isCustomer: !!user && !!token && (user.role === 'customer' || !user.role),
+    isStaff: !!user && !!token && user.role === 'staff',
+    isAdmin: !!user && !!token && user.role === 'admin',
     role: user?.role || null,
     permissions: user?.permissions || [],
     login,
     register,
     logout,
+    clearAuth,
     updateUser,
     hasPermission
   };

@@ -196,12 +196,64 @@ export default function CafeAdminHubPage() {
   }, []);
 
   const [addBannerModal, setAddBannerModal] = useState(false);
+  const [editBannerModal, setEditBannerModal] = useState(false);
+  const [selectedBanner, setSelectedBanner] = useState(null);
   const [bannerForm, setBannerForm] = useState({
-    title: `CAFE PROMO`,
-    subtitle: `Special discount offer for Cafe`,
+    title: '',
+    subtitle: '',
     badge: 'Special Deal',
-    imageUrl: serviceStats.heroImage
+    imageUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=600&q=80',
+    actionLink: '/cafe',
+    status: 'active'
   });
+
+  const handleOpenAddBanner = () => {
+    setBannerForm({
+      title: '',
+      subtitle: '',
+      badge: 'Special Deal',
+      imageUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=600&q=80',
+      actionLink: '/cafe',
+      status: 'active'
+    });
+    setAddBannerModal(true);
+  };
+
+  const handleOpenEditBanner = (ban) => {
+    setSelectedBanner(ban);
+    setBannerForm({
+      title: ban.title || '',
+      subtitle: ban.subtitle || '',
+      badge: ban.badge || 'Special Deal',
+      imageUrl: ban.imageUrl || '',
+      actionLink: ban.actionLink || '/cafe',
+      status: ban.status || 'active'
+    });
+    setEditBannerModal(true);
+  };
+
+  const handleSaveNewBanner = (e) => {
+    e.preventDefault();
+    addBanner({
+      ...bannerForm,
+      serviceKey: 'cafe'
+    });
+    setAddBannerModal(false);
+  };
+
+  const handleSaveEditBanner = (e) => {
+    e.preventDefault();
+    if (!selectedBanner) return;
+    updateBanner(selectedBanner.id, bannerForm);
+    setEditBannerModal(false);
+  };
+
+  const handleDeleteBanner = (id) => {
+    if (window.confirm('Are you sure you want to delete this promo banner?')) {
+      deleteBanner(id);
+      setEditBannerModal(false);
+    }
+  };
 
   const [stockModalItem, setStockModalItem] = useState(null);
   const [stockQty, setStockQty] = useState(5);
@@ -735,74 +787,136 @@ export default function CafeAdminHubPage() {
         </div>
       )}
 
+      {activeTab === 'staff' && (() => {
+        const rawStaff = dbStaff.length > 0 ? dbStaff : serviceStaff;
+        const displayStaff = rawStaff.filter(s => {
+          const isKeyMatch = s.serviceKey === 'cafe';
+          const isDeptMatch = s.department === 'Café' || s.department === 'Cafe';
+          const roleLower = (s.staffRole || s.role || '').toLowerCase();
+          const isCafeRole = roleLower.includes('cafe') || roleLower.includes('barista') || roleLower.includes('chef') || roleLower.includes('pastry');
+          return isKeyMatch || isDeptMatch || isCafeRole;
+        });
 
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Café Department Staff ({displayStaff.length})</h3>
+                <p className="text-xs text-gray-500">Onboard café staff members, manage roles, salaries, and assign system access permissions</p>
+              </div>
+              <button
+                onClick={() => setAddStaffModal(true)}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 select-none active:scale-[0.98]"
+              >
+                <UserPlus className="w-4 h-4" /> Onboard New Staff Member
+              </button>
+            </div>
 
-      {activeTab === 'staff' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {displayStaff.map((stf) => (
+                <div
+                  key={stf._id || stf.id}
+                  onClick={() => handleOpenEditStaff(stf)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                      alt={stf.fullName || stf.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                    />
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{stf.staffRole || stf.role}</p>
+                      <p className="text-[10px] text-gray-500 truncate">{stf.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+                    <span>{stf.mobile || 'No Mobile Phone'}</span>
+                    <span className="text-emerald-700 font-bold">{stf.salary || 'Salary Not Configured'}</span>
+                  </div>
+                </div>
+              ))}
+              {displayStaff.length === 0 && (
+                <div className="col-span-full py-12 text-center text-xs text-gray-400 font-medium bg-gray-50 border border-dashed rounded-2xl">
+                  No staff members onboarded for the Café Hub yet.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {activeTab === 'marketing' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Café Department Staff ({dbStaff.length || serviceStaff.length})</h3>
-              <p className="text-xs text-gray-500">Onboard café staff members, manage roles, salaries, and assign system access permissions</p>
+              <h3 className="text-base font-black text-gray-900">Café Promotional Banners & Deals ({serviceBanners.length})</h3>
+              <p className="text-xs text-gray-500">Configure visual promo banners and active discount banners displayed on the customer frontend</p>
             </div>
             <button
-              onClick={() => setAddStaffModal(true)}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 select-none active:scale-[0.98]"
+              onClick={handleOpenAddBanner}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2"
             >
-              <UserPlus className="w-4 h-4" /> Onboard New Staff Member
+              <Plus className="w-4 h-4" /> Add New Banner
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
-              <div
-                key={stf._id || stf.id}
-                onClick={() => handleOpenEditStaff(stf)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all duration-200"
-              >
-                <div className="flex items-start gap-3">
-                  <img
-                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                    alt={stf.fullName || stf.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                  />
-                  <div className="space-y-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {stf.isActive !== false ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{stf.staffRole || stf.role}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{stf.email}</p>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {serviceBanners.map((ban) => (
+              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div className="relative">
+                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                    {ban.actionLink && (
+                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        CTA Link: {ban.actionLink}
+                      </span>
+                    )}
+                  </div>
 
-                <div className="pt-3 border-t flex items-center justify-between text-[11px] text-gray-500 font-semibold">
-                  <span>{stf.mobile || 'No Mobile Phone'}</span>
-                  <span className="text-emerald-700 font-bold">{stf.salary || 'Salary Not Configured'}</span>
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleBannerStatus(ban.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenEditBanner(ban)}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBanner(ban.id)}
+                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                        title="Delete Banner"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
-            {(!dbStaff.length && !serviceStaff.length) && (
-              <div className="col-span-full py-12 text-center text-xs text-gray-400 font-medium bg-gray-50 border border-dashed rounded-2xl">
-                No staff members onboarded for the Café Hub yet.
-              </div>
-            )}
           </div>
-        </div>
-      )}
-
-      {activeTab === 'marketing' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {serviceBanners.map(ban => (
-            <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-              <img src={ban.imageUrl} className="w-full h-32 object-cover" />
-              <div className="p-3">
-                <h4 className="font-bold text-xs">{ban.title}</h4>
-                <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
@@ -1448,6 +1562,129 @@ export default function CafeAdminHubPage() {
             </div>
           )}
         </div>
+      </AdminModal>
+
+      {/* Modal: Add New Banner */}
+      <AdminModal isOpen={addBannerModal} onClose={() => setAddBannerModal(false)} title="Add New Café Promo Banner">
+        <form onSubmit={handleSaveNewBanner} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={e => setBannerForm({ ...bannerForm, title: e.target.value })}
+              placeholder="e.g. Artisanal Brunch & Matcha Offer"
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Offer Text *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.subtitle}
+              onChange={e => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              placeholder="e.g. Get 20% off on all espresso brews & avocado toasts"
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.imageUrl}
+              onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              placeholder="https://..."
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Call-To-Action Link (CTA)</label>
+            <input
+              type="text"
+              value={bannerForm.actionLink}
+              onChange={e => setBannerForm({ ...bannerForm, actionLink: e.target.value })}
+              placeholder="/cafe"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+          >
+            Save Promotional Banner
+          </button>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Banner */}
+      <AdminModal isOpen={editBannerModal} onClose={() => setEditBannerModal(false)} title="Edit Café Promo Banner">
+        <form onSubmit={handleSaveEditBanner} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={e => setBannerForm({ ...bannerForm, title: e.target.value })}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Offer Text *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.subtitle}
+              onChange={e => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.imageUrl}
+              onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Call-To-Action Link (CTA)</label>
+            <input
+              type="text"
+              value={bannerForm.actionLink}
+              onChange={e => setBannerForm({ ...bannerForm, actionLink: e.target.value })}
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => handleDeleteBanner(selectedBanner?.id)}
+              className="px-4 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl transition-all flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" /> Delete Banner
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider"
+            >
+              Save Details
+            </button>
+          </div>
+        </form>
       </AdminModal>
     </div>
   );

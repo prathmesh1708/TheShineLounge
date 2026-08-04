@@ -95,37 +95,66 @@ export default function DriveThroughCafeAdminHubPage() {
   const [dbStaff, setDbStaff] = useState([]);
 
   const fetchLiveService = async () => {
+    const defaultSections = [
+      { _id: 'sec-1', title: 'Commuter Coffee', subtitle: 'Barista brews optimized for cup holders', description: 'Double-filtered, hot or iced, ready in 90 seconds', bgColor: 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=400&q=80' },
+      { _id: 'sec-2', title: 'Dashboard Breakfast', subtitle: 'Warm wraps and mess-free sandwiches', description: 'Freshly heated, easy to eat while driving', bgColor: 'linear-gradient(135deg, #D49A7F 0%, #A0522D 100%)', image: 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?auto=format&fit=crop&w=400&q=80' },
+      { _id: 'sec-3', title: 'Express Sweet Box', subtitle: 'Quick road snacks and baked treats', description: 'Packaged neatly for leak-proof transit', bgColor: 'linear-gradient(135deg, #B7094C 0%, #800E13 100%)', image: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?auto=format&fit=crop&w=400&q=80' }
+    ];
+
+    const defaultPlans = [
+      { _id: 'dt-1', name: 'Commuter Cold Brew', price: 4.95, section: 'Commuter Coffee', weight: '16 oz', subcat: 'Iced', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=600&q=80', description: 'Rich, smooth 16-hour steeped cold brew coffee' },
+      { _id: 'dt-2', name: 'Double Shot Americano', price: 3.80, section: 'Commuter Coffee', weight: '12 oz', subcat: 'Hot', image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=80', description: 'Bold double espresso with hot filtered water' },
+      { _id: 'dt-3', name: 'Roadtrip Caramel Latte', price: 5.45, section: 'Commuter Coffee', weight: '16 oz', subcat: 'Hot', image: 'https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?auto=format&fit=crop&w=600&q=80', description: 'Espresso, steamed milk & salted caramel syrup' },
+      { _id: 'dt-4', name: 'Nitro Vanilla Sweet Cream', price: 5.75, section: 'Commuter Coffee', weight: '16 oz', subcat: 'Iced', image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=600&q=80', description: 'Nitrogen-infused cold brew topped with sweet cream' },
+      { _id: 'dt-5', name: 'Spiced Chai Milk Tea', price: 5.20, section: 'Commuter Coffee', weight: '16 oz', subcat: 'Tea', image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80', description: 'Aromatic spiced black tea with warm milk' },
+      { _id: 'dt-6', name: 'Drive-Through Breakfast Burrito', price: 8.50, section: 'Dashboard Breakfast', weight: '300g', subcat: 'Wraps', image: 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?auto=format&fit=crop&w=600&q=80', description: 'Scrambled eggs, bacon, cheese & salsa wrap' },
+      { _id: 'dt-7', name: 'Brioche Bacon & Egg Club', price: 9.25, section: 'Dashboard Breakfast', weight: '220g', subcat: 'Sandwiches', image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=600&q=80', description: 'Crispy bacon, fried egg & cheddar on toasted brioche' },
+      { _id: 'dt-8', name: 'Avocado Spinach Wrap', price: 7.95, section: 'Dashboard Breakfast', weight: '280g', subcat: 'Wraps', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80', description: 'Fresh avocado, baby spinach, feta & pesto wrap' },
+      { _id: 'dt-9', name: 'Glazed Morning Cinnamon Roll', price: 4.50, section: 'Dashboard Breakfast', weight: '150g', subcat: 'Sides', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80', description: 'Warm cinnamon roll with vanilla cream glaze' },
+      { _id: 'dt-10', name: 'Blueberry Oat Muffin', price: 4.25, section: 'Express Sweet Box', weight: '130g', subcat: 'Muffins', image: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?auto=format&fit=crop&w=600&q=80', description: 'Baked muffin loaded with fresh wild blueberries' },
+      { _id: 'dt-11', name: 'Choco-Chip Cookie Pack', price: 5.50, section: 'Express Sweet Box', weight: '180g', subcat: 'Cookies', image: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=600&q=80', description: 'Pack of 3 freshly baked Belgian chocolate chip cookies' },
+      { _id: 'dt-12', name: 'Lemon Drizzle Pound Cake', price: 4.75, section: 'Express Sweet Box', weight: '110g', subcat: 'Slices', image: 'https://images.unsplash.com/photo-1519869325930-281384150729?auto=format&fit=crop&w=600&q=80', description: 'Zesty lemon loaf slice with sweet citrus glaze' }
+    ];
+
     try {
       const res = await serviceApi.getServiceBySlug('drive-through-cafe');
       if (res.success && res.service) {
-        setDbService(res.service);
-        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+        const hasValidPlans = Array.isArray(res.service.plans) && res.service.plans.some(p => p.section);
+        const hasValidSecs = Array.isArray(res.service.menuSections) && res.service.menuSections.length > 0;
+        const svc = {
+          ...res.service,
+          menuSections: hasValidSecs ? res.service.menuSections : defaultSections,
+          plans: hasValidPlans ? res.service.plans : defaultPlans
+        };
+        setDbService(svc);
+        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(svc));
         return;
       }
     } catch (err) {
       console.warn('Could not fetch live drive-through-cafe service, checking local storage');
     }
+
     const cached = localStorage.getItem('tsl_drive_through_cafe_service');
     if (cached) {
-      setDbService(JSON.parse(cached));
-    } else {
-      setDbService({
-        _id: serviceMain?.id || 'srv-1',
-        pricing: [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
-        ],
-        plans: [
-          { _id: 'pw-1', name: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', name: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', name: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
-        ],
-        memberships: [
-          { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR' }
-        ]
-      });
+      try {
+        const parsed = JSON.parse(cached);
+        const hasValidPlans = Array.isArray(parsed.plans) && parsed.plans.some(p => p.section);
+        const hasValidSecs = Array.isArray(parsed.menuSections) && parsed.menuSections.length > 0;
+        const svc = {
+          ...parsed,
+          menuSections: hasValidSecs ? parsed.menuSections : defaultSections,
+          plans: hasValidPlans ? parsed.plans : defaultPlans
+        };
+        setDbService(svc);
+        return;
+      } catch (e) {}
     }
+
+    setDbService({
+      _id: serviceMain?.id || 'srv-drive-through-cafe',
+      menuSections: defaultSections,
+      plans: defaultPlans
+    });
   };
 
   const fetchLiveStaff = async () => {
@@ -139,6 +168,9 @@ export default function DriveThroughCafeAdminHubPage() {
     }
   };
 
+  const activePricing = dbService?.plans || [];
+  const activeMemberships = dbService?.memberships || [];
+
   useEffect(() => {
     fetchLiveService();
     fetchLiveStaff();
@@ -150,7 +182,7 @@ export default function DriveThroughCafeAdminHubPage() {
     try {
       const allRes = await serviceApi.getServices();
       if (allRes.success && allRes.services) {
-        const found = allRes.services.find(s => s.slug === 'car-wash' || s.serviceName.toLowerCase().includes('cafe'));
+        const found = allRes.services.find(s => s.slug === 'drive-through-cafe' || s.serviceName.toLowerCase().includes('cafe'));
         if (found) return found._id;
       }
     } catch (err) {
@@ -159,54 +191,214 @@ export default function DriveThroughCafeAdminHubPage() {
     return null;
   };
 
-  // Compute active pricing and memberships from dbService directly
-  const activePricing = (dbService?.pricing !== undefined)
-    ? dbService.pricing.map(p => ({
-        _id: p._id || p.id || p.title,
-        title: p.title || p.name,
-        price: Number(p.price) || 0,
-        description: p.description || ''
-      }))
-    : ((dbService?.plans !== undefined)
-      ? dbService.plans.map(p => ({
-          _id: p._id || p.id || p.name,
-          title: p.name || p.title,
-          price: Number(p.price) || 0,
-          description: p.description || (p.features && p.features.join(', ')) || ''
-        }))
-      : (serviceMain?.pricing || [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
-        ]));
+  const persistDbService = async (newServiceObj) => {
+    setDbService(newServiceObj);
+    localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(newServiceObj));
+    window.dispatchEvent(new Event('tsl_drive_through_cafe_updated'));
+    try {
+      const targetId = await getTargetServiceId();
+      if (targetId) {
+        await serviceApi.updateService(targetId, newServiceObj);
+      }
+    } catch (e) {
+      console.warn('API sync update notice:', e);
+    }
+  };
 
-  const activeMemberships = (dbService?.memberships !== undefined)
-    ? dbService.memberships.map(m => ({
-        _id: m._id || m.id || m.name,
-        name: m.name || m.title,
-        price: Number(m.price) || 0,
-        benefits: Array.isArray(m.benefits) ? m.benefits : [m.benefits || m.description || ''],
-        badge: m.badge || 'PASS'
-      }))
-    : (serviceMain?.memberships || [
-        { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR' }
-      ]);
-
-  // Modal Editing States
-  const [editingPriceModal, setEditingPriceModal] = useState(false);
-  const [editingItem, setEditingItem] = useState(null); // { type: 'pricing'|'membership', id, title }
-  const [editTitle, setEditTitle] = useState('');
-  const [editPrice, setEditPrice] = useState(699);
-  const [editDescription, setEditDescription] = useState('');
-
-  // Add Package Modal States
-  const [addPackageModal, setAddPackageModal] = useState(false);
-  const [newPkgForm, setNewPkgForm] = useState({
-    title: '',
+  // Dish / Item Form States
+  const [addPlanModal, setAddPlanModal] = useState(false);
+  const [editPlanModal, setEditPlanModal] = useState(false);
+  const [planForm, setPlanForm] = useState({
+    name: '',
     price: '',
     description: '',
-    type: 'pricing'
+    section: 'Commuter Coffee',
+    subcat: 'Iced',
+    weight: '16 oz',
+    image: ''
   });
+  const [editPlanForm, setEditPlanForm] = useState({
+    _id: '',
+    name: '',
+    price: '',
+    description: '',
+    section: 'Commuter Coffee',
+    subcat: 'Iced',
+    weight: '16 oz',
+    image: ''
+  });
+
+  // Section Form State
+  const [addSectionModal, setAddSectionModal] = useState(false);
+  const [sectionForm, setSectionForm] = useState({
+    title: '',
+    subtitle: '',
+    description: '',
+    bgColor: 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)',
+    image: ''
+  });
+
+  const handleDishPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPlanForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditDishPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditPlanForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSectionPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSectionForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSavePlan = (e) => {
+    if (e) e.preventDefault();
+    if (!planForm.name || !planForm.price) {
+      alert('Please fill out item name and price');
+      return;
+    }
+    const newPlan = {
+      _id: 'dt-plan-' + Date.now(),
+      name: planForm.name,
+      price: Number(planForm.price),
+      description: planForm.description || '',
+      section: planForm.section || (dbService?.menuSections?.[0]?.title || 'Commuter Coffee'),
+      subcat: planForm.subcat || 'General',
+      weight: planForm.weight || 'Standard',
+      image: planForm.image || 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=600&q=80'
+    };
+    const updatedPlans = [...(dbService?.plans || []), newPlan];
+    const updatedService = { ...dbService, plans: updatedPlans };
+    persistDbService(updatedService);
+    setAddPlanModal(false);
+    setPlanForm({
+      name: '',
+      price: '',
+      description: '',
+      section: dbService?.menuSections?.[0]?.title || 'Commuter Coffee',
+      subcat: 'Iced',
+      weight: '16 oz',
+      image: ''
+    });
+    showToast('New Drive-Through Menu Item Created!');
+  };
+
+  const handleOpenEditPlan = (plan) => {
+    setEditPlanForm({
+      _id: plan._id,
+      name: plan.name || '',
+      price: plan.price || '',
+      description: plan.description || '',
+      section: plan.section || (dbService?.menuSections?.[0]?.title || 'Commuter Coffee'),
+      subcat: plan.subcat || 'General',
+      weight: plan.weight || 'Standard',
+      image: plan.image || ''
+    });
+    setEditPlanModal(true);
+  };
+
+  const handleUpdatePlan = (e) => {
+    if (e) e.preventDefault();
+    if (!editPlanForm.name || !editPlanForm.price) {
+      alert('Please fill out item name and price');
+      return;
+    }
+    const updatedPlans = (dbService?.plans || []).map(p => {
+      if (p._id === editPlanForm._id) {
+        return {
+          ...p,
+          name: editPlanForm.name,
+          price: Number(editPlanForm.price),
+          description: editPlanForm.description || '',
+          section: editPlanForm.section,
+          subcat: editPlanForm.subcat,
+          weight: editPlanForm.weight,
+          image: editPlanForm.image
+        };
+      }
+      return p;
+    });
+    const updatedService = { ...dbService, plans: updatedPlans };
+    persistDbService(updatedService);
+    setEditPlanModal(false);
+    showToast('Menu Item Updated Successfully!');
+  };
+
+  const handleDeletePlan = (planId) => {
+    if (!confirm('Are you sure you want to delete this menu item?')) return;
+    const updatedPlans = (dbService?.plans || []).filter(p => p._id !== planId);
+    const updatedService = { ...dbService, plans: updatedPlans };
+    persistDbService(updatedService);
+    showToast('Menu item removed', 'error');
+  };
+
+  const handleSaveSection = (e) => {
+    if (e) e.preventDefault();
+    if (!sectionForm.title) {
+      alert('Please enter a section title');
+      return;
+    }
+    const newSec = {
+      _id: 'sec-' + Date.now(),
+      title: sectionForm.title,
+      subtitle: sectionForm.subtitle || '',
+      description: sectionForm.description || '',
+      bgColor: sectionForm.bgColor || 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)',
+      image: sectionForm.image || ''
+    };
+    const updatedSections = [...(dbService?.menuSections || []), newSec];
+    const updatedService = { ...dbService, menuSections: updatedSections };
+    persistDbService(updatedService);
+    setAddSectionModal(false);
+    setSectionForm({
+      title: '',
+      subtitle: '',
+      description: '',
+      bgColor: 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)',
+      image: ''
+    });
+    showToast('New Menu Section Added!');
+  };
+
+  const handleDeleteSection = (secId) => {
+    if (!confirm('Delete this menu category section?')) return;
+    const updatedSections = (dbService?.menuSections || []).filter(s => s._id !== secId);
+    const updatedService = { ...dbService, menuSections: updatedSections };
+    persistDbService(updatedService);
+    showToast('Section removed', 'error');
+  };
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
@@ -314,7 +506,7 @@ export default function DriveThroughCafeAdminHubPage() {
         email: staffForm.email,
         password: staffForm.password,
         mobile: staffForm.mobile,
-        department: 'Car Wash',
+        department: 'Drive-Through Café',
         serviceKey: 'drive-through-cafe',
         staffRole: staffForm.staffRole,
         salary: staffForm.salary,
@@ -809,8 +1001,8 @@ export default function DriveThroughCafeAdminHubPage() {
             <h3 className="text-sm font-bold text-gray-900">Performance Summary</h3>
             <div className="space-y-3 text-xs">
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/60">
-                <span className="text-gray-500 block font-semibold">Single Wash Rate</span>
-                <span className="text-xl font-black text-amber-700">₹{activePricing[0]?.price || 699}</span>
+                <span className="text-gray-500 block font-semibold">Active Menu Items</span>
+                <span className="text-xl font-black text-amber-700">{(dbService?.plans || []).length} Items</span>
               </div>
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-200/60">
                 <span className="text-gray-500 block font-semibold">Average Order Value</span>
@@ -822,92 +1014,140 @@ export default function DriveThroughCafeAdminHubPage() {
       )}
 
       {activeTab === 'packages' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900">Active Packages & Memberships</h3>
-              <p className="text-xs text-gray-500">Click "Edit Price" on any plan to update live title, price and description, or create/delete packages</p>
+        <div className="space-y-8">
+          {/* Menu Sections Header & Cards */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Menu Categories & Sections</h3>
+                <p className="text-xs text-gray-500">Create new sections and manage background display for Drive-Through menu</p>
+              </div>
+              <button
+                onClick={() => setAddSectionModal(true)}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-xs select-none active:scale-[0.98] flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Add Menu Section
+              </button>
             </div>
-            <button
-              onClick={() => setAddPackageModal(true)}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" /> Add New Package
-            </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {(dbService?.menuSections || []).map((section) => {
+                const count = (dbService?.plans || []).filter(p => p.section === section.title).length;
+                return (
+                  <div
+                    key={section._id}
+                    style={{ background: section.bgColor || 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)' }}
+                    className="rounded-2xl p-4 text-white relative shadow-xs flex flex-col justify-between min-h-[120px] group overflow-hidden"
+                  >
+                    {section.image && (
+                      <img src={section.image} alt="" className="absolute right-[-10px] bottom-[-10px] w-20 h-20 rounded-full object-cover opacity-30 pointer-events-none" />
+                    )}
+                    <div>
+                      <h4 className="font-black text-sm drop-shadow-xs">{section.title}</h4>
+                      <p className="text-[10px] opacity-90 font-medium leading-normal mt-1">{section.subtitle || section.description}</p>
+                    </div>
+                    <div className="mt-3 flex justify-between items-center z-10">
+                      <span className="text-[9px] bg-white/20 px-2.5 py-0.5 rounded-full font-bold select-none">
+                        {count} Items
+                      </span>
+                      <button
+                        onClick={() => handleDeleteSection(section._id)}
+                        className="text-white hover:text-red-200 p-1 rounded-lg hover:bg-white/10 transition-colors"
+                        title="Delete Section"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Pricing Cards */}
-            {activePricing.map((p) => (
-              <div key={p._id || p.id || p.title} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-lg font-black text-gray-900">{p.title || p.name}</h4>
-                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
-                      Single Service
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{p.description}</p>
-                </div>
-                <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                  <span className="text-2xl font-black text-amber-600">₹{p.price}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button 
-                      onClick={() => handleOpenEdit('pricing', p)}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-xs transition-all flex items-center gap-1"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit Price & Details
-                    </button>
-                    <button
-                      onClick={() => handleDeletePackage('pricing', p)}
-                      className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all"
-                      title="Delete Package"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+          {/* Dishes & Items Grid */}
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Drive-Through Menu Items & Pricing</h3>
+                <p className="text-xs text-gray-500">Add, edit, or delete food, brews, and drinks displayed on /drive-through-cafe</p>
               </div>
-            ))}
+              <button
+                onClick={() => setAddPlanModal(true)}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-xs select-none active:scale-[0.98] flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Add Menu Item / Brew
+              </button>
+            </div>
 
-            {/* Membership Cards */}
-            {activeMemberships.map((m) => (
-              <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-lg font-black text-gray-900">{m.name}</h4>
-                    {m.badge ? (
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold text-white bg-amber-500 px-2 py-0.5 rounded-md">
-                        {m.badge}
+            {/* List items categorized by sections */}
+            {(dbService?.menuSections || []).map((section) => {
+              const sectionItems = (dbService?.plans || []).filter(p => p.section === section.title);
+              return (
+                <div key={section._id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ background: section.bgColor || '#C17F19' }} />
+                      <h4 className="font-black text-sm text-gray-900">{section.title}</h4>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                        {sectionItems.length} items available
                       </span>
-                    ) : (
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
-                        Pass
-                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    {sectionItems.map((plan) => (
+                      <div key={plan._id} className="border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between bg-gray-50 group hover:border-amber-500/40 transition-all duration-200">
+                        <div className="relative aspect-video w-full bg-gray-100 overflow-hidden">
+                          {plan.image ? (
+                            <img src={plan.image} alt={plan.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100">
+                              <ImageIcon className="w-8 h-8 opacity-40" />
+                            </div>
+                          )}
+                          <span className="absolute top-2 left-2 text-[9px] bg-black/60 backdrop-blur-xs text-white px-2 py-0.5 rounded-full font-bold">
+                            {plan.subcat || 'General'}
+                          </span>
+                          <span className="absolute top-2 right-2 text-[9px] bg-amber-500/90 text-white px-2 py-0.5 rounded-full font-extrabold">
+                            {plan.weight || 'Standard'}
+                          </span>
+                        </div>
+                        <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <h5 className="font-extrabold text-sm text-gray-900 leading-snug">{plan.name}</h5>
+                              <span className="font-black text-sm text-amber-700 ml-2">₹{plan.price}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 leading-relaxed mt-1 line-clamp-2">{plan.description}</p>
+                          </div>
+
+                          <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between gap-1.5">
+                            <button
+                              onClick={() => handleOpenEditPlan(plan)}
+                              className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold shadow-xs transition-all flex items-center justify-center gap-1"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                            </button>
+                            <button
+                              onClick={() => handleDeletePlan(plan._id)}
+                              className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {sectionItems.length === 0 && (
+                      <div className="col-span-full py-6 text-center text-xs text-gray-400 font-semibold bg-white border border-dashed rounded-xl">
+                        No menu items in this category yet. Click "+ Add Menu Item / Brew" to add one!
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
                 </div>
-                <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                  <span className="text-2xl font-black text-amber-600">₹{m.price.toLocaleString()}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button 
-                      onClick={() => handleOpenEdit('membership', m)}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-xs transition-all flex items-center gap-1"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit Price & Details
-                    </button>
-                    <button
-                      onClick={() => handleDeletePackage('membership', m)}
-                      className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all"
-                      title="Delete Membership Pass"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -917,7 +1157,7 @@ export default function DriveThroughCafeAdminHubPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Drive-Through Cafe Staff ({dbStaff.length || serviceStaff.length})</h3>
+              <h3 className="text-base font-black text-gray-900">Drive-Through Cafe Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => s.serviceKey === 'drive-through-cafe' || (s.department && s.department.toLowerCase().includes('drive'))).length})</h3>
               <p className="text-xs text-gray-500">Onboard staff members, generate email login credentials & assign module access</p>
             </div>
             <button
@@ -929,61 +1169,61 @@ export default function DriveThroughCafeAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
-              <div 
-                key={stf._id || stf.id} 
-                onClick={() => handleOpenEditStaff(stf)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <img
-                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                    alt={stf.fullName || stf.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                  />
-                  <div className="space-y-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {stf.isActive !== false ? 'Active' : 'Inactive'}
+            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
+              .filter(s => s.serviceKey === 'drive-through-cafe' || (s.department && s.department.toLowerCase().includes('drive')))
+              .map((stf) => (
+                <div 
+                  key={stf._id || stf.id} 
+                  onClick={() => handleOpenEditStaff(stf)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                      alt={stf.fullName || stf.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                    />
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Express Barista'}</p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                      <span className="font-bold text-gray-800 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
                       </span>
                     </div>
-                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Express Barista'}</p>
-                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
-                    </p>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
-                    <span className="font-bold text-gray-800 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
-                    </span>
-                  </div>
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
-                  </div>
+                  {stf.permissions && stf.permissions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {stf.permissions.map(p => (
+                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                {stf.permissions && stf.permissions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {stf.permissions.map(p => (
-                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
-
-
 
       {activeTab === 'marketing' && (
         <div className="space-y-6">
@@ -1064,101 +1304,177 @@ export default function DriveThroughCafeAdminHubPage() {
         />
       )}
 
-      {/* Modal: Edit Package Title, Price & Description */}
-      <AdminModal isOpen={editingPriceModal} onClose={() => setEditingPriceModal(false)} title={`Edit ${editingItem?.title || 'Package'}`}>
-        <div className="space-y-4 text-xs p-1">
+      {/* Modal: Add Menu Section */}
+      <AdminModal isOpen={addSectionModal} onClose={() => setAddSectionModal(false)} title="Add New Menu Section">
+        <form onSubmit={handleSaveSection} className="space-y-4 text-xs p-1">
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Package Title *</label>
-            <input 
-              type="text" 
-              required
-              value={editTitle} 
-              onChange={e => setEditTitle(e.target.value)} 
-              className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-              placeholder="e.g. Express Foam Wash"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">Price (₹) *</label>
-            <input 
-              type="number" 
-              required
-              value={editPrice} 
-              onChange={e => setEditPrice(Number(e.target.value))} 
-              className="w-full p-2.5 border rounded-xl font-black text-amber-600 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">Description / Included Details</label>
-            <textarea 
-              value={editDescription} 
-              onChange={e => setEditDescription(e.target.value)} 
-              rows={3} 
-              className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-              placeholder="e.g. Complimentary – vacuum, polish, mat cleaning" 
-            />
-          </div>
-
-          <button 
-            onClick={handleSavePrice} 
-            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider"
-          >
-            Save Package Details
-          </button>
-        </div>
-      </AdminModal>
-
-      {/* Modal: Add New Package */}
-      <AdminModal isOpen={addPackageModal} onClose={() => setAddPackageModal(false)} title="Add New Cafe Menu Item / Package">
-        <form onSubmit={handleCreatePackage} className="space-y-4 text-xs p-1">
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">Package Title *</label>
+            <label className="block font-bold text-gray-700 mb-1">Section Title *</label>
             <input 
               type="text" 
               required 
-              value={newPkgForm.title} 
-              onChange={e => setNewPkgForm({ ...newPkgForm, title: e.target.value })} 
-              placeholder="e.g. Super Ceramic Shine Wash" 
+              value={sectionForm.title} 
+              onChange={e => setSectionForm({ ...sectionForm, title: e.target.value })} 
+              placeholder="e.g. Cold Brews & Frappes" 
+              className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Subtitle / Catchphrase</label>
+            <input 
+              type="text" 
+              value={sectionForm.subtitle} 
+              onChange={e => setSectionForm({ ...sectionForm, subtitle: e.target.value })} 
+              placeholder="e.g. Ice-cold barista specials on the go" 
+              className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
+            <textarea 
+              value={sectionForm.description} 
+              onChange={e => setSectionForm({ ...sectionForm, description: e.target.value })} 
+              rows={2} 
+              className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              placeholder="e.g. Double-filtered cold brew steeped for 16 hours..." 
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Background Gradient CSS</label>
+            <input 
+              type="text" 
+              value={sectionForm.bgColor} 
+              onChange={e => setSectionForm({ ...sectionForm, bgColor: e.target.value })} 
+              placeholder="e.g. linear-gradient(135deg, #C17F19 0%, #8C5810 100%)" 
+              className="w-full p-2.5 border rounded-xl font-mono text-[11px] text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Section Banner Image URL or Upload</label>
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={sectionForm.image} 
+                onChange={e => setSectionForm({ ...sectionForm, image: e.target.value })} 
+                placeholder="https://..." 
+                className="flex-1 p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+              <label className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 border rounded-xl font-bold cursor-pointer transition-all flex items-center gap-1">
+                <Upload className="w-3.5 h-3.5" /> Upload
+                <input type="file" accept="image/*" onChange={handleSectionPhotoChange} className="hidden" />
+              </label>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" /> Save Menu Section
+          </button>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Add New Menu Item / Brew */}
+      <AdminModal isOpen={addPlanModal} onClose={() => setAddPlanModal(false)} title="Add New Drive-Through Menu Item">
+        <form onSubmit={handleSavePlan} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Item Name *</label>
+            <input 
+              type="text" 
+              required 
+              value={planForm.name} 
+              onChange={e => setPlanForm({ ...planForm, name: e.target.value })} 
+              placeholder="e.g. Commuter Cold Brew" 
               className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Price (₹) *</label>
+              <label className="block font-bold text-gray-700 mb-1">Price (₹ / $) *</label>
               <input 
                 type="number" 
+                step="0.01"
                 required 
-                value={newPkgForm.price} 
-                onChange={e => setNewPkgForm({ ...newPkgForm, price: e.target.value })} 
-                placeholder="e.g. 1499" 
+                value={planForm.price} 
+                onChange={e => setPlanForm({ ...planForm, price: e.target.value })} 
+                placeholder="e.g. 4.95 or 350" 
                 className="w-full p-2.5 border rounded-xl font-black text-amber-600 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
               />
             </div>
+
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Package Category</label>
+              <label className="block font-bold text-gray-700 mb-1">Menu Category Section *</label>
               <select 
-                value={newPkgForm.type} 
-                onChange={e => setNewPkgForm({ ...newPkgForm, type: e.target.value })} 
+                value={planForm.section} 
+                onChange={e => setPlanForm({ ...planForm, section: e.target.value })} 
                 className="w-full p-2.5 border rounded-xl font-semibold text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               >
-                <option value="pricing">Single Wash Service</option>
-                <option value="membership">Membership Pass</option>
+                {(dbService?.menuSections || []).map(s => (
+                  <option key={s._id} value={s.title}>{s.title}</option>
+                ))}
               </select>
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Portion Size / Weight</label>
+              <input 
+                type="text" 
+                value={planForm.weight} 
+                onChange={e => setPlanForm({ ...planForm, weight: e.target.value })} 
+                placeholder="e.g. 16 oz or 300g" 
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Subcategory Tag</label>
+              <input 
+                type="text" 
+                value={planForm.subcat} 
+                onChange={e => setPlanForm({ ...planForm, subcat: e.target.value })} 
+                placeholder="e.g. Iced, Hot, Tea, Wraps" 
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Description / Details *</label>
+            <label className="block font-bold text-gray-700 mb-1">Image URL or File Upload</label>
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={planForm.image} 
+                onChange={e => setPlanForm({ ...planForm, image: e.target.value })} 
+                placeholder="https://images.unsplash.com/..." 
+                className="flex-1 p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+              <label className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 border rounded-xl font-bold cursor-pointer transition-all flex items-center gap-1">
+                <Upload className="w-3.5 h-3.5" /> Upload
+                <input type="file" accept="image/*" onChange={handleDishPhotoChange} className="hidden" />
+              </label>
+            </div>
+            {planForm.image && (
+              <div className="mt-2 relative w-20 h-20 rounded-xl overflow-hidden border">
+                <img src={planForm.image} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
             <textarea 
-              required 
-              value={newPkgForm.description} 
-              onChange={e => setNewPkgForm({ ...newPkgForm, description: e.target.value })} 
-              rows={3} 
+              value={planForm.description} 
+              onChange={e => setPlanForm({ ...planForm, description: e.target.value })} 
+              rows={2} 
               className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-              placeholder="e.g. High-pressure foam bath, underbody wash & ceramic shield protection" 
+              placeholder="e.g. Rich, smooth 16-hour steeped cold brew coffee" 
             />
           </div>
 
@@ -1166,7 +1482,110 @@ export default function DriveThroughCafeAdminHubPage() {
             type="submit" 
             className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-1.5"
           >
-            <Plus className="w-4 h-4" /> Create Service Package
+            <Plus className="w-4 h-4" /> Create Menu Item
+          </button>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Edit Existing Menu Item / Brew */}
+      <AdminModal isOpen={editPlanModal} onClose={() => setEditPlanModal(false)} title="Edit Drive-Through Menu Item">
+        <form onSubmit={handleUpdatePlan} className="space-y-4 text-xs p-1">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Item Name *</label>
+            <input 
+              type="text" 
+              required 
+              value={editPlanForm.name} 
+              onChange={e => setEditPlanForm({ ...editPlanForm, name: e.target.value })} 
+              className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Price (₹ / $) *</label>
+              <input 
+                type="number" 
+                step="0.01"
+                required 
+                value={editPlanForm.price} 
+                onChange={e => setEditPlanForm({ ...editPlanForm, price: e.target.value })} 
+                className="w-full p-2.5 border rounded-xl font-black text-amber-600 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Menu Category Section *</label>
+              <select 
+                value={editPlanForm.section} 
+                onChange={e => setEditPlanForm({ ...editPlanForm, section: e.target.value })} 
+                className="w-full p-2.5 border rounded-xl font-semibold text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                {(dbService?.menuSections || []).map(s => (
+                  <option key={s._id} value={s.title}>{s.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Portion Size / Weight</label>
+              <input 
+                type="text" 
+                value={editPlanForm.weight} 
+                onChange={e => setEditPlanForm({ ...editPlanForm, weight: e.target.value })} 
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Subcategory Tag</label>
+              <input 
+                type="text" 
+                value={editPlanForm.subcat} 
+                onChange={e => setEditPlanForm({ ...editPlanForm, subcat: e.target.value })} 
+                className="w-full p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Image URL or File Upload</label>
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={editPlanForm.image} 
+                onChange={e => setEditPlanForm({ ...editPlanForm, image: e.target.value })} 
+                className="flex-1 p-2.5 border rounded-xl text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+              <label className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 border rounded-xl font-bold cursor-pointer transition-all flex items-center gap-1">
+                <Upload className="w-3.5 h-3.5" /> Upload
+                <input type="file" accept="image/*" onChange={handleEditDishPhotoChange} className="hidden" />
+              </label>
+            </div>
+            {editPlanForm.image && (
+              <div className="mt-2 relative w-20 h-20 rounded-xl overflow-hidden border">
+                <img src={editPlanForm.image} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
+            <textarea 
+              value={editPlanForm.description} 
+              onChange={e => setEditPlanForm({ ...editPlanForm, description: e.target.value })} 
+              rows={2} 
+              className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-1.5"
+          >
+            <Edit2 className="w-4 h-4" /> Save Changes
           </button>
         </form>
       </AdminModal>

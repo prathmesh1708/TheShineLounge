@@ -22,30 +22,43 @@ const formatStaffUser = (u) => {
     };
   }
 
-  let serviceKey = u.serviceKey;
-  const deptStr = `${u.department || ''} ${u.staffRole || ''} ${u.role || ''} ${u.email || ''} ${u.fullName || u.name || ''}`.toLowerCase();
+  let dept = u.department || '';
+  let key = u.serviceKey || '';
+  const roleLower = (u.staffRole || u.role || '').toLowerCase();
+  const deptLower = (dept || '').toLowerCase();
+  const emailLower = (u.email || '').toLowerCase();
+  const nameLower = (u.fullName || u.name || '').toLowerCase();
+  const combinedStr = `${deptLower} ${roleLower} ${emailLower} ${nameLower}`;
 
-  if (deptStr.includes('detailing') || deptStr.includes('ceramic') || deptStr.includes('ppf')) {
-    serviceKey = 'car-detailing';
-  } else if (deptStr.includes('wash')) {
-    serviceKey = 'car-wash';
-  } else if (deptStr.includes('cafe') || deptStr.includes('coffee')) {
-    serviceKey = 'cafe';
-  } else if (deptStr.includes('dog') || deptStr.includes('pet') || deptStr.includes('groom')) {
-    serviceKey = 'dog-wash';
-  } else if (deptStr.includes('salon') || deptStr.includes('barber') || deptStr.includes('hair')) {
-    serviceKey = 'salon';
-  } else {
-    serviceKey = u.serviceKey || 'car-detailing';
+  if (!key || !dept) {
+    if (combinedStr.includes('drive')) {
+      key = key || 'drive-through-cafe';
+      dept = dept || 'Drive-Through Café';
+    } else if (combinedStr.includes('cafe') || combinedStr.includes('coffee') || combinedStr.includes('barista')) {
+      key = key || 'cafe';
+      dept = dept || 'Café';
+    } else if (combinedStr.includes('detail') || combinedStr.includes('ceramic') || combinedStr.includes('ppf')) {
+      key = key || 'car-detailing';
+      dept = dept || 'Car Detailing';
+    } else if (combinedStr.includes('dog') || combinedStr.includes('pet') || combinedStr.includes('groom')) {
+      key = key || 'dog-wash';
+      dept = dept || 'Dog Wash';
+    } else if (combinedStr.includes('salon') || combinedStr.includes('barber') || combinedStr.includes('hair')) {
+      key = key || 'salon';
+      dept = dept || "Men's Salon";
+    } else {
+      key = key || 'car-wash';
+      dept = dept || 'Car Wash';
+    }
   }
 
   return {
     id: u._id || u.id || 'STF-LIVE',
     employeeId: u.email || u.employeeId || 'STF-01',
     name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
-    role: u.staffRole || (u.role === 'staff' ? (u.department || 'Detailing Specialist') : u.role) || 'Detailing Specialist',
-    department: u.department || (serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
-    serviceKey: serviceKey,
+    role: u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist',
+    department: dept,
+    serviceKey: key,
     email: u.email || '',
     mobile: u.mobile || '',
     salary: u.salary || '',
@@ -137,21 +150,23 @@ export function StaffProvider({ children }) {
     let apiMapped = [];
     try {
       const res = await apiClient.get('/bookings');
-      if (res.data && res.data.bookings) {
+      if (res.data && res.data.bookings && res.data.bookings.length > 0) {
         apiMapped = res.data.bookings.map(b => ({
           _id: b._id,
           id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
           serviceKey: b.serviceKey || (b.serviceName?.toLowerCase().includes('detail') || b.packageName?.toLowerCase().includes('detail') ? 'car-detailing' : 'car-wash'),
           serviceName: b.serviceName || b.plan || b.package || 'Car Detailing Treatment',
-          planName: b.packageName || b.package || 'Detailing Treatment',
+          planName: b.packageName || b.package || b.planName || 'Detailing Treatment',
+          itemsSummary: b.itemsSummary || b.packageName || 'Service Order',
+          items: b.items || [],
           vehicleNo: b.vehicleNo || 'MH02CD5678',
           vehicleModel: b.vehicleType || b.vehicle || 'Tesla Model 3',
           customerName: b.customerName || b.user || 'Customer',
-          phone: b.customerEmail || b.phone || '+91 98200 12345',
+          phone: b.customerEmail || b.phone || b.mobile || '+91 98200 12345',
           date: b.date || new Date().toISOString().split('T')[0],
           timeSlot: b.timeSlot || b.time || '02:00 PM - 05:00 PM',
           amount: b.price || b.amount || 1490,
-          total: b.price || b.amount || 1490,
+          total: b.price || b.amount || b.total || 1490,
           status: b.status || 'Confirmed',
           stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
           notes: b.notes || '',

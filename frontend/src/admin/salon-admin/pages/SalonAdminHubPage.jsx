@@ -127,10 +127,16 @@ export default function SalonAdminHubPage() {
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
 
   const allSalonStaffMap = new Map();
-  dbStaff.forEach(s => allSalonStaffMap.set(s.email || s._id || s.id, s));
+  dbStaff.forEach(s => {
+    const isSalon = s.serviceKey === 'salon' || (s.department && s.department.toLowerCase().includes('salon')) || (s.staffRole && (s.staffRole.toLowerCase().includes('salon') || s.staffRole.toLowerCase().includes('barber') || s.staffRole.toLowerCase().includes('stylist')));
+    if (isSalon) {
+      allSalonStaffMap.set(s.email || s._id || s.id, s);
+    }
+  });
   serviceStaff.forEach(s => {
     const key = s.email || s.id || s._id;
-    if (key && !allSalonStaffMap.has(key)) {
+    const isSalon = s.serviceKey === 'salon' || (s.department && s.department.toLowerCase().includes('salon')) || (s.staffRole && (s.staffRole.toLowerCase().includes('salon') || s.staffRole.toLowerCase().includes('barber') || s.staffRole.toLowerCase().includes('stylist')));
+    if (key && isSalon && !allSalonStaffMap.has(key)) {
       allSalonStaffMap.set(key, s);
     }
   });

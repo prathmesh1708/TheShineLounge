@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import gsap from 'gsap';
 import Button from './button';
+import { useAuth } from '../context/AuthContext';
+import CustomerAuthModal from './CustomerAuthModal';
 
 export default function BookingForm({ 
   serviceId, 
@@ -9,9 +11,14 @@ export default function BookingForm({
   extraFieldOptions = [],
   accentColor 
 }) {
+  const { user, isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const isCustomer = isAuthenticated && (user?.role === 'customer' || !user?.role);
+
   const [formData, setFormData] = useState({
-    fullName: '',
-    mobileNumber: '',
+    fullName: isCustomer ? (user?.fullName || user?.name || '') : '',
+    mobileNumber: isCustomer ? (user?.mobile || '') : '',
     date: new Date().toISOString().split('T')[0], // Defaults to today
     timeSlot: timeSlots[0] || '',
     extraField: extraFieldOptions[0] || ''
@@ -58,6 +65,10 @@ export default function BookingForm({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!isCustomer) {
+      setShowAuthModal(true);
+      return;
+    }
     if (!formData.fullName || !formData.mobileNumber) return;
     setIsConfirmed(true);
   };
@@ -212,6 +223,21 @@ export default function BookingForm({
           Confirm Appointment
         </button>
       </form>
+
+      <CustomerAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode="login"
+        titlePrompt="Sign In to Book Service"
+        onSuccess={(authUser) => {
+          setFormData(prev => ({
+            ...prev,
+            fullName: authUser.fullName || authUser.name || prev.fullName,
+            mobileNumber: authUser.mobile || prev.mobileNumber
+          }));
+          setIsConfirmed(true);
+        }}
+      />
     </div>
   );
 }

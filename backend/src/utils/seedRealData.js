@@ -5,10 +5,36 @@ const bcrypt = require('bcryptjs');
 
 const seedRealData = async () => {
   try {
+    // Clean up existing misclassified staff in MongoDB
+    try {
+      await User.updateMany(
+        { role: 'staff', staffRole: { $regex: /cafe supervisor|barista|pastry|chef/i } },
+        { $set: { department: 'Café', serviceKey: 'cafe' } }
+      );
+      await User.updateMany(
+        { role: 'staff', staffRole: { $regex: /drive-thru|drive-through/i } },
+        { $set: { department: 'Drive-Through Café', serviceKey: 'drive-through-cafe' } }
+      );
+      await User.updateMany(
+        { role: 'staff', staffRole: { $regex: /detail/i } },
+        { $set: { department: 'Car Detailing', serviceKey: 'car-detailing' } }
+      );
+      await User.updateMany(
+        { role: 'staff', staffRole: { $regex: /groomer|pet/i } },
+        { $set: { department: 'Dog Wash', serviceKey: 'dog-wash' } }
+      );
+      await User.updateMany(
+        { role: 'staff', staffRole: { $regex: /salon|barber|stylist/i } },
+        { $set: { department: "Men's Salon", serviceKey: 'salon' } }
+      );
+    } catch (err) {
+      console.warn('Staff cleanup notice:', err.message);
+    }
+
     // 1. Check if staff already exists
     const existingStaffCount = await User.countDocuments({ role: 'staff' });
     if (existingStaffCount > 0) {
-      console.log('Database already has staff members. Skipping mock data seed.');
+      console.log('Database staff members updated cleanly.');
       return;
     }
 

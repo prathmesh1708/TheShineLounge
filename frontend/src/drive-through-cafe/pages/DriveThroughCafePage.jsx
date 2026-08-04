@@ -9,8 +9,15 @@ import gourmetToast from '../../assets/images/gourmet_toast.png';
 import gourmetChicken from '../../assets/images/gourmet_chicken.png';
 import gourmetDessert from '../../assets/images/gourmet_dessert.png';
 
+import serviceApi from '../../common/services/serviceApi';
+import { useAuth } from '../../common/context/AuthContext';
+import CustomerAuthModal from '../../common/components/CustomerAuthModal';
+
 export default function DriveThroughCafePage() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const isCustomer = isAuthenticated && (user?.role === 'customer' || !user?.role);
 
   // State variables for catalog flow
   const [activeCategory, setActiveCategory] = useState(null); // null = Home, otherwise name of category
@@ -26,21 +33,64 @@ export default function DriveThroughCafePage() {
   const [selectedVehicle, setSelectedVehicle] = useState('Tesla Model 3 (TSL-3000)');
   const [prepProgress, setPrepProgress] = useState(0);
 
-  // Mock mapping of drive-through categories to display banners
-  const categoriesList = [
+  // Live Backend Database State for Drive-Through Cafe Service
+  const [liveService, setLiveService] = useState(() => {
+    const cached = localStorage.getItem('tsl_drive_through_cafe_service');
+    return cached ? JSON.parse(cached) : null;
+  });
+
+  const fetchLiveService = async () => {
+    try {
+      const res = await serviceApi.getServiceBySlug('drive-through-cafe');
+      if (res.success && res.service) {
+        setLiveService(res.service);
+        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not fetch live drive-through-cafe service:', err);
+    }
+    const cached = localStorage.getItem('tsl_drive_through_cafe_service');
+    if (cached) {
+      try {
+        setLiveService(JSON.parse(cached));
+      } catch (e) {}
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveService();
+    const handleStorageUpdate = () => {
+      const cached = localStorage.getItem('tsl_drive_through_cafe_service');
+      if (cached) {
+        try {
+          setLiveService(JSON.parse(cached));
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('tsl_drive_through_cafe_updated', handleStorageUpdate);
+    window.addEventListener('storage', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('tsl_drive_through_cafe_updated', handleStorageUpdate);
+      window.removeEventListener('storage', handleStorageUpdate);
+    };
+  }, []);
+
+  // Default mapping of drive-through categories
+  const defaultCategoriesList = [
     {
       id: 'commute-coffee',
       title: 'Commuter Coffee',
       subtitle: 'Barista brews optimized for cup holders',
       desc: 'Double-filtered, hot or iced, ready in 90 seconds',
-      bgColor: 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)', // Golden-amber gradient
-      image: gourmetHero,
+      bgColor: 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)',
+      image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=600&q=80',
       items: [
-        { name: 'Commuter Cold Brew', price: 4.95, weight: '16 oz', image: gourmetHero, subcat: 'Iced' },
-        { name: 'Double Shot Americano', price: 3.80, weight: '12 oz', image: gourmetHero, subcat: 'Hot' },
-        { name: 'Roadtrip Caramel Latte', price: 5.45, weight: '16 oz', image: gourmetHero, subcat: 'Hot' },
-        { name: 'Nitro Vanilla Sweet Cream', price: 5.75, weight: '16 oz', image: gourmetHero, subcat: 'Iced' },
-        { name: 'Spiced Chai Milk Tea', price: 5.20, weight: '16 oz', image: gourmetHero, subcat: 'Tea' }
+        { name: 'Commuter Cold Brew', price: 4.95, weight: '16 oz', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=600&q=80', subcat: 'Iced' },
+        { name: 'Double Shot Americano', price: 3.80, weight: '12 oz', image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=80', subcat: 'Hot' },
+        { name: 'Roadtrip Caramel Latte', price: 5.45, weight: '16 oz', image: 'https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?auto=format&fit=crop&w=600&q=80', subcat: 'Hot' },
+        { name: 'Nitro Vanilla Sweet Cream', price: 5.75, weight: '16 oz', image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=600&q=80', subcat: 'Iced' },
+        { name: 'Spiced Chai Milk Tea', price: 5.20, weight: '16 oz', image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80', subcat: 'Tea' }
       ]
     },
     {
@@ -48,13 +98,13 @@ export default function DriveThroughCafePage() {
       title: 'Dashboard Breakfast',
       subtitle: 'Warm wraps and mess-free sandwiches',
       desc: 'Freshly heated, easy to eat while driving',
-      bgColor: 'linear-gradient(135deg, #D49A7F 0%, #A0522D 100%)', // Terracotta gradient
-      image: gourmetToast,
+      bgColor: 'linear-gradient(135deg, #D49A7F 0%, #A0522D 100%)',
+      image: 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?auto=format&fit=crop&w=600&q=80',
       items: [
-        { name: 'Drive-Through Breakfast Burrito', price: 8.50, weight: '300g', image: gourmetToast, subcat: 'Wraps' },
-        { name: 'Brioche Bacon & Egg Club', price: 9.25, weight: '220g', image: gourmetChicken, subcat: 'Sandwiches' },
-        { name: 'Avocado Spinach Wrap', price: 7.95, weight: '280g', image: gourmetToast, subcat: 'Wraps' },
-        { name: 'Glazed Morning Cinnamon Roll', price: 4.50, weight: '150g', image: gourmetToast, subcat: 'Sides' }
+        { name: 'Drive-Through Breakfast Burrito', price: 8.50, weight: '300g', image: 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?auto=format&fit=crop&w=600&q=80', subcat: 'Wraps' },
+        { name: 'Brioche Bacon & Egg Club', price: 9.25, weight: '220g', image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=600&q=80', subcat: 'Sandwiches' },
+        { name: 'Avocado Spinach Wrap', price: 7.95, weight: '280g', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80', subcat: 'Wraps' },
+        { name: 'Glazed Morning Cinnamon Roll', price: 4.50, weight: '150g', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80', subcat: 'Sides' }
       ]
     },
     {
@@ -62,15 +112,41 @@ export default function DriveThroughCafePage() {
       title: 'Express Sweet Box',
       subtitle: 'Quick road snacks and baked treats',
       desc: 'Packaged neatly for leak-proof transit',
-      bgColor: 'linear-gradient(135deg, #B7094C 0%, #800E13 100%)', // Deep plum/crimson gradient
-      image: gourmetDessert,
+      bgColor: 'linear-gradient(135deg, #B7094C 0%, #800E13 100%)',
+      image: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?auto=format&fit=crop&w=600&q=80',
       items: [
-        { name: 'Blueberry Oat Muffin', price: 4.25, weight: '130g', image: gourmetDessert, subcat: 'Muffins' },
-        { name: 'Choco-Chip Cookie Pack', price: 5.50, weight: '180g', image: gourmetDessert, subcat: 'Cookies' },
-        { name: 'Lemon Drizzle Pound Cake', price: 4.75, weight: '110g', image: gourmetDessert, subcat: 'Slices' }
+        { name: 'Blueberry Oat Muffin', price: 4.25, weight: '130g', image: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?auto=format&fit=crop&w=600&q=80', subcat: 'Muffins' },
+        { name: 'Choco-Chip Cookie Pack', price: 5.50, weight: '180g', image: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=600&q=80', subcat: 'Cookies' },
+        { name: 'Lemon Drizzle Pound Cake', price: 4.75, weight: '110g', image: 'https://images.unsplash.com/photo-1519869325930-281384150729?auto=format&fit=crop&w=600&q=80', subcat: 'Slices' }
       ]
     }
   ];
+
+  // Dynamically compute categoriesList from liveService if present
+  let categoriesList = defaultCategoriesList;
+  if (liveService && Array.isArray(liveService.menuSections) && liveService.menuSections.length > 0 && Array.isArray(liveService.plans) && liveService.plans.length > 0) {
+    categoriesList = liveService.menuSections.map(section => {
+      const sectionItems = liveService.plans.filter(p => p.section === section.title);
+      let bg = section.bgColor;
+      if (!bg || bg.includes('A06A42')) bg = 'linear-gradient(135deg, #C17F19 0%, #8C5810 100%)';
+      return {
+        id: section._id || section.title.toLowerCase().replace(/\s+/g, '-'),
+        title: section.title,
+        subtitle: section.subtitle || 'Express Drive-Through Menu',
+        desc: section.description || '',
+        bgColor: bg,
+        image: section.image || gourmetHero,
+        items: sectionItems.map(item => ({
+          name: item.name,
+          price: Number(item.price),
+          weight: item.weight || 'Standard',
+          image: item.image || gourmetHero,
+          subcat: item.subcat || 'General',
+          description: item.description || ''
+        }))
+      };
+    });
+  }
 
   // Cart operations
   const addToCart = (item, e) => {
@@ -174,6 +250,10 @@ export default function DriveThroughCafePage() {
   }, [orderStep]);
 
   const handlePlaceOrder = () => {
+    if (!isCustomer) {
+      setShowAuthModal(true);
+      return;
+    }
     setPrepProgress(0);
     setOrderStep(2); // Start sending order
   };
@@ -634,6 +714,18 @@ export default function DriveThroughCafePage() {
           </span>
         </div>
       )}
+
+      {/* Guest Authentication Modal on Order Checkout */}
+      <CustomerAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode="login"
+        titlePrompt="Sign In to Transmit Drive-Thru Order"
+        onSuccess={() => {
+          setPrepProgress(0);
+          setOrderStep(2);
+        }}
+      />
 
     </div>
   );
