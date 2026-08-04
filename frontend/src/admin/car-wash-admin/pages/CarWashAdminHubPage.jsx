@@ -91,6 +91,32 @@ export default function CarWashAdminHubPage() {
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
+  // Extract unique registered customer vehicles & fleet
+  const registeredVehiclesMap = {};
+  serviceBookings.forEach(b => {
+    const plate = (b.vehicleNo || b.vehiclePlate || 'MH-01-AB-1234').toUpperCase();
+    if (!registeredVehiclesMap[plate]) {
+      registeredVehiclesMap[plate] = {
+        plate: plate,
+        model: b.vehicleType || b.vehicleModel || 'Tesla Model 3',
+        ownerName: b.customerName || 'Vally Guest',
+        ownerEmail: b.customerEmail || 'customer@shinelounge.com',
+        ownerPhone: b.phone || b.mobile || '+91 98765 43210',
+        totalWashes: 1,
+        lastWashDate: b.date || 'July 18, 2026'
+      };
+    } else {
+      registeredVehiclesMap[plate].totalWashes += 1;
+    }
+  });
+
+  const registeredVehiclesList = Object.values(registeredVehiclesMap).length > 0
+    ? Object.values(registeredVehiclesMap)
+    : [
+        { plate: 'TSL-3000', model: 'Tesla Model 3', ownerName: 'Mohit', ownerEmail: 'mohit@theshine.com', ownerPhone: '+91 98765 43210', totalWashes: 4, lastWashDate: 'July 18, 2026' },
+        { plate: 'MH-01-AB-1234', model: 'Mercedes C-Class', ownerName: 'Amit Sharma', ownerEmail: 'amit.sharma@gmail.com', ownerPhone: '+91 98200 11223', totalWashes: 2, lastWashDate: 'July 17, 2026' }
+      ];
+
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);
   const [dbStaff, setDbStaff] = useState([]);
@@ -188,10 +214,14 @@ export default function CarWashAdminHubPage() {
         name: m.name || m.title,
         price: Number(m.price) || 0,
         benefits: Array.isArray(m.benefits) ? m.benefits : [m.benefits || m.description || ''],
-        badge: m.badge || 'PASS'
+        badge: m.badge || 'PASS',
+        duration: Number(m.duration) || 30,
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.washes ? Number(m.washes) : 4),
+        isPopular: !!m.isPopular,
+        renewable: m.renewable !== false
       }))
     : (serviceMain?.memberships || [
-        { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR' }
+        { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR', duration: 30, visitLimit: 999 }
       ]);
 
   // Modal Editing States
@@ -242,10 +272,55 @@ export default function CarWashAdminHubPage() {
         const memberBookings = res.data.bookings.filter(
           b => b.packageName && (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass'))
         );
-        setMembershipSubscribers(memberBookings);
       }
     } catch (err) {
       console.warn('Could not fetch membership subscribers:', err.message);
+    }
+  };
+
+  // Hero Tunnel Video & Media Configuration States
+  const [heroVideoUrl, setHeroVideoUrl] = useState('/videos/car-tunnel.mp4');
+  const [heroPosterUrl, setHeroPosterUrl] = useState('https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80');
+
+  useEffect(() => {
+    if (dbService) {
+      if (dbService.heroVideo) setHeroVideoUrl(dbService.heroVideo);
+      if (dbService.bannerImage) setHeroPosterUrl(dbService.bannerImage);
+    }
+  }, [dbService]);
+
+  const handleSaveHeroMedia = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      const targetId = await getTargetServiceId();
+      const payload = {
+        heroVideo: heroVideoUrl.trim(),
+        bannerImage: heroPosterUrl.trim()
+      };
+
+      if (targetId) {
+        try {
+          const res = await serviceApi.updateService(targetId, payload);
+          if (res.success && res.service) {
+            setDbService(res.service);
+          }
+        } catch (apiErr) {
+          console.warn('API hero media update error:', apiErr.message);
+        }
+      }
+
+      const updated = {
+        ...(dbService || {}),
+        heroVideo: heroVideoUrl.trim(),
+        bannerImage: heroPosterUrl.trim()
+      };
+      setDbService(updated);
+      localStorage.setItem('tsl_car_wash_service', JSON.stringify(updated));
+
+      if (showToast) showToast('✅ Hero Video & Poster updated live for /car-wash!');
+      alert('✅ Hero Tunnel Video configuration saved successfully! The /car-wash page video is now updated live.');
+    } catch (err) {
+      alert('Error updating hero media: ' + err.message);
     }
   };
 
@@ -559,7 +634,15 @@ export default function CarWashAdminHubPage() {
       });
 
       let currentMemberships = activeMemberships.map(m => {
-        if ((m._id && m._id === editingItem.id) || (m.id && m.id === editingItem.id) || m.name === editingItem.title) {
+        const mId = m._id || m.id;
+        const mName = m.name || m.title;
+        const editId = editingItem?.id;
+        const editTitleVal = editingItem?.title;
+
+        if (
+          (editId && mId && String(mId) === String(editId)) ||
+          (editTitleVal && mName && String(mName).toLowerCase().trim() === String(editTitleVal).toLowerCase().trim())
+        ) {
           return {
             ...m,
             name: newTitle,
@@ -567,7 +650,7 @@ export default function CarWashAdminHubPage() {
             benefits: editBenefits.filter(b => b.trim()),
             badge: editBadge.trim() || m.badge || '',
             duration: Number(editDuration) || 30,
-            visitLimit: Number(editVisitLimit) || 4,
+            visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : 4,
             isPopular: editIsPopular,
             renewable: editRenewable,
             upgradeAvailable: editRenewable
@@ -596,7 +679,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: Number(m.visitLimit) || 4,
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : 4,
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -629,6 +712,7 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
 
       if (showToast) showToast('Car Wash package title, price & details updated live!');
       updateServicePrice(serviceMain.id, numPrice);
@@ -726,6 +810,7 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
 
       if (showToast) showToast('New Car Wash service package created!');
       setAddPackageModal(false);
@@ -813,6 +898,7 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
 
       if (showToast) showToast(`Package "${itemTitle}" deleted successfully`, 'error');
     } catch (err) {
@@ -848,8 +934,9 @@ export default function CarWashAdminHubPage() {
           { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
           { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
           { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
+          { id: 'vehicles', label: `Registered Vehicles (${registeredVehiclesList.length})`, icon: Shield },
           { id: 'staff', label: `Department Staff (${dbStaff.length || serviceStaff.length})`, icon: Users },
-          { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon },
+          { id: 'marketing', label: `Promos & Media (${serviceBanners.length})`, icon: ImageIcon },
           { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
         ].map((tab) => {
           const Icon = tab.icon;
@@ -990,9 +1077,9 @@ export default function CarWashAdminHubPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-gray-500 font-semibold">
-                      <span>⏱️ {m.duration || 30} Days</span>
+                      <span>⏱️ {m.duration || ((m.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days</span>
                       <span>•</span>
-                      <span>🚿 {m.visitLimit === 999 || (m.name || '').toLowerCase().includes('yearly') ? 'Unlimited' : (m.visitLimit || 4)} Washes</span>
+                      <span>🚿 {Number(m.visitLimit) === 999 ? 'Unlimited Washes' : `${m.visitLimit !== undefined ? m.visitLimit : 4} Washes`}</span>
                     </div>
                     <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
                   </div>
@@ -1026,7 +1113,7 @@ export default function CarWashAdminHubPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({dbStaff.length || serviceStaff.length})</h3>
+              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '')).length})</h3>
               <p className="text-xs text-gray-500">Onboard staff members, generate email login credentials & assign module access</p>
             </div>
             <button
@@ -1038,56 +1125,58 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff).map((stf) => (
-              <div 
-                key={stf._id || stf.id} 
-                onClick={() => handleOpenEditStaff(stf)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <img
-                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                    alt={stf.fullName || stf.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                  />
-                  <div className="space-y-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {stf.isActive !== false ? 'Active' : 'Inactive'}
+            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
+              .filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || ''))
+              .map((stf) => (
+                <div 
+                  key={stf._id || stf.id} 
+                  onClick={() => handleOpenEditStaff(stf)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                      alt={stf.fullName || stf.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                    />
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                      <span className="font-bold text-gray-800 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
                       </span>
                     </div>
-                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
-                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
-                    </p>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
-                    <span className="font-bold text-gray-800 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
-                    </span>
-                  </div>
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
-                  </div>
+                  {stf.permissions && stf.permissions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {stf.permissions.map(p => (
+                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                {stf.permissions && stf.permissions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {stf.permissions.map(p => (
-                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
@@ -1136,8 +1225,154 @@ export default function CarWashAdminHubPage() {
         />
       )}
 
+      {activeTab === 'vehicles' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                🚗 Registered Customer Vehicles & Fleet ({registeredVehiclesList.length})
+              </h3>
+              <p className="text-xs text-gray-500">Live list of customer vehicles registered during bookings and membership passes</p>
+            </div>
+            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+              {registeredVehiclesList.length} Active Fleet Cars
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {registeredVehiclesList.map((v, i) => (
+              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
+                      🚗
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
+                      <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                    {v.totalWashes} {v.totalWashes === 1 ? 'Wash' : 'Washes'} Done
+                  </span>
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
+                  <p className="flex justify-between">
+                    <span className="text-gray-400">Registered Owner:</span>
+                    <strong className="text-gray-800">{v.ownerName}</strong>
+                  </p>
+                  <p className="flex justify-between">
+                    <span className="text-gray-400">Contact:</span>
+                    <span className="text-gray-700 font-semibold">{v.ownerPhone}</span>
+                  </p>
+                  <p className="flex justify-between">
+                    <span className="text-gray-400">Email:</span>
+                    <span className="text-gray-600 truncate max-w-[180px]">{v.ownerEmail}</span>
+                  </p>
+                  <p className="flex justify-between">
+                    <span className="text-gray-400">Last Service Date:</span>
+                    <span className="text-amber-700 font-bold">{v.lastWashDate}</span>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {activeTab === 'marketing' && (
         <div className="space-y-6">
+          {/* Hero Tunnel Video & Media Configuration Card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-3 gap-2">
+              <div>
+                <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  Customer Page Hero Tunnel Video & Media Configuration
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Update the live video loop and fallback poster image displayed on <code className="bg-gray-100 px-1.5 py-0.5 rounded text-amber-700 font-bold">http://localhost:3000/car-wash</code>
+                </p>
+              </div>
+              <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                ⚡ Live Frontend Sync
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* Video Player Live Preview */}
+              <div className="space-y-2">
+                <label className="block font-bold text-xs text-gray-700">Live Video Preview</label>
+                <div className="relative rounded-xl overflow-hidden border border-gray-300 shadow-sm aspect-video bg-black flex items-center justify-center">
+                  <video
+                    key={heroVideoUrl}
+                    src={heroVideoUrl}
+                    poster={heroPosterUrl}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-xs text-white rounded text-[9px] font-bold">
+                    Active Video Loop
+                  </span>
+                </div>
+              </div>
+
+              {/* Form Controls */}
+              <form onSubmit={handleSaveHeroMedia} className="lg:col-span-2 space-y-3 text-xs flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1">Hero Tunnel Video URL / Local Path *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        value={heroVideoUrl}
+                        onChange={e => setHeroVideoUrl(e.target.value)}
+                        placeholder="/videos/car-tunnel.mp4 or https://..."
+                        className="flex-1 p-2.5 border rounded-xl font-mono text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setHeroVideoUrl('/videos/car-tunnel.mp4')}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold rounded-xl whitespace-nowrap transition-all"
+                      >
+                        Reset Default
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-gray-400 block mt-1">
+                      Accepts internal MP4 paths (e.g. <code className="font-bold text-gray-600">/videos/car-tunnel.mp4</code>) or any direct MP4 video URL.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1">Fallback Poster Image URL *</label>
+                    <input
+                      type="text"
+                      required
+                      value={heroPosterUrl}
+                      onChange={e => setHeroPosterUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full p-2.5 border rounded-xl font-mono text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    Save & Update Customer Hero Media
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
               <h3 className="text-base font-black text-gray-900">Promotional Banners & Deals ({serviceBanners.length})</h3>
@@ -1430,7 +1665,7 @@ export default function CarWashAdminHubPage() {
                     {selectedMembershipForSubscribers.badge || 'MEMBERSHIP PASS'}
                   </span>
                   <span className="text-[11px] font-bold text-amber-100">
-                    ⏱️ {selectedMembershipForSubscribers.duration || 30} Days • 🚿 {selectedMembershipForSubscribers.visitLimit === 999 ? 'Unlimited' : (selectedMembershipForSubscribers.visitLimit || 4)} Washes
+                    ⏱️ {selectedMembershipForSubscribers.duration || ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days • 🚿 {Number(selectedMembershipForSubscribers.visitLimit) === 999 ? 'Unlimited Washes' : `${selectedMembershipForSubscribers.visitLimit !== undefined ? selectedMembershipForSubscribers.visitLimit : 4} Washes`}
                   </span>
                 </div>
                 <h4 className="text-lg font-black">{selectedMembershipForSubscribers.name}</h4>

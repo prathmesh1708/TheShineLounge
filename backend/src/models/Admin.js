@@ -1,12 +1,13 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema(
+const adminSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
       required: [true, 'Full name is required'],
-      trim: true
+      trim: true,
+      default: 'Super Admin'
     },
     email: {
       type: String,
@@ -25,41 +26,28 @@ const userSchema = new mongoose.Schema(
     mobile: {
       type: String,
       trim: true,
-      default: ''
+      default: '+91 00000 00000'
     },
     role: {
       type: String,
-      enum: ['admin', 'staff', 'user'],
-      default: 'user'
+      default: 'admin'
     },
     department: {
       type: String,
-      enum: [
-        'Car Wash',
-        'Car Detailing',
-        'Detailing',
-        'Cafe',
-        'Café',
-        'Drive-Through Cafe',
-        'Drive-Through Café',
-        'Drive-Thru Cafe',
-        'Drive-Thru Café',
-        'Salon',
-        "Men's Salon",
-        'Dog Wash',
-        'Accounts',
-        'CRM',
-        'Reception',
-        'Inventory',
-        'Manager',
-        'Management',
-        ''
-      ],
-      default: ''
+      default: 'Management'
     },
     permissions: {
       type: [String],
-      default: []
+      default: [
+        'dashboard',
+        'bookings',
+        'memberships',
+        'customers',
+        'orders',
+        'inventory',
+        'reports',
+        'payments'
+      ]
     },
     isActive: {
       type: Boolean,
@@ -69,38 +57,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
-    photo: {
+    branch: {
       type: String,
-      default: ''
-    },
-    serviceKey: {
-      type: String,
-      default: ''
-    },
-    staffRole: {
-      type: String,
-      default: 'Staff Specialist'
-    },
-    salary: {
-      type: String,
-      default: ''
-    },
-    leaveBalance: {
-      type: Number,
-      default: 12
+      default: 'Main Branch'
     },
     lastLogin: {
       type: Date,
       default: null
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null
-    },
-    branch: {
-      type: String,
-      default: 'Main Branch'
     },
     isDeleted: {
       type: Boolean,
@@ -113,25 +76,24 @@ const userSchema = new mongoose.Schema(
 );
 
 // Hash password before saving
-userSchema.pre('save', async function () {
+adminSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-
 // Compare entered password with hashed password
-userSchema.methods.matchPassword = async function (enteredPassword) {
+adminSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // Never return password or isDeleted in JSON
-userSchema.methods.toJSON = function () {
+adminSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   return obj;
 };
 
-const User = mongoose.model('User', userSchema);
+const Admin = mongoose.model('Admin', adminSchema);
 
-module.exports = User;
+module.exports = Admin;

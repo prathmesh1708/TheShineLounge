@@ -39,14 +39,41 @@ const createStaff = async (req, res) => {
       });
     }
 
+    // Deduce proper department & serviceKey if not explicitly provided
+    let finalServiceKey = serviceKey || '';
+    let finalDept = department || '';
+    const roleLower = (staffRole || '').toLowerCase();
+
+    if (!finalServiceKey || !finalDept) {
+      if (roleLower.includes('cafe supervisor') || roleLower.includes('barista') || roleLower.includes('chef') || roleLower.includes('pastry')) {
+        finalServiceKey = finalServiceKey || 'cafe';
+        finalDept = finalDept || 'Café';
+      } else if (roleLower.includes('drive-thru') || roleLower.includes('drive-through')) {
+        finalServiceKey = finalServiceKey || 'drive-through-cafe';
+        finalDept = finalDept || 'Drive-Through Café';
+      } else if (roleLower.includes('detail') || roleLower.includes('paint correction')) {
+        finalServiceKey = finalServiceKey || 'car-detailing';
+        finalDept = finalDept || 'Car Detailing';
+      } else if (roleLower.includes('groomer') || roleLower.includes('pet')) {
+        finalServiceKey = finalServiceKey || 'dog-wash';
+        finalDept = finalDept || 'Dog Wash';
+      } else if (roleLower.includes('salon') || roleLower.includes('barber') || roleLower.includes('stylist')) {
+        finalServiceKey = finalServiceKey || 'salon';
+        finalDept = finalDept || "Men's Salon";
+      } else {
+        finalServiceKey = finalServiceKey || 'car-wash';
+        finalDept = finalDept || 'Car Wash';
+      }
+    }
+
     const staff = await User.create({
       fullName,
       email,
       password,
       mobile: mobile || '',
       role: 'staff',
-      department: department || 'Car Wash',
-      serviceKey: serviceKey || 'car-wash',
+      department: finalDept,
+      serviceKey: finalServiceKey,
       staffRole: staffRole || 'Staff Specialist',
       salary: salary || '',
       leaveBalance: leaveBalance ? Number(leaveBalance) : 12,
@@ -110,11 +137,26 @@ const getStaffList = async (req, res) => {
     const andConditions = [];
 
     if (serviceKey) {
+      const matchConditions = [{ serviceKey: serviceKey }];
+      if (serviceKey === 'car-wash') {
+        matchConditions.push({ department: 'Car Wash' });
+        andConditions.push({
+          staffRole: { $not: /cafe|barista|pastry|chef|groomer|pet|salon|barber/i }
+        });
+      } else if (serviceKey === 'car-detailing') {
+        matchConditions.push({ department: { $in: ['Car Detailing', 'Detailing'] } });
+      } else if (serviceKey === 'cafe') {
+        matchConditions.push({ department: { $in: ['Cafe', 'Café'] } });
+      } else if (serviceKey === 'dog-wash') {
+        matchConditions.push({ department: 'Dog Wash' });
+      } else if (serviceKey === 'salon') {
+        matchConditions.push({ department: { $in: ['Salon', "Men's Salon"] } });
+      } else if (serviceKey === 'drive-through-cafe') {
+        matchConditions.push({ department: { $in: ['Drive-Through Cafe', 'Drive-Through Café'] } });
+      }
+
       andConditions.push({
-        $or: [
-          { serviceKey: serviceKey },
-          { department: { $regex: serviceKey.replace('-', ' '), $options: 'i' } }
-        ]
+        $or: matchConditions
       });
     } else if (department && department !== 'All') {
       query.department = department;

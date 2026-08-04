@@ -77,6 +77,18 @@ export const serviceApi = {
   deletePlan: async (serviceId, planId) => {
     const response = await apiClient.delete(`/services/${serviceId}/plans/${planId}`);
     return response.data;
+  },
+
+  // Admin - Sub-resources: Add Menu Section
+  addSection: async (serviceId, data) => {
+    const response = await apiClient.post(`/services/${serviceId}/sections`, data);
+    return response.data;
+  },
+
+  // Admin - Sub-resources: Delete Menu Section
+  deleteSection: async (serviceId, sectionId) => {
+    const response = await apiClient.delete(`/services/${serviceId}/sections/${sectionId}`);
+    return response.data;
   }
 };
 

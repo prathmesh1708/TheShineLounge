@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const generateToken = require('../utils/generateToken');
 
 // @desc    Register a new customer
@@ -78,11 +79,20 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user and include password for comparison
-    const user = await User.findOne({
-      email: email.toLowerCase(),
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check User model first, then Admin model
+    let user = await User.findOne({
+      email: cleanEmail,
       isDeleted: false
     }).select('+password');
+
+    if (!user) {
+      user = await Admin.findOne({
+        email: cleanEmail,
+        isDeleted: false
+      }).select('+password');
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -144,7 +154,10 @@ const login = async (req, res) => {
 // @access  Private
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    let user = await User.findById(req.user._id);
+    if (!user) {
+      user = await Admin.findById(req.user._id);
+    }
 
     if (!user) {
       return res.status(404).json({

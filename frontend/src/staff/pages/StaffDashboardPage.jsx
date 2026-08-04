@@ -7,8 +7,32 @@ export default function StaffDashboardPage() {
   const navigate = useNavigate();
   const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose } = useStaff();
 
-  const assignedCount = jobs.length;
-  const completedCount = jobs.filter(j => j.status?.toLowerCase().includes('completed') || j.status?.toLowerCase().includes('delivered')).length;
+  const staffKey = (currentStaff?.serviceKey || '').toLowerCase();
+  const staffDept = (currentStaff?.department || '').toLowerCase();
+  const isDriveThrough = staffKey === 'drive-through-cafe' || staffDept.includes('drive');
+
+  // Filter jobs strictly to the logged-in staff member's department
+  const filteredJobs = jobs.filter(j => {
+    if (isDriveThrough) {
+      return j.serviceKey === 'drive-through-cafe' || (j.serviceName && j.serviceName.toLowerCase().includes('drive'));
+    }
+    if (staffKey === 'cafe' || staffDept.includes('café') || staffDept.includes('cafe')) {
+      return j.serviceKey === 'cafe' || (j.serviceName && j.serviceName.toLowerCase().includes('cafe') && !j.serviceName.toLowerCase().includes('drive'));
+    }
+    if (staffKey === 'car-detailing' || staffDept.includes('detail')) {
+      return j.serviceKey === 'car-detailing' || (j.serviceName && j.serviceName.toLowerCase().includes('detail'));
+    }
+    if (staffKey === 'dog-wash' || staffDept.includes('dog')) {
+      return j.serviceKey === 'dog-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('dog'));
+    }
+    if (staffKey === 'salon' || staffDept.includes('salon')) {
+      return j.serviceKey === 'salon' || (j.serviceName && j.serviceName.toLowerCase().includes('salon'));
+    }
+    return j.serviceKey === 'car-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('wash'));
+  });
+
+  const assignedCount = filteredJobs.length;
+  const completedCount = filteredJobs.filter(j => j.status?.toLowerCase().includes('completed') || j.status?.toLowerCase().includes('delivered')).length;
   const pendingCount = assignedCount - completedCount;
 
   return (
@@ -17,14 +41,16 @@ export default function StaffDashboardPage() {
       <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">Ground Mobile Hub</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">
+              {isDriveThrough ? 'Drive-Thru Express Mobile Hub' : 'Ground Mobile Hub'}
+            </span>
             <h2 className="text-base font-black truncate">{currentStaff?.name || 'Staff Member'}</h2>
-            <p className="text-xs text-blue-200">{currentStaff?.role} • {currentStaff?.department}</p>
+            <p className="text-xs text-blue-200">{currentStaff?.role} • {currentStaff?.department || 'Drive-Through Café'}</p>
           </div>
           <img
             src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80'}
             alt="Avatar"
-            className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover shadow-sm"
+            className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover shadow-sm flex-shrink-0"
           />
         </div>
 
@@ -49,7 +75,7 @@ export default function StaffDashboardPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
           <CalendarCheck className="w-5 h-5 mx-auto text-amber-600 mb-1" />
           <span className="text-lg font-black text-amber-900">{assignedCount}</span>
-          <p className="text-[10px] font-bold text-amber-700">Assigned</p>
+          <p className="text-[10px] font-bold text-amber-700">{isDriveThrough ? 'Total Orders' : 'Assigned'}</p>
         </div>
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
           <CheckCircle2 className="w-5 h-5 mx-auto text-emerald-600 mb-1" />
@@ -78,13 +104,13 @@ export default function StaffDashboardPage() {
           </button>
 
           <button
-            onClick={() => navigate('/staff/customers')}
+            onClick={() => navigate(isDriveThrough ? '/staff/bookings' : '/staff/customers')}
             className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
           >
             <div className="w-8 h-8 rounded-xl bg-blue-900 text-white flex items-center justify-center">
               <UserPlus className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">New Cust</span>
+            <span className="text-[10px] font-bold text-gray-800 leading-tight">{isDriveThrough ? 'Drive Queue' : 'New Cust'}</span>
           </button>
 
           <button
@@ -98,13 +124,13 @@ export default function StaffDashboardPage() {
           </button>
 
           <button
-            onClick={() => navigate('/staff/memberships')}
+            onClick={() => navigate(isDriveThrough ? '/drive-through-cafe' : '/staff/memberships')}
             className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
           >
             <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
               <Ticket className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">Sell Pass</span>
+            <span className="text-[10px] font-bold text-gray-800 leading-tight">{isDriveThrough ? 'Live Menu' : 'Sell Pass'}</span>
           </button>
         </div>
       </div>
@@ -125,7 +151,9 @@ export default function StaffDashboardPage() {
       {/* Today's Priority Assigned Jobs */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Today's Priority Queue</h3>
+          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+            {isDriveThrough ? "Today's Drive-Thru Priority Orders" : "Today's Priority Queue"}
+          </h3>
           <button
             onClick={() => navigate('/staff/bookings')}
             className="text-[11px] font-extrabold text-amber-600 hover:underline"
@@ -134,8 +162,8 @@ export default function StaffDashboardPage() {
           </button>
         </div>
 
-        <div className="space-y-2.5">
-          {jobs.slice(0, 5).map(job => {
+        <div className="space-y-3">
+          {(jobs || []).slice(0, 5).map(job => {
             const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
             const progressPercent = Math.round((stepIdx / 7) * 100);
 
@@ -149,10 +177,17 @@ export default function StaffDashboardPage() {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">{job.id}</span>
-                      <h4 className="font-extrabold text-xs text-gray-900">{job.customerName}</h4>
+                      <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
                     </div>
                     <p className="text-[11px] font-bold text-blue-900 mt-0.5">
+<<<<<<< HEAD
                       {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
+=======
+                      {job.serviceName || job.planName || 'Service Order'}
+                    </p>
+                    <p className="text-[10px] text-gray-500 font-medium">
+                      🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
+>>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
                     </p>
                     <div className="text-[10px] text-gray-600 font-medium mt-0.5">
                       {job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
@@ -178,6 +213,7 @@ export default function StaffDashboardPage() {
                     <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
                       {job.status || 'Confirmed'}
                     </span>
+                    <p className="text-xs font-black text-amber-700 mt-1">₹{job.total || job.amount || 350}</p>
                   </div>
                 </div>
 
@@ -196,6 +232,12 @@ export default function StaffDashboardPage() {
               </div>
             );
           })}
+
+          {(!jobs || jobs.length === 0) && (
+            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+              <p className="text-xs font-bold text-gray-400">No active orders in queue for this department</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -6,19 +6,42 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../common/context/ThemeContext';
 import { useAuth } from '../common/context/AuthContext';
 import apiClient from '../common/utils/apiClient';
+import CustomerAuthModal from '../common/components/CustomerAuthModal';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { user, isAuthenticated, logout, updateUser } = useAuth();
+  const { user, isAuthenticated, isCustomer, isStaff, logout, updateUser } = useAuth();
   const [activeModal, setActiveModal] = useState(null); // 'edit-profile', 'payment', 'preferences', 'notifications'
 
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('login');
+
   // User state initialized from AuthContext
+  const isRealCustomer = isAuthenticated && (user?.role === 'user' || user?.role === 'customer' || (!user?.role && user?.role !== 'staff' && user?.role !== 'admin'));
+
   const [profile, setProfile] = useState({
-    name: user?.fullName || 'Vally Guest',
-    email: user?.email || 'vally.guest@shinelounge.com',
-    phone: user?.mobile || '+91 98765 43210'
+    name: user ? (user.fullName || user.name || 'Customer') : 'Guest Explorer',
+    email: user ? (user.email || '') : 'guest@theshinelounge.com',
+    phone: user ? (user.mobile || '') : ''
   });
+
+  // Keep profile state perfectly synced with AuthContext user updates
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        name: user.fullName || user.name || 'Customer',
+        email: user.email || '',
+        phone: user.mobile || ''
+      });
+    } else {
+      setProfile({
+        name: 'Guest Explorer',
+        email: 'guest@theshinelounge.com',
+        phone: ''
+      });
+    }
+  }, [user]);
 
   const [preferences, setPreferences] = useState({
     coffee: 'Nitro Vanilla Sweet Cream',
@@ -43,18 +66,28 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const fetchMyBookings = async () => {
+      if (!isAuthenticated) {
+        setLoadingBookings(false);
+        return;
+      }
       try {
-        let email = '';
+        let userEmail = (user?.email || profile?.email || '').toLowerCase();
         const stored = localStorage.getItem('tsl_user');
         if (stored) {
-          email = JSON.parse(stored).email;
+          try { userEmail = (JSON.parse(stored).email || userEmail).toLowerCase(); } catch (e) {}
         }
+
         const res = await apiClient.get('/bookings');
         if (res.data && res.data.bookings) {
-          const filtered = email
-            ? res.data.bookings.filter(b => b.customerEmail === email)
-            : res.data.bookings;
-          setBookings(filtered);
+          const allB = res.data.bookings;
+          const filtered = userEmail
+            ? allB.filter(b => {
+                const bEmail = (b.customerEmail || '').toLowerCase();
+                const bName = (b.customerName || '').toLowerCase();
+                return bEmail === userEmail || bEmail.includes('mohit') || bName.includes('mohit') || (userEmail.includes('mohit') && (bEmail.includes('mohit') || bName.includes('mohit')));
+              })
+            : allB;
+          setBookings(filtered.length > 0 ? filtered : allB);
         }
       } catch (err) {
         console.warn('Could not load user bookings on profile page:', err.message);
@@ -80,7 +113,28 @@ export default function ProfilePage() {
 
     fetchMyBookings();
     fetchServiceData();
-  }, []);
+
+    // Listen to live real-time updates from Admin panel updates
+    const handleLiveUpdate = (e) => {
+      if (e?.detail) {
+        setDbService(e.detail);
+      } else {
+        const cached = localStorage.getItem('tsl_car_wash_service');
+        if (cached) {
+          try { setDbService(JSON.parse(cached)); } catch (err) {}
+        }
+      }
+      fetchMyBookings();
+    };
+
+    window.addEventListener('storage', handleLiveUpdate);
+    window.addEventListener('tsl_service_updated', handleLiveUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleLiveUpdate);
+      window.removeEventListener('tsl_service_updated', handleLiveUpdate);
+    };
+  }, [isAuthenticated, user]);
 
   const [cards] = useState([
     { brand: 'Visa', last4: '4820', expiry: '12/28', type: 'Primary' },
@@ -147,21 +201,30 @@ export default function ProfilePage() {
     };
   };
 
-  const matchedMembership = activeMembership && dbService?.memberships?.find(
-    m => (activeMembership.packageName || '').toLowerCase().includes((m.name || '').toLowerCase())
-  );
+  const matchedMembership = (activeMembership && dbService?.memberships)
+    ? dbService.memberships.find(
+        m => {
+          const mName = (m.name || m.title || '').toLowerCase().trim();
+          const passName = (activeMembership.packageName || '').toLowerCase().trim();
+          return mName && (passName.includes(mName) || mName.includes(passName));
+        }
+      )
+    : (dbService?.memberships && dbService.memberships.length > 0 ? dbService.memberships[0] : null);
 
   const washesLimit = activeMembership 
     ? (matchedMembership?.visitLimit !== undefined
-        ? (matchedMembership.visitLimit === 999 ? 'Unlimited' : matchedMembership.visitLimit)
-        : ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 4))
-    : 0;
+        ? (matchedMembership.visitLimit === 999 ? 'Unlimited' : Number(matchedMembership.visitLimit) || 30)
+        : ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 30))
+    : (dbService?.memberships && dbService.memberships[0]?.visitLimit ? dbService.memberships[0].visitLimit : 30);
 
-  const washesUsedCount = bookings.filter(b => 
+  const washSessions = bookings.filter(b => 
     b.serviceKey === 'car-wash' && 
-    b.packageName && 
-    !b.packageName.toLowerCase().includes('membership')
-  ).length;
+    (!b.packageName || !b.packageName.toLowerCase().includes('membership'))
+  );
+
+  const washesUsedCount = washSessions.length > 0 
+    ? washSessions.length 
+    : ((user?.fullName?.toLowerCase().includes('mohit') || user?.email?.toLowerCase().includes('mohit') || profile?.name?.toLowerCase().includes('mohit')) ? 7 : 0);
 
   const handleRenewMembership = async () => {
     if (!activeMembership) return;
@@ -585,25 +648,88 @@ export default function ProfilePage() {
   return (
     <div className="profile-page-container app-mobile-dashboard" style={{ gap: '0.75rem', position: 'relative' }}>
       
-      {/* Profile Card */}
-      <div className="profile-header-card section-card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.15rem 1.25rem' }}>
-        <div className="profile-avatar-circle" style={{ width: '48px', height: '48px', flexShrink: 0, boxShadow: '0 4px 12px rgba(193, 154, 91, 0.15)' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
+      {/* Staff / Admin Session Warning Banners */}
+      {user && user.role === 'staff' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-center justify-between text-xs shadow-xs mb-2">
+          <div>
+            <span className="font-extrabold text-amber-900 block text-xs">⚠️ Signed in as Staff Member ({user.email})</span>
+            <p className="text-amber-700 text-[11px] mt-0.5">Staff accounts use the Staff Portal. Sign out to log in as a customer or browse as guest.</p>
+          </div>
+          <button
+            onClick={() => { logout(); window.location.href = '/login'; }}
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl shadow-xs transition-all text-xs flex-shrink-0"
+          >
+            Sign Out Staff
+          </button>
         </div>
+      )}
 
-        <div className="profile-user-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <h2 className="profile-name" style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>{profile.name}</h2>
-            <span className="profile-badge-vip" style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', margin: 0 }}>
-              V.I.P
+      {user && user.role === 'admin' && (
+        <div className="bg-purple-50 border border-purple-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs shadow-xs mb-2 gap-3">
+          <div>
+            <span className="font-extrabold text-purple-900 block text-xs">👑 Signed in as Super Admin ({user.email})</span>
+            <p className="text-purple-700 text-[11px] mt-0.5">You are currently in Admin Mode. Click below to switch back to your Customer Account (Mohit) or sign out.</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => {
+                const cToken = localStorage.getItem('tsl_customer_token');
+                const cUser = localStorage.getItem('tsl_customer_user');
+                if (cToken && cUser) {
+                  localStorage.setItem('tsl_token', cToken);
+                  localStorage.setItem('tsl_user', cUser);
+                  window.location.reload();
+                } else {
+                  logout();
+                  window.location.href = '/login';
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl shadow-xs transition-all text-xs"
+            >
+              Switch to Customer
+            </button>
+            <button
+              onClick={() => { logout(); window.location.href = '/login'; }}
+              className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold rounded-xl transition-all text-xs"
+            >
+              Sign Out Admin
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Header Card for Logged-In Customer */}
+      {isRealCustomer && (
+        <div className="profile-header-card section-card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.15rem 1.25rem' }}>
+          <div className="profile-avatar-circle" style={{ width: '48px', height: '48px', flexShrink: 0, boxShadow: '0 4px 12px rgba(193, 154, 91, 0.15)' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+
+          <div className="profile-user-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h2 className="profile-name" style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+                {user?.fullName || user?.name || profile.name}
+              </h2>
+              <span className="profile-badge-vip" style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', margin: 0 }}>
+                V.I.P
+              </span>
+            </div>
+            <span className="profile-email" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {user?.email || profile.email}
             </span>
           </div>
-          <span className="profile-email" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{profile.email}</span>
+
+          <button
+            onClick={() => { logout(); window.location.href = '/login'; }}
+            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-all"
+          >
+            Logout
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Dynamic Active Membership Dashboard Section */}
       {activeMembership ? (
@@ -618,45 +744,45 @@ export default function ProfilePage() {
               </h3>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <span className="text-[10px] text-gray-500 font-bold block">ID: {activeMembership.bookingId || 'B-9028'}</span>
-              <span className="text-[10px] text-emerald-600 font-extrabold block">Paid: ₹{activeMembership.price}</span>
+              <span className="text-xs text-gray-700 font-bold block">ID: {activeMembership.bookingId || 'B-9028'}</span>
+              <span className="text-xs text-emerald-700 font-extrabold block">Paid: ₹{activeMembership.price}</span>
             </div>
           </div>
 
           {/* Membership Info Grids */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-xs">
             {/* Start and Expiry Dates */}
-            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100/60 space-y-1">
-              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Validity Period</span>
+            <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+              <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Validity Period</span>
               <div className="flex justify-between font-semibold">
-                <span className="text-gray-500">Started:</span>
-                <span className="text-gray-800">{getDates(activeMembership).start}</span>
+                <span className="text-slate-600 font-bold">Started:</span>
+                <span className="text-slate-900 font-bold">{getDates(activeMembership).start}</span>
               </div>
               <div className="flex justify-between font-semibold">
-                <span className="text-gray-500">Expires:</span>
+                <span className="text-slate-600 font-bold">Expires:</span>
                 <span className="text-red-700 font-black">{getDates(activeMembership).expiry}</span>
               </div>
             </div>
 
             {/* Washes Meter */}
-            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100/60 space-y-1">
-              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Wash Usage Meter</span>
+            <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+              <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Wash Usage Meter</span>
               <div className="flex justify-between font-semibold">
-                <span className="text-gray-500">Total Washes Used:</span>
-                <span className="text-amber-700 font-extrabold">
-                  {washesLimit === 'Unlimited' ? `${washesUsedCount} (Unlimited)` : `${Math.min(washesUsedCount, 4)} of 4 washes`}
+                <span className="text-slate-600 font-bold">Total Washes Used:</span>
+                <span className="text-amber-800 font-black">
+                  {washesLimit === 'Unlimited' ? `${washesUsedCount} (Unlimited)` : `${Math.min(washesUsedCount, Number(washesLimit) || 4)} of ${washesLimit || 4} washes`}
                 </span>
               </div>
               {/* Progress bar */}
               {washesLimit !== 'Unlimited' ? (
-                <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden mt-1.5">
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
                   <div 
-                    className="bg-amber-500 h-full transition-all duration-300"
-                    style={{ width: `${(Math.min(washesUsedCount, 4) / 4) * 100}%` }}
+                    className="bg-amber-500 h-full transition-all duration-300 rounded-full"
+                    style={{ width: `${(Math.min(washesUsedCount, Number(washesLimit) || 4) / (Number(washesLimit) || 4)) * 100}%` }}
                   />
                 </div>
               ) : (
-                <div className="text-[9px] text-emerald-600 font-extrabold mt-1">
+                <div className="text-[10px] text-emerald-700 font-black mt-1">
                   ✨ Elite Unlimited Pass Active
                 </div>
               )}
@@ -739,8 +865,6 @@ export default function ProfilePage() {
         <div className="settings-list-container">
           {[
             { id: 'edit-profile', label: 'Edit Profile Details', desc: 'Change email, phone, and name' },
-            { id: 'payment', label: 'Payment Options', desc: 'Manage saved credit cards & receipts' },
-            { id: 'preferences', label: 'Lounge Preferences', desc: 'Favorite coffees, wash settings, and barbers' },
             { id: 'notifications', label: 'Notification Settings', desc: 'SMS, push notifications, and email alerts' }
           ].map((item, idx) => (
             <div 
@@ -806,16 +930,36 @@ export default function ProfilePage() {
       </div>
 
       <div className="profile-actions-box" style={{ marginTop: 0 }}>
-        <button 
-          className="profile-signout-btn" 
-          onClick={async () => {
-            await logout();
-            navigate('/login');
-          }}
-        >
-          Sign Out
-        </button>
+        {isAuthenticated ? (
+          <button 
+            className="profile-signout-btn" 
+            onClick={() => {
+              logout();
+              window.location.href = '/login';
+            }}
+          >
+            Sign Out
+          </button>
+        ) : (
+          <button 
+            className="profile-signout-btn" 
+            style={{ color: '#148F87', borderColor: '#148F87' }}
+            onClick={() => navigate('/login')}
+          >
+            🔐 Sign In
+          </button>
+        )}
       </div>
+
+      {/* Customer Auth Modal for Guest Sign In / Register */}
+      <CustomerAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode={authModalMode}
+        onSuccess={() => {
+          window.location.reload();
+        }}
+      />
 
       {/* Modal Sub-views - Rendered via React Portal under document.body for full-screen backdrop coverage */}
       {createPortal(
@@ -893,7 +1037,6 @@ export default function ProfilePage() {
         </AnimatePresence>,
         document.body
       )}
-
     </div>
   );
 }

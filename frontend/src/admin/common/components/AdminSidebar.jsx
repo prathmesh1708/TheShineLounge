@@ -83,11 +83,33 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     const banCount = banners.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
     const iCount = inventory.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
+    // Calculate registered vehicles count for car services
+    const carBookings = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
+    const vMap = {};
+    carBookings.forEach(b => {
+      const plate = (b.vehicleNo || b.vehiclePlate || 'TSL-3000').toUpperCase();
+      vMap[plate] = true;
+    });
+    const vCount = Math.max(Object.keys(vMap).length, 1);
+
+    if (key === 'car-wash') {
+      return [
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
+        { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+        { id: 'vehicles', label: `Registered Vehicles (${vCount})`, icon: ShieldCheck },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
+        { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
+      ];
+    }
+
     if (key === 'car-detailing') {
       return [
         { id: 'treatments', label: 'Car Detailing', icon: Wrench },
         { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
         { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+        { id: 'vehicles', label: `Registered Vehicles (${vCount})`, icon: ShieldCheck },
         { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
         { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
         { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
@@ -121,6 +143,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
       { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
       { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
       { id: 'bookings', label: `Service Bookings (${bCount})`, icon: CalendarCheck },
+      { id: 'vehicles', label: `Registered Vehicles (${vCount})`, icon: ShieldCheck },
       { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
       { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon },
       { id: 'inventory', label: `Supplies & Stock (${iCount})`, icon: Package }
