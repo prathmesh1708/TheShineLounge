@@ -23,7 +23,8 @@ import {
   Mail,
   Calendar,
   Upload,
-  X
+  X,
+  Search
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -142,6 +143,7 @@ export default function CarWashAdminHubPage() {
   useEffect(() => {
     fetchLiveService();
     fetchLiveStaff();
+    fetchMembershipSubscribers();
   }, []);
 
   // Helper to reliably resolve MongoDB target _id
@@ -198,6 +200,13 @@ export default function CarWashAdminHubPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editPrice, setEditPrice] = useState(699);
   const [editDescription, setEditDescription] = useState('');
+  // Rich membership edit fields
+  const [editBadge, setEditBadge] = useState('');
+  const [editDuration, setEditDuration] = useState(30);
+  const [editVisitLimit, setEditVisitLimit] = useState(4);
+  const [editBenefits, setEditBenefits] = useState(['']);
+  const [editIsPopular, setEditIsPopular] = useState(false);
+  const [editRenewable, setEditRenewable] = useState(true);
 
   // Add Package Modal States
   const [addPackageModal, setAddPackageModal] = useState(false);
@@ -205,8 +214,40 @@ export default function CarWashAdminHubPage() {
     title: '',
     price: '',
     description: '',
-    type: 'pricing'
+    type: 'pricing',
+    badge: '',
+    duration: 30,
+    visitLimit: 4,
+    benefits: [''],
+    isPopular: false,
+    renewable: true
   });
+
+  // Membership subscribers (from bookings)
+  const [membershipSubscribers, setMembershipSubscribers] = useState([]);
+  const [subscriberModal, setSubscriberModal] = useState(false);
+  const [selectedMembershipForSubscribers, setSelectedMembershipForSubscribers] = useState(null);
+  const [subscriberSearchQuery, setSubscriberSearchQuery] = useState('');
+
+  const handleOpenSubscriberModal = (membership) => {
+    setSelectedMembershipForSubscribers(membership);
+    setSubscriberSearchQuery('');
+    setSubscriberModal(true);
+  };
+
+  const fetchMembershipSubscribers = async () => {
+    try {
+      const res = await apiClient.get('/bookings');
+      if (res.data && res.data.bookings) {
+        const memberBookings = res.data.bookings.filter(
+          b => b.packageName && (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass'))
+        );
+        setMembershipSubscribers(memberBookings);
+      }
+    } catch (err) {
+      console.warn('Could not fetch membership subscribers:', err.message);
+    }
+  };
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
@@ -491,6 +532,15 @@ export default function CarWashAdminHubPage() {
         ? (Array.isArray(item.benefits) ? item.benefits.join(', ') : (item.benefits || ''))
         : (item.description || (item.features ? item.features.join(', ') : ''))
     );
+    // Populate rich membership fields
+    if (type === 'membership') {
+      setEditBadge(item.badge || '');
+      setEditDuration(item.duration || 30);
+      setEditVisitLimit(item.visitLimit !== undefined ? item.visitLimit : 4);
+      setEditBenefits(Array.isArray(item.benefits) && item.benefits.length > 0 ? [...item.benefits] : ['']);
+      setEditIsPopular(!!item.isPopular);
+      setEditRenewable(item.renewable !== false);
+    }
     setEditingPriceModal(true);
   };
 
@@ -510,7 +560,18 @@ export default function CarWashAdminHubPage() {
 
       let currentMemberships = activeMemberships.map(m => {
         if ((m._id && m._id === editingItem.id) || (m.id && m.id === editingItem.id) || m.name === editingItem.title) {
-          return { ...m, name: newTitle, price: numPrice, benefits: [editDescription.trim()] };
+          return {
+            ...m,
+            name: newTitle,
+            price: numPrice,
+            benefits: editBenefits.filter(b => b.trim()),
+            badge: editBadge.trim() || m.badge || '',
+            duration: Number(editDuration) || 30,
+            visitLimit: Number(editVisitLimit) || 4,
+            isPopular: editIsPopular,
+            renewable: editRenewable,
+            upgradeAvailable: editRenewable
+          };
         }
         return m;
       });
@@ -532,8 +593,14 @@ export default function CarWashAdminHubPage() {
       const payloadMemberships = currentMemberships.map(m => ({
         name: String(m.name || m.title).trim(),
         price: Number(m.price) || 0,
-        benefits: Array.isArray(m.benefits) ? m.benefits : [String(m.benefits || '').trim()],
-        badge: String(m.badge || 'PASS').trim()
+        benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
+        badge: String(m.badge || '').trim(),
+        duration: Number(m.duration) || 30,
+        visitLimit: Number(m.visitLimit) || 4,
+        isPopular: !!m.isPopular,
+        renewable: m.renewable !== false,
+        upgradeAvailable: m.upgradeAvailable !== false,
+        isActive: m.isActive !== false
       }));
 
       const targetId = await getTargetServiceId();
@@ -589,8 +656,13 @@ export default function CarWashAdminHubPage() {
           _id: newId,
           name: newPkgForm.title.trim(),
           price: numPrice,
-          benefits: [newPkgForm.description.trim()],
-          badge: 'NEW PASS'
+          benefits: newPkgForm.benefits.filter(b => b.trim()),
+          badge: newPkgForm.badge.trim() || 'NEW PASS',
+          duration: Number(newPkgForm.duration) || 30,
+          visitLimit: Number(newPkgForm.visitLimit) || 4,
+          isPopular: !!newPkgForm.isPopular,
+          renewable: newPkgForm.renewable !== false,
+          upgradeAvailable: newPkgForm.renewable !== false
         });
       } else {
         currentPricing.push({
@@ -618,8 +690,14 @@ export default function CarWashAdminHubPage() {
       const payloadMemberships = currentMemberships.map(m => ({
         name: String(m.name || m.title).trim(),
         price: Number(m.price) || 0,
-        benefits: Array.isArray(m.benefits) ? m.benefits : [String(m.benefits || '').trim()],
-        badge: String(m.badge || 'PASS').trim()
+        benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
+        badge: String(m.badge || '').trim(),
+        duration: Number(m.duration) || 30,
+        visitLimit: Number(m.visitLimit) || 4,
+        isPopular: !!m.isPopular,
+        renewable: m.renewable !== false,
+        upgradeAvailable: m.upgradeAvailable !== false,
+        isActive: m.isActive !== false
       }));
 
       const targetId = await getTargetServiceId();
@@ -698,8 +776,14 @@ export default function CarWashAdminHubPage() {
       const payloadMemberships = currentMemberships.map(m => ({
         name: String(m.name || m.title).trim(),
         price: Number(m.price) || 0,
-        benefits: Array.isArray(m.benefits) ? m.benefits : [String(m.benefits || '').trim()],
-        badge: String(m.badge || 'PASS').trim()
+        benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
+        badge: String(m.badge || '').trim(),
+        duration: Number(m.duration) || 30,
+        visitLimit: Number(m.visitLimit) || 4,
+        isPopular: !!m.isPopular,
+        renewable: m.renewable !== false,
+        upgradeAvailable: m.upgradeAvailable !== false,
+        isActive: m.isActive !== false
       }));
 
       const targetId = await getTargetServiceId();
@@ -872,43 +956,67 @@ export default function CarWashAdminHubPage() {
             ))}
 
             {/* Membership Cards */}
-            {activeMemberships.map((m) => (
-              <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-lg font-black text-gray-900">{m.name}</h4>
-                    {m.badge ? (
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold text-white bg-amber-500 px-2 py-0.5 rounded-md">
-                        {m.badge}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
-                        Pass
-                      </span>
-                    )}
+            {activeMemberships.map((m) => {
+              const subCount = membershipSubscribers.filter(s =>
+                (s.packageName || '').toLowerCase().includes((m.name || '').toLowerCase())
+              ).length;
+              return (
+                <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-start flex-wrap gap-1">
+                      <h4 className="text-lg font-black text-gray-900">{m.name}</h4>
+                      <div className="flex items-center gap-1">
+                        {m.badge ? (
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-white bg-amber-500 px-2 py-0.5 rounded-md">
+                            {m.badge}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                            Pass
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSubscriberModal(m);
+                          }}
+                          title="Click to view full active subscriber list and profiles"
+                          className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:scale-105 active:scale-95 px-2 py-0.5 rounded-md border border-emerald-200 cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
+                        >
+                          <Users className="w-3 h-3 text-emerald-600" />
+                          {subCount} Active {subCount === 1 ? 'Subscriber' : 'Subscribers'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 font-semibold">
+                      <span>⏱️ {m.duration || 30} Days</span>
+                      <span>•</span>
+                      <span>🚿 {m.visitLimit === 999 || (m.name || '').toLowerCase().includes('yearly') ? 'Unlimited' : (m.visitLimit || 4)} Washes</span>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
-                </div>
-                <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                  <span className="text-2xl font-black text-amber-600">₹{m.price.toLocaleString()}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button 
-                      onClick={() => handleOpenEdit('membership', m)}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-xs transition-all flex items-center gap-1"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit Price & Details
-                    </button>
-                    <button
-                      onClick={() => handleDeletePackage('membership', m)}
-                      className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all"
-                      title="Delete Membership Pass"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                    <span className="text-2xl font-black text-amber-600">₹{m.price.toLocaleString()}</span>
+                    <div className="flex items-center gap-1.5">
+                      <button 
+                        onClick={() => handleOpenEdit('membership', m)}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-xs transition-all flex items-center gap-1"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Price & Details
+                      </button>
+                      <button
+                        onClick={() => handleDeletePackage('membership', m)}
+                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all"
+                        title="Delete Membership Pass"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1107,7 +1215,7 @@ export default function CarWashAdminHubPage() {
         />
       )}
 
-      {/* Modal: Edit Package Title, Price & Description */}
+      {/* Modal: Edit Package Title, Price & Details */}
       <AdminModal isOpen={editingPriceModal} onClose={() => setEditingPriceModal(false)} title={`Edit ${editingItem?.title || 'Package'}`}>
         <div className="space-y-4 text-xs p-1">
           <div>
@@ -1122,25 +1230,73 @@ export default function CarWashAdminHubPage() {
             />
           </div>
 
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">Price (₹) *</label>
-            <input 
-              type="number" 
-              required
-              value={editPrice} 
-              onChange={e => setEditPrice(Number(e.target.value))} 
-              className="w-full p-2.5 border rounded-xl font-black text-amber-600 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Price (₹) *</label>
+              <input 
+                type="number" 
+                required
+                value={editPrice} 
+                onChange={e => setEditPrice(Number(e.target.value))} 
+                className="w-full p-2.5 border rounded-xl font-black text-amber-600 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+              />
+            </div>
+            {editingItem?.type === 'membership' && (
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Badge Tag</label>
+                <input 
+                  type="text" 
+                  value={editBadge} 
+                  onChange={e => setEditBadge(e.target.value)} 
+                  placeholder="e.g. MOST POPULAR" 
+                  className="w-full p-2.5 border rounded-xl font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+                />
+              </div>
+            )}
           </div>
 
+          {editingItem?.type === 'membership' && (
+            <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Pass Duration (Days)</label>
+                <select 
+                  value={editDuration} 
+                  onChange={e => setEditDuration(Number(e.target.value))} 
+                  className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                >
+                  <option value={30}>30 Days (Monthly)</option>
+                  <option value={90}>90 Days (Quarterly)</option>
+                  <option value={365}>365 Days (Yearly)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Visit Limit (Washes)</label>
+                <input 
+                  type="number" 
+                  value={editVisitLimit} 
+                  onChange={e => setEditVisitLimit(Number(e.target.value))} 
+                  placeholder="4 (or 999 for unlimited)" 
+                  className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+                />
+                <span className="text-[10px] text-gray-400">Set 999 for unlimited washes</span>
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Description / Included Details</label>
+            <label className="block font-bold text-gray-700 mb-1">Description / Benefits Details</label>
             <textarea 
               value={editDescription} 
-              onChange={e => setEditDescription(e.target.value)} 
+              onChange={e => {
+                setEditDescription(e.target.value);
+                if (editingItem?.type === 'membership') {
+                  setEditBenefits(e.target.value.split(',').map(s => s.trim()));
+                }
+              }} 
               rows={3} 
               className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
-              placeholder="e.g. Complimentary – vacuum, polish, mat cleaning" 
+              placeholder="e.g. Unlimited Express Washes, Free Interior Steam once a month" 
             />
           </div>
 
@@ -1193,12 +1349,56 @@ export default function CarWashAdminHubPage() {
             </div>
           </div>
 
+          {newPkgForm.type === 'membership' && (
+            <div className="grid grid-cols-3 gap-3 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Badge Tag</label>
+                <input 
+                  type="text" 
+                  value={newPkgForm.badge} 
+                  onChange={e => setNewPkgForm({ ...newPkgForm, badge: e.target.value })} 
+                  placeholder="e.g. BEST VALUE" 
+                  className="w-full p-2.5 border rounded-xl font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Duration (Days)</label>
+                <select 
+                  value={newPkgForm.duration} 
+                  onChange={e => setNewPkgForm({ ...newPkgForm, duration: Number(e.target.value) })} 
+                  className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                >
+                  <option value={30}>30 Days (Monthly)</option>
+                  <option value={90}>90 Days (Quarterly)</option>
+                  <option value={365}>365 Days (Yearly)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Visit Limit</label>
+                <input 
+                  type="number" 
+                  value={newPkgForm.visitLimit} 
+                  onChange={e => setNewPkgForm({ ...newPkgForm, visitLimit: Number(e.target.value) })} 
+                  placeholder="4" 
+                  className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none" 
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block font-bold text-gray-700 mb-1">Description / Details *</label>
             <textarea 
               required 
               value={newPkgForm.description} 
-              onChange={e => setNewPkgForm({ ...newPkgForm, description: e.target.value })} 
+              onChange={e => {
+                const val = e.target.value;
+                setNewPkgForm({
+                  ...newPkgForm,
+                  description: val,
+                  benefits: val.split(',').map(s => s.trim())
+                });
+              }} 
               rows={3} 
               className="w-full p-2.5 border rounded-xl text-gray-700 focus:ring-2 focus:ring-amber-500 focus:outline-none" 
               placeholder="e.g. High-pressure foam bath, underbody wash & ceramic shield protection" 
@@ -1212,6 +1412,182 @@ export default function CarWashAdminHubPage() {
             <Plus className="w-4 h-4" /> Create Service Package
           </button>
         </form>
+      </AdminModal>
+
+      {/* Modal: Active Subscribers List */}
+      <AdminModal
+        isOpen={subscriberModal}
+        onClose={() => setSubscriberModal(false)}
+        title={`Active Subscribers – ${selectedMembershipForSubscribers?.name || 'Membership Pass'}`}
+      >
+        <div className="space-y-4 text-xs p-1">
+          {/* Header Card Summary */}
+          {selectedMembershipForSubscribers && (
+            <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-white/20 text-white rounded text-[10px] font-extrabold uppercase tracking-wider">
+                    {selectedMembershipForSubscribers.badge || 'MEMBERSHIP PASS'}
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-100">
+                    ⏱️ {selectedMembershipForSubscribers.duration || 30} Days • 🚿 {selectedMembershipForSubscribers.visitLimit === 999 ? 'Unlimited' : (selectedMembershipForSubscribers.visitLimit || 4)} Washes
+                  </span>
+                </div>
+                <h4 className="text-lg font-black">{selectedMembershipForSubscribers.name}</h4>
+                <p className="text-[11px] text-amber-100 opacity-90">
+                  Total Active Memberships Purchased: <strong className="text-white font-extrabold">{
+                    membershipSubscribers.filter(s =>
+                      (s.packageName || '').toLowerCase().includes((selectedMembershipForSubscribers.name || '').toLowerCase())
+                    ).length
+                  } Users</strong>
+                </p>
+              </div>
+              <div className="text-left sm:text-right">
+                <span className="text-2xl font-black text-white">₹{selectedMembershipForSubscribers.price?.toLocaleString()}</span>
+                <span className="text-[10px] text-amber-100 block font-semibold">+ GST / pass</span>
+              </div>
+            </div>
+          )}
+
+          {/* Search Filter */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              value={subscriberSearchQuery}
+              onChange={e => setSubscriberSearchQuery(e.target.value)}
+              placeholder="Search subscribers by name, email, phone, vehicle plate..."
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+            {subscriberSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setSubscriberSearchQuery('')}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Subscribers Cards List */}
+          {(() => {
+            const rawSubs = selectedMembershipForSubscribers
+              ? membershipSubscribers.filter(s =>
+                  (s.packageName || '').toLowerCase().includes((selectedMembershipForSubscribers.name || '').toLowerCase())
+                )
+              : [];
+
+            const filteredSubs = rawSubs.filter(s => {
+              if (!subscriberSearchQuery) return true;
+              const q = subscriberSearchQuery.toLowerCase();
+              return (
+                (s.customerName || '').toLowerCase().includes(q) ||
+                (s.customerEmail || '').toLowerCase().includes(q) ||
+                (s.phone || s.mobile || '').toLowerCase().includes(q) ||
+                (s.vehicleNo || '').toLowerCase().includes(q) ||
+                (s.vehicleType || '').toLowerCase().includes(q) ||
+                (s.bookingId || '').toLowerCase().includes(q)
+              );
+            });
+
+            if (rawSubs.length === 0) {
+              return (
+                <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200 space-y-2">
+                  <Users className="w-8 h-8 text-gray-300 mx-auto" />
+                  <p className="font-bold text-gray-700">No Active Subscribers Found</p>
+                  <p className="text-[11px] text-gray-400 max-w-sm mx-auto">
+                    When customers purchase the <strong>{selectedMembershipForSubscribers?.name}</strong> pass online or at the counter, their profiles will appear here automatically.
+                  </p>
+                </div>
+              );
+            }
+
+            if (filteredSubs.length === 0) {
+              return (
+                <div className="text-center py-8 text-gray-400 font-medium">
+                  No subscribers match search "{subscriberSearchQuery}".
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                {filteredSubs.map((sub, idx) => {
+                  const startDate = sub.date ? new Date(sub.date) : new Date();
+                  const durationDays = selectedMembershipForSubscribers?.duration || 30;
+                  const expiryDate = new Date(startDate);
+                  expiryDate.setDate(startDate.getDate() + durationDays);
+                  const options = { month: 'short', day: 'numeric', year: 'numeric' };
+
+                  return (
+                    <div
+                      key={sub._id || sub.bookingId || idx}
+                      className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs space-y-3 hover:border-amber-300 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20 font-black flex items-center justify-center text-sm flex-shrink-0">
+                            {(sub.customerName || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Vally Guest'}</h5>
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+                                Active Subscription
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || 'customer@shinelounge.com'}
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1 font-semibold text-gray-700">
+                                <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || sub.mobile || '+91 98765 43210'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-sm font-black text-amber-600 block">₹{sub.price?.toLocaleString()}</span>
+                          <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || 'B-9028'}</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                        <div className="p-2 bg-gray-50 rounded-xl">
+                          <span className="text-gray-400 font-semibold block text-[9px]">VEHICLE INFO</span>
+                          <span className="font-bold text-gray-800 truncate block">
+                            🚗 {sub.vehicleType || 'Tesla Model 3'}
+                          </span>
+                          <span className="text-[10px] text-amber-700 font-black block">
+                            {sub.vehicleNo || 'MH-01-AB-1234'}
+                          </span>
+                        </div>
+
+                        <div className="p-2 bg-gray-50 rounded-xl">
+                          <span className="text-gray-400 font-semibold block text-[9px]">START DATE</span>
+                          <span className="font-bold text-gray-800 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-gray-400" />
+                            {startDate.toLocaleDateString('en-US', options)}
+                          </span>
+                        </div>
+
+                        <div className="p-2 bg-emerald-50/60 rounded-xl border border-emerald-100 col-span-2 sm:col-span-1">
+                          <span className="text-emerald-700 font-semibold block text-[9px]">VALID UNTIL</span>
+                          <span className="font-extrabold text-emerald-800 flex items-center gap-1">
+                            📅 {expiryDate.toLocaleDateString('en-US', options)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
       </AdminModal>
 
       {/* Modal: Onboard New Staff Member */}
