@@ -57,15 +57,6 @@ export default function AdminDashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-blue-900/50 p-2.5 rounded-xl border border-blue-700/50 backdrop-blur-xs">
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-blue-200 block">Today's Total Target</span>
-            <span className="text-base font-extrabold text-amber-400">₹2,00,000</span>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-white shadow-xs">
-            92%
-          </div>
-        </div>
       </div>
 
       {/* 1. Four Revenue Cards */}

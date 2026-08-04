@@ -163,12 +163,16 @@ function MainAppContent() {
   );
 }
 
+import { NotificationProvider } from './common/context/NotificationContext';
+
 export default function App() {
   return (
     <Router>
       <AuthProvider>
         <ThemeProvider>
-          <MainAppContent />
+          <NotificationProvider>
+            <MainAppContent />
+          </NotificationProvider>
         </ThemeProvider>
       </AuthProvider>
     </Router>

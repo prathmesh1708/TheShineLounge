@@ -93,7 +93,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
-
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // Root Route
 app.get('/', (req, res) => {

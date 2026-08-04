@@ -81,13 +81,9 @@ export default function ProfilePage() {
         if (res.data && res.data.bookings) {
           const allB = res.data.bookings;
           const filtered = userEmail
-            ? allB.filter(b => {
-                const bEmail = (b.customerEmail || '').toLowerCase();
-                const bName = (b.customerName || '').toLowerCase();
-                return bEmail === userEmail || bEmail.includes('mohit') || bName.includes('mohit') || (userEmail.includes('mohit') && (bEmail.includes('mohit') || bName.includes('mohit')));
-              })
-            : allB;
-          setBookings(filtered.length > 0 ? filtered : allB);
+            ? allB.filter(b => (b.customerEmail || '').toLowerCase() === userEmail)
+            : [];
+          setBookings(filtered);
         }
       } catch (err) {
         console.warn('Could not load user bookings on profile page:', err.message);
@@ -222,9 +218,7 @@ export default function ProfilePage() {
     (!b.packageName || !b.packageName.toLowerCase().includes('membership'))
   );
 
-  const washesUsedCount = washSessions.length > 0 
-    ? washSessions.length 
-    : ((user?.fullName?.toLowerCase().includes('mohit') || user?.email?.toLowerCase().includes('mohit') || profile?.name?.toLowerCase().includes('mohit')) ? 7 : 0);
+  const washesUsedCount = washSessions.length;
 
   const handleRenewMembership = async () => {
     if (!activeMembership) return;
@@ -253,7 +247,8 @@ export default function ProfilePage() {
         // Refresh bookings
         const refresh = await apiClient.get('/bookings');
         if (refresh.data && refresh.data.bookings) {
-          setBookings(refresh.data.bookings.filter(b => b.customerEmail === profile.email));
+          const uEmail = (profile.email || user?.email || '').toLowerCase().trim();
+          setBookings(refresh.data.bookings.filter(b => (b.customerEmail || '').toLowerCase().trim() === uEmail));
         }
       }
     } catch (err) {
@@ -287,7 +282,8 @@ export default function ProfilePage() {
         // Refresh bookings
         const refresh = await apiClient.get('/bookings');
         if (refresh.data && refresh.data.bookings) {
-          setBookings(refresh.data.bookings.filter(b => b.customerEmail === profile.email));
+          const uEmail = (profile.email || user?.email || '').toLowerCase().trim();
+          setBookings(refresh.data.bookings.filter(b => (b.customerEmail || '').toLowerCase().trim() === uEmail));
         }
       }
     } catch (err) {

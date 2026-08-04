@@ -90,10 +90,7 @@ export default function BookingsPage() {
         if (res.data && Array.isArray(res.data.bookings) && res.data.bookings.length > 0) {
           let userBookings = res.data.bookings;
           if (email) {
-            const matches = res.data.bookings.filter(b => b.customerEmail === email || !b.customerEmail);
-            if (matches.length > 0) {
-              userBookings = matches;
-            }
+            userBookings = res.data.bookings.filter(b => (b.customerEmail || '').toLowerCase() === email.toLowerCase());
           }
 
           const mapped = userBookings.map(b => ({

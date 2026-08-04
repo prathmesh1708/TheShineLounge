@@ -7,3 +7,4 @@ export * from './dog-wash-admin';
 export * from './cafe-admin';
 export * from './drive-through-cafe-admin';
 export * from './salon-admin';
+export { default as AdminNotificationsPage } from './pages/AdminNotificationsPage';

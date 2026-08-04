@@ -59,6 +59,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   const globalNavItems = [
     { label: 'All Bookings', path: '/admin/bookings', icon: CalendarCheck, badge: stats.pendingBookings },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
+    { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
     { label: 'Customer CRM', path: '/admin/customers', icon: Users },
     { label: 'All Staff Roster', path: '/admin/staff', icon: UserCheck },
     { label: 'Global Inventory', path: '/admin/inventory', icon: Package, badge: stats.lowStockItems, badgeColor: 'bg-amber-500' },

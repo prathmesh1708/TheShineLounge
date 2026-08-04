@@ -27,14 +27,14 @@ export default function CarWashConfirmPage() {
   const handleConfirm = async () => {
     try {
       // Get customer info from localStorage
-      let customerName = 'Mohit';
-      let customerEmail = 'mohit@theshine.com';
+      let customerName = 'Valued Customer';
+      let customerEmail = '';
       try {
-        const stored = localStorage.getItem('tsl_user');
+        const stored = localStorage.getItem('tsl_user') || localStorage.getItem('tsl_customer_user');
         if (stored) {
           const u = JSON.parse(stored);
           customerName = u.fullName || u.name || customerName;
-          customerEmail = u.email || customerEmail;
+          customerEmail = (u.email || '').toLowerCase().trim();
         }
       } catch (e) {
         console.warn('Error reading customer from localStorage:', e);
