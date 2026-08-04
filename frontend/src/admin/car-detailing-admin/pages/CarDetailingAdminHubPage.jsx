@@ -76,8 +76,10 @@ export default function CarDetailingAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
-    addStaff,
     addBanner,
+    updateBanner,
+    deleteBanner,
+    toggleBannerStatus,
     addInventoryItem,
     showToast
   } = useAdmin();
@@ -215,6 +217,82 @@ export default function CarDetailingAdminHubPage() {
       amount: 1499,
       date: new Date().toISOString().split('T')[0]
     });
+  };
+
+  // Car Detailing Banner Management State
+  const [bannerModalOpen, setBannerModalOpen] = useState(false);
+  const [editingBanner, setEditingBanner] = useState(null);
+  const [bannerForm, setBannerForm] = useState({
+    title: '',
+    subtitle: '',
+    imageUrl: '',
+    badge: 'Ceramic Special',
+    link: '/car-detailing',
+    status: 'active'
+  });
+
+  const handleOpenAddBanner = () => {
+    setEditingBanner(null);
+    setBannerForm({
+      title: '',
+      subtitle: '',
+      imageUrl: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=800&q=80',
+      badge: 'Ceramic Special',
+      link: '/car-detailing',
+      status: 'active'
+    });
+    setBannerModalOpen(true);
+  };
+
+  const handleOpenEditBanner = (ban) => {
+    setEditingBanner(ban);
+    setBannerForm({
+      title: ban.title || '',
+      subtitle: ban.subtitle || '',
+      imageUrl: ban.imageUrl || ban.image || '',
+      badge: ban.badge || 'Ceramic Special',
+      link: ban.link || '/car-detailing',
+      status: ban.status || 'active'
+    });
+    setBannerModalOpen(true);
+  };
+
+  const handleSaveBanner = (e) => {
+    e.preventDefault();
+    if (!bannerForm.title.trim()) return;
+
+    if (editingBanner) {
+      updateBanner(editingBanner.id, {
+        title: bannerForm.title,
+        subtitle: bannerForm.subtitle,
+        imageUrl: bannerForm.imageUrl,
+        badge: bannerForm.badge,
+        link: bannerForm.link,
+        status: bannerForm.status
+      });
+    } else {
+      addBanner({
+        serviceKey: 'car-detailing',
+        title: bannerForm.title,
+        subtitle: bannerForm.subtitle,
+        imageUrl: bannerForm.imageUrl,
+        badge: bannerForm.badge,
+        link: bannerForm.link,
+        status: bannerForm.status
+      });
+    }
+
+    setBannerModalOpen(false);
+  };
+
+  const handleToggleBanner = (id) => {
+    toggleBannerStatus(id);
+  };
+
+  const handleDeleteBanner = (id) => {
+    if (window.confirm('Are you sure you want to delete this promotional banner?')) {
+      deleteBanner(id);
+    }
   };
 
   // Add Staff Modal State
@@ -693,8 +771,11 @@ export default function CarDetailingAdminHubPage() {
                         <Clock className="w-3.5 h-3.5" />
                         <span>{service.duration}</span>
                       </div>
-                      <div className="text-lg font-black text-amber-600">
-                        ₹{Number(service.price).toLocaleString('en-IN')}
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-amber-600/80 block leading-none">Starting from</span>
+                        <div className="text-lg font-black text-amber-600 leading-tight">
+                          ₹{Number(service.price).toLocaleString('en-IN')}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1022,16 +1103,107 @@ export default function CarDetailingAdminHubPage() {
 
       {/* TAB 6: MARKETING & BANNERS */}
       {activeTab === 'marketing' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {serviceBanners.map(ban => (
-            <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-              <img src={ban.imageUrl} className="w-full h-32 object-cover" />
-              <div className="p-3">
-                <h4 className="font-bold text-xs">{ban.title}</h4>
-                <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900">
+                Car Detailing Promotional Banners ({serviceBanners.length})
+              </h3>
+              <p className="text-xs text-gray-500">
+                Create new banners, edit text & images, toggle visibility (show/hide on customer app), or delete offers.
+              </p>
             </div>
-          ))}
+            <button
+              onClick={handleOpenAddBanner}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" /> Create New Detailing Banner
+            </button>
+          </div>
+
+          {serviceBanners.length === 0 ? (
+            <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center space-y-3">
+              <ImageIcon className="w-10 h-10 text-gray-400 mx-auto" />
+              <h4 className="font-extrabold text-sm text-gray-800">No Car Detailing Banners Found</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">Create a promotional banner to highlight special ceramic coating offers, PPF packages, or detailing discounts.</p>
+              <button
+                onClick={handleOpenAddBanner}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all"
+              >
+                + Add First Detailing Banner
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {serviceBanners.map(ban => {
+                const isActive = ban.status !== 'inactive';
+
+                return (
+                  <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="relative h-44 w-full bg-gray-900">
+                        <img src={ban.imageUrl || ban.image} alt={ban.title} className={`w-full h-full object-cover ${!isActive ? 'opacity-40 grayscale' : ''}`} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        
+                        <div className="absolute top-3 left-3 flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${isActive ? 'bg-emerald-500 text-white shadow-xs' : 'bg-gray-700 text-gray-200'}`}>
+                            {isActive ? '● VISIBLE ON APP' : '○ HIDDEN'}
+                          </span>
+                        </div>
+
+                        {ban.badge && (
+                          <span className="absolute top-3 right-3 px-2.5 py-1 rounded-md text-[10px] font-black bg-amber-500 text-gray-950 uppercase tracking-wider">
+                            {ban.badge}
+                          </span>
+                        )}
+
+                        <div className="absolute bottom-3 left-3 right-3 text-white">
+                          <h4 className="font-extrabold text-sm leading-tight text-white">{ban.title}</h4>
+                          <p className="text-xs text-gray-300 line-clamp-1 mt-0.5">{ban.subtitle}</p>
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 space-y-1 text-xs text-gray-600 border-b border-gray-100">
+                        <div className="flex items-center gap-1.5 font-medium text-gray-500 text-[11px]">
+                          <LinkIcon className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Link: <strong className="text-gray-800">{ban.link || '/car-detailing'}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 flex items-center justify-between gap-2 border-t border-gray-100">
+                      <button
+                        onClick={() => handleToggleBanner(ban.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isActive ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                        }`}
+                      >
+                        {isActive ? <ToggleRight className="w-4 h-4 text-amber-700" /> : <ToggleLeft className="w-4 h-4 text-emerald-700" />}
+                        <span>{isActive ? 'Hide Banner' : 'Show Banner'}</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditBanner(ban)}
+                          className="p-2 text-gray-600 hover:text-amber-700 hover:bg-white rounded-lg border border-gray-200 transition-all"
+                          title="Edit Banner"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBanner(ban.id)}
+                          className="p-2 text-red-600 hover:text-red-700 hover:bg-white rounded-lg border border-gray-200 transition-all"
+                          title="Delete Banner"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1084,15 +1256,17 @@ export default function CarDetailingAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Price (₹) *</label>
+              <label className="block font-bold text-gray-700 mb-1">Starting Price (₹) *</label>
               <input
                 type="number"
                 required
                 min="0"
                 value={treatmentForm.price}
                 onChange={e => setTreatmentForm({ ...treatmentForm, price: e.target.value })}
-                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500"
+                placeholder="e.g. 499"
+                className="w-full p-2.5 border rounded-xl outline-none focus:border-amber-500 font-bold"
               />
+              <span className="text-[10px] text-amber-600 font-semibold mt-0.5 block">Displays as "Starting from ₹{treatmentForm.price || 0}"</span>
             </div>
           </div>
 
@@ -1250,25 +1424,28 @@ export default function CarDetailingAdminHubPage() {
       <AdminModal
         isOpen={editingPriceModal}
         onClose={() => setEditingPriceModal(false)}
-        title={`Edit Price: ${selectedServiceItem?.name || ''}`}
+        title={`Edit Starting Price: ${selectedServiceItem?.name || ''}`}
       >
         <div className="space-y-4 text-xs">
           <div>
-            <label className="block font-bold text-gray-700 mb-1">New Treatment Price (₹)</label>
+            <label className="block font-bold text-gray-700 mb-1">Starting Treatment Price (₹)</label>
             <input
               type="number"
               min="0"
               value={newPrice}
               onChange={e => setNewPrice(Number(e.target.value))}
-              className="w-full p-2.5 border rounded-xl text-base font-bold outline-none focus:border-amber-500"
+              className="w-full p-2.5 border rounded-xl text-base font-bold outline-none focus:border-amber-500 text-amber-600 bg-amber-50/20"
             />
+            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+              💡 This price will be displayed as <strong className="text-gray-700">"Starting from ₹{newPrice || 0}"</strong> across the catalog.
+            </p>
           </div>
 
           <button
             onClick={handleSavePriceSubmit}
-            className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors"
+            className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors uppercase tracking-wider text-xs shadow-xs"
           >
-            Save Rate Update
+            Save Starting Rate Update
           </button>
         </div>
       </AdminModal>
@@ -1801,6 +1978,122 @@ export default function CarDetailingAdminHubPage() {
             </div>
           )}
         </div>
+      </AdminModal>
+
+      {/* Banner Creation & Edit Modal */}
+      <AdminModal
+        isOpen={bannerModalOpen}
+        onClose={() => setBannerModalOpen(false)}
+        title={editingBanner ? "Edit Car Detailing Banner" : "Create New Car Detailing Banner"}
+      >
+        <form onSubmit={handleSaveBanner} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+              placeholder="e.g. CERAMIC SHIELD 9H PACKAGE"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Subtitle / Offer Description *</label>
+            <textarea
+              rows={2}
+              required
+              value={bannerForm.subtitle}
+              onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              placeholder="e.g. 3 Years Warranty Ceramic Coating + Free Interior Steam Shampoo."
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="url"
+              required
+              value={bannerForm.imageUrl}
+              onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              placeholder="https://..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+            />
+            {/* Quick image samples */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[10px] text-gray-500 font-bold self-center">Quick Samples:</span>
+              {[
+                { label: '🛡️ Ceramic 9H', url: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=800&q=80' },
+                { label: '✨ Paint Polish', url: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=800&q=80' },
+                { label: '🚗 PPF Protection', url: 'https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80' },
+                { label: '🧼 Interior Deep Wash', url: 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&w=800&q=80' }
+              ].map(sample => (
+                <button
+                  key={sample.label}
+                  type="button"
+                  onClick={() => setBannerForm({ ...bannerForm, imageUrl: sample.url })}
+                  className="px-2 py-0.5 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-800 rounded text-[10px] font-bold border border-gray-200"
+                >
+                  {sample.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Badge Tag</label>
+              <input
+                type="text"
+                value={bannerForm.badge}
+                onChange={(e) => setBannerForm({ ...bannerForm, badge: e.target.value })}
+                placeholder="e.g. Ceramic Special or 20% OFF"
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Target Link URL</label>
+              <input
+                type="text"
+                value={bannerForm.link}
+                onChange={(e) => setBannerForm({ ...bannerForm, link: e.target.value })}
+                placeholder="e.g. /car-detailing or /car-detailing/booking"
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Visibility Status</label>
+            <select
+              value={bannerForm.status}
+              onChange={(e) => setBannerForm({ ...bannerForm, status: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold"
+            >
+              <option value="active">Active (Show on App)</option>
+              <option value="inactive">Inactive (Hide from App)</option>
+            </select>
+          </div>
+
+          <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setBannerModalOpen(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-xs"
+            >
+              {editingBanner ? "Save Banner Updates" : "Create Detailing Banner"}
+            </button>
+          </div>
+        </form>
       </AdminModal>
     </div>
   );

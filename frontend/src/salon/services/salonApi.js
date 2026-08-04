@@ -501,6 +501,32 @@ export const deleteTimeSlot = (id) => {
 };
 
 
+export const getSalonBannersSync = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem('tsl_admin_banners');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const salonBans = parsed.filter(b => b.serviceKey === 'salon' && b.status !== 'inactive');
+      if (salonBans.length > 0) return salonBans;
+    }
+  } catch (e) {}
+  return [
+    {
+      id: 'ban-7',
+      serviceKey: 'salon',
+      title: 'ROYAL BEARD & HAIR SPA',
+      subtitle: 'Hot towel head massage + executive hair styling combo offer.',
+      badge: 'Grooming Special',
+      link: '/salon',
+      imageUrl: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=800&q=80',
+      status: 'active'
+    }
+  ];
+};
+
+export const getSalonBanners = () => Promise.resolve(getSalonBannersSync());
+
 export const getCategoriesSync = () => {
   if (typeof window === 'undefined') return CATEGORIES;
   try {

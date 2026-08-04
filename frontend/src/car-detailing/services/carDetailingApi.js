@@ -394,6 +394,41 @@ export const FAQS = [
   }
 ];
 
+// Helper to retrieve the active/online car detailer staff member (defaults to suryansh)
+export const getActiveDetailerName = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u) {
+          if (u.role === 'staff' && (u.fullName || u.name)) {
+            return u.fullName || u.name;
+          }
+          if (u.email && u.email.toLowerCase().includes('suryansh')) {
+            return u.fullName || u.name || 'suryansh';
+          }
+        }
+      }
+
+      const adminStaff = localStorage.getItem('tsl_admin_staff_list');
+      if (adminStaff) {
+        const staffList = JSON.parse(adminStaff);
+        if (Array.isArray(staffList)) {
+          const detailingStaff = staffList.find(s => 
+            (s.department?.toLowerCase().includes('detailing') ||
+             s.role?.toLowerCase().includes('detailing') ||
+             s.serviceKey === 'car-detailing' ||
+             s.name?.toLowerCase().includes('suryansh')) && s.name
+          );
+          if (detailingStaff) return detailingStaff.name;
+        }
+      }
+    }
+  } catch (e) {}
+  return 'suryansh';
+};
+
 export const MOCK_BOOKINGS = [
   {
     id: "BK-9831",
@@ -406,7 +441,7 @@ export const MOCK_BOOKINGS = [
     paymentStatus: "Deposit Paid",
     date: "2026-08-05",
     time: "10:00 AM - 01:00 PM",
-    technician: "Vikram Rathore",
+    technician: "suryansh",
     vehicle: "Hyundai Verna (White)",
     vehicleNo: "MP-09-AB-1234",
     location: "Home - Vijay Nagar, Indore",
@@ -463,11 +498,11 @@ export const MOCK_BOOKINGS = [
 ];
 
 export const TECHNICIAN = {
-  name: "Vikram Rathore",
-  phone: "+91 98765 43210",
+  name: "suryansh",
+  phone: "+91 98210 55555",
   rating: 4.9,
   completedJobs: 412,
-  avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100", // professional portrait
+  avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
   vehicleInfo: "DetailPro Van (MP-09-AB-1234)",
   lat: 22.7523,
   lng: 75.8943
@@ -478,11 +513,43 @@ export const TECHNICIAN = {
 const STORAGE_KEY_SERVICES = 'shine_car_detailing_services';
 const STORAGE_KEY_PACKAGES = 'shine_car_detailing_packages';
 
-const notifyDataChange = () => {
+export const notifyDataChange = () => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('carDetailingDataChanged'));
+    window.dispatchEvent(new Event('storage'));
+    try {
+      const bc = new BroadcastChannel('tsl_live_sync');
+      bc.postMessage({ type: 'DATA_CHANGED' });
+      bc.close();
+    } catch (e) {}
   }
 };
+
+export const getCarDetailingBannersSync = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem('tsl_admin_banners');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const detailingBans = parsed.filter(b => b.serviceKey === 'car-detailing' && b.status !== 'inactive');
+      if (detailingBans.length > 0) return detailingBans;
+    }
+  } catch (e) {}
+  return [
+    {
+      id: 'ban-3',
+      serviceKey: 'car-detailing',
+      title: 'CERAMIC SHIELD 9H PACKAGE',
+      subtitle: '3 Years Warranty Ceramic Coating + Free Interior Steam Shampoo.',
+      badge: 'Ceramic Special',
+      link: '/car-detailing',
+      imageUrl: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=800&q=80',
+      status: 'active'
+    }
+  ];
+};
+
+export const getCarDetailingBanners = () => Promise.resolve(getCarDetailingBannersSync());
 
 export const getServicesSync = () => {
   if (typeof window === 'undefined') return SERVICES;
@@ -634,30 +701,97 @@ export const deletePackage = (id) => {
 const STORAGE_KEY_BOOKINGS = 'shine_car_detailing_bookings';
 
 export const getBookingsSync = () => {
-  if (typeof window === 'undefined') return MOCK_BOOKINGS;
+  const activeStaff = getActiveDetailerName();
+  if (typeof window === 'undefined') {
+    return MOCK_BOOKINGS.map(b => ({
+      ...b,
+      technician: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : activeStaff
+    }));
+  }
   try {
     const stored = localStorage.getItem(STORAGE_KEY_BOOKINGS);
+    let list = MOCK_BOOKINGS;
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
     }
-    localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(MOCK_BOOKINGS));
-    return MOCK_BOOKINGS;
+    return list.map(b => ({
+      ...b,
+      technician: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : activeStaff
+    }));
   } catch (err) {
     console.error('Error reading bookings from localStorage:', err);
-    return MOCK_BOOKINGS;
+    return MOCK_BOOKINGS.map(b => ({
+      ...b,
+      technician: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : activeStaff
+    }));
   }
 };
 
 export const getBookings = () => Promise.resolve(getBookingsSync());
 
+const ALL_DETAILING_TIMELINE_STEPS = [
+  'Confirmed',
+  'Received',
+  'Inspected',
+  'Started',
+  'In Progress',
+  'Quality Check',
+  'Ready',
+  'Delivered'
+];
+
 export const getBookingById = (id) => {
   const bookings = getBookingsSync();
-  const found = bookings.find(b => b.id === id);
-  return Promise.resolve(found || bookings[0]);
+  const cleanId = (id || '').toString().trim().toLowerCase();
+
+  let found = bookings.find(b => 
+    (b.id && b.id.toString().trim().toLowerCase() === cleanId) || 
+    (b._id && b._id.toString().trim().toLowerCase() === cleanId)
+  );
+
+  if (!found && typeof window !== 'undefined') {
+    try {
+      const storedStaffJobs = localStorage.getItem('tsl_staff_jobs_sync');
+      if (storedStaffJobs) {
+        const parsed = JSON.parse(storedStaffJobs);
+        if (Array.isArray(parsed)) {
+          found = parsed.find(b => 
+            (b.id && b.id.toString().trim().toLowerCase() === cleanId) || 
+            (b._id && b._id.toString().trim().toLowerCase() === cleanId)
+          );
+          if (!found && parsed.length > 0) {
+            found = parsed.find(b => b.stepIndex > 0) || parsed[0];
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  const target = found || bookings[0];
+
+  if (target) {
+    const stepIdx = target.stepIndex !== undefined ? target.stepIndex : (target.status === 'Completed' ? 7 : 0);
+    const updatedTimeline = ALL_DETAILING_TIMELINE_STEPS.map((stepLabel, idx) => ({
+      status: stepLabel,
+      time: idx <= stepIdx ? (idx === stepIdx ? 'Active Phase' : 'Done') : 'Pending',
+      active: idx <= stepIdx
+    }));
+
+    return Promise.resolve({
+      ...target,
+      stepIndex: stepIdx,
+      status: stepIdx >= 7 ? 'Completed' : (target.status || ALL_DETAILING_TIMELINE_STEPS[stepIdx]),
+      timeline: updatedTimeline
+    });
+  }
+
+  return Promise.resolve(null);
 };
 
 export const addBooking = (bookingData) => {
   const current = getBookingsSync();
+  const activeStaff = getActiveDetailerName();
   const newBooking = {
     id: bookingData.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`,
     status: 'Upcoming',
@@ -669,7 +803,7 @@ export const addBooking = (bookingData) => {
     paymentStatus: bookingData.paymentStatus || 'Fully Paid',
     date: bookingData.date || new Date().toISOString().split('T')[0],
     time: bookingData.time || '10:00 AM - 01:00 PM',
-    technician: 'Vikram Rathore',
+    technician: bookingData.technician || activeStaff,
     vehicle: bookingData.vehicle || 'Vehicle',
     vehicleNo: bookingData.vehicleNo || 'MP-09-AB-1234',
     location: bookingData.location || bookingData.address || 'Indore Studio',
@@ -834,6 +968,9 @@ export const deleteVehicleType = (type) => {
 export const getOffers = () => Promise.resolve(OFFERS);
 export const getReviews = () => Promise.resolve(REVIEWS);
 export const getFAQs = () => Promise.resolve(FAQS);
-export const getTechnician = () => Promise.resolve(TECHNICIAN);
+export const getTechnician = () => Promise.resolve({
+  ...TECHNICIAN,
+  name: getActiveDetailerName()
+});
 
 

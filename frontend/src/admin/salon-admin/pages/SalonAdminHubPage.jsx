@@ -66,8 +66,10 @@ export default function SalonAdminHubPage() {
     updateBookingStatus,
     addStaff,
     updateStaff,
-    deleteStaff,
     addBanner,
+    updateBanner,
+    deleteBanner,
+    toggleBannerStatus,
     addInventoryItem,
     showToast
   } = useAdmin();
@@ -206,6 +208,82 @@ export default function SalonAdminHubPage() {
     photo: '',
     permissions: []
   });
+
+  // Salon Banner Management State
+  const [bannerModalOpen, setBannerModalOpen] = useState(false);
+  const [editingBanner, setEditingBanner] = useState(null);
+  const [bannerForm, setBannerForm] = useState({
+    title: '',
+    subtitle: '',
+    imageUrl: '',
+    badge: 'Grooming Special',
+    link: '/salon',
+    status: 'active'
+  });
+
+  const handleOpenAddBanner = () => {
+    setEditingBanner(null);
+    setBannerForm({
+      title: '',
+      subtitle: '',
+      imageUrl: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=800&q=80',
+      badge: 'Grooming Special',
+      link: '/salon',
+      status: 'active'
+    });
+    setBannerModalOpen(true);
+  };
+
+  const handleOpenEditBanner = (ban) => {
+    setEditingBanner(ban);
+    setBannerForm({
+      title: ban.title || '',
+      subtitle: ban.subtitle || '',
+      imageUrl: ban.imageUrl || ban.image || '',
+      badge: ban.badge || 'Grooming Special',
+      link: ban.link || '/salon',
+      status: ban.status || 'active'
+    });
+    setBannerModalOpen(true);
+  };
+
+  const handleSaveBanner = (e) => {
+    e.preventDefault();
+    if (!bannerForm.title.trim()) return;
+
+    if (editingBanner) {
+      updateBanner(editingBanner.id, {
+        title: bannerForm.title,
+        subtitle: bannerForm.subtitle,
+        imageUrl: bannerForm.imageUrl,
+        badge: bannerForm.badge,
+        link: bannerForm.link,
+        status: bannerForm.status
+      });
+    } else {
+      addBanner({
+        serviceKey: 'salon',
+        title: bannerForm.title,
+        subtitle: bannerForm.subtitle,
+        imageUrl: bannerForm.imageUrl,
+        badge: bannerForm.badge,
+        link: bannerForm.link,
+        status: bannerForm.status
+      });
+    }
+
+    setBannerModalOpen(false);
+  };
+
+  const handleToggleBanner = (id) => {
+    toggleBannerStatus(id);
+  };
+
+  const handleDeleteBanner = (id) => {
+    if (window.confirm('Are you sure you want to delete this promotional banner?')) {
+      deleteBanner(id);
+    }
+  };
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
   const [activeStaffModalTab, setActiveStaffModalTab] = useState('details');
 
@@ -1019,16 +1097,107 @@ export default function SalonAdminHubPage() {
 
       {/* TAB 5: MARKETING & BANNERS */}
       {activeTab === 'marketing' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {serviceBanners.map(ban => (
-            <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-              <img src={ban.imageUrl} className="w-full h-32 object-cover" />
-              <div className="p-3">
-                <h4 className="font-bold text-xs">{ban.title}</h4>
-                <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
-              </div>
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900">
+                Salon Promotional Banners ({serviceBanners.length})
+              </h3>
+              <p className="text-xs text-gray-500">
+                Create new banners, edit text & images, toggle visibility (show/hide on customer app), or delete offers.
+              </p>
             </div>
-          ))}
+            <button
+              onClick={handleOpenAddBanner}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" /> Create New Salon Banner
+            </button>
+          </div>
+
+          {serviceBanners.length === 0 ? (
+            <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center space-y-3">
+              <ImageIcon className="w-10 h-10 text-gray-400 mx-auto" />
+              <h4 className="font-extrabold text-sm text-gray-800">No Salon Banners Found</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">Create a promotional banner to highlight special salon combo offers, grooming deals, or discounts.</p>
+              <button
+                onClick={handleOpenAddBanner}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all"
+              >
+                + Add First Salon Banner
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {serviceBanners.map(ban => {
+                const isActive = ban.status !== 'inactive';
+
+                return (
+                  <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="relative h-44 w-full bg-gray-900">
+                        <img src={ban.imageUrl || ban.image} alt={ban.title} className={`w-full h-full object-cover ${!isActive ? 'opacity-40 grayscale' : ''}`} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        
+                        <div className="absolute top-3 left-3 flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${isActive ? 'bg-emerald-500 text-white shadow-xs' : 'bg-gray-700 text-gray-200'}`}>
+                            {isActive ? '● VISIBLE ON APP' : '○ HIDDEN'}
+                          </span>
+                        </div>
+
+                        {ban.badge && (
+                          <span className="absolute top-3 right-3 px-2.5 py-1 rounded-md text-[10px] font-black bg-amber-500 text-gray-950 uppercase tracking-wider">
+                            {ban.badge}
+                          </span>
+                        )}
+
+                        <div className="absolute bottom-3 left-3 right-3 text-white">
+                          <h4 className="font-extrabold text-sm leading-tight text-white">{ban.title}</h4>
+                          <p className="text-xs text-gray-300 line-clamp-1 mt-0.5">{ban.subtitle}</p>
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 space-y-1 text-xs text-gray-600 border-b border-gray-100">
+                        <div className="flex items-center gap-1.5 font-medium text-gray-500 text-[11px]">
+                          <LinkIcon className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Link: <strong className="text-gray-800">{ban.link || '/salon'}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 flex items-center justify-between gap-2 border-t border-gray-100">
+                      <button
+                        onClick={() => handleToggleBanner(ban.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isActive ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                        }`}
+                      >
+                        {isActive ? <ToggleRight className="w-4 h-4 text-amber-700" /> : <ToggleLeft className="w-4 h-4 text-emerald-700" />}
+                        <span>{isActive ? 'Hide Banner' : 'Show Banner'}</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditBanner(ban)}
+                          className="p-2 text-gray-600 hover:text-amber-700 hover:bg-white rounded-lg border border-gray-200 transition-all"
+                          title="Edit Banner"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBanner(ban.id)}
+                          className="p-2 text-red-600 hover:text-red-700 hover:bg-white rounded-lg border border-gray-200 transition-all"
+                          title="Delete Banner"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2025,6 +2194,122 @@ export default function SalonAdminHubPage() {
             </div>
           )}
         </div>
+      </AdminModal>
+
+      {/* Banner Creation & Edit Modal */}
+      <AdminModal
+        isOpen={bannerModalOpen}
+        onClose={() => setBannerModalOpen(false)}
+        title={editingBanner ? "Edit Salon Banner" : "Create New Salon Banner"}
+      >
+        <form onSubmit={handleSaveBanner} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Banner Title *</label>
+            <input
+              type="text"
+              required
+              value={bannerForm.title}
+              onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+              placeholder="e.g. ROYAL BEARD & HAIR SPA"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Subtitle / Offer Description *</label>
+            <textarea
+              rows={2}
+              required
+              value={bannerForm.subtitle}
+              onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+              placeholder="e.g. Hot towel head massage + executive hair styling combo offer."
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <input
+              type="url"
+              required
+              value={bannerForm.imageUrl}
+              onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+              placeholder="https://..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+            />
+            {/* Quick image samples */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[10px] text-gray-500 font-bold self-center">Quick Samples:</span>
+              {[
+                { label: '💇‍♂️ Haircut', url: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=800&q=80' },
+                { label: '🧔 Beard', url: 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&w=800&q=80' },
+                { label: '💆 Facial', url: 'https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?auto=format&fit=crop&w=800&q=80' },
+                { label: '🛁 Spa', url: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80' }
+              ].map(sample => (
+                <button
+                  key={sample.label}
+                  type="button"
+                  onClick={() => setBannerForm({ ...bannerForm, imageUrl: sample.url })}
+                  className="px-2 py-0.5 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-800 rounded text-[10px] font-bold border border-gray-200"
+                >
+                  {sample.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Badge Tag</label>
+              <input
+                type="text"
+                value={bannerForm.badge}
+                onChange={(e) => setBannerForm({ ...bannerForm, badge: e.target.value })}
+                placeholder="e.g. 20% OFF or Grooming Special"
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Target Link URL</label>
+              <input
+                type="text"
+                value={bannerForm.link}
+                onChange={(e) => setBannerForm({ ...bannerForm, link: e.target.value })}
+                placeholder="e.g. /salon or /salon/booking"
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Visibility Status</label>
+            <select
+              value={bannerForm.status}
+              onChange={(e) => setBannerForm({ ...bannerForm, status: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold"
+            >
+              <option value="active">Active (Show on App)</option>
+              <option value="inactive">Inactive (Hide from App)</option>
+            </select>
+          </div>
+
+          <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setBannerModalOpen(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-xs"
+            >
+              {editingBanner ? "Save Banner Updates" : "Create Salon Banner"}
+            </button>
+          </div>
+        </form>
       </AdminModal>
     </div>
   );

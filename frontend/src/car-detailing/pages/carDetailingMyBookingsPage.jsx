@@ -32,8 +32,21 @@ export default function CarDetailingMyBookingsPage() {
     };
 
     window.addEventListener('carDetailingDataChanged', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
+    let bc;
+    try {
+      bc = new BroadcastChannel('tsl_live_sync');
+      bc.onmessage = handleDataChanged;
+    } catch (e) {}
+
+    const intervalId = setInterval(fetchLatestBookings, 3000);
+
     return () => {
       window.removeEventListener('carDetailingDataChanged', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
+      if (bc) bc.close();
+      clearInterval(intervalId);
     };
   }, []);
 

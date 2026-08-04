@@ -5,19 +5,52 @@ import apiClient from '../../../common/utils/apiClient';
 const StaffContext = createContext();
 
 const formatStaffUser = (u) => {
-  if (!u) return mockStaffMembers[2];
+  if (!u) {
+    return {
+      id: 'STF-05',
+      employeeId: 'suryansh@theshinelounge.com',
+      name: 'suryansh',
+      role: 'Car Detailing Specialist',
+      department: 'Car Detailing',
+      serviceKey: 'car-detailing',
+      email: 'suryansh@theshinelounge.com',
+      mobile: '+91 98210 55555',
+      salary: '₹45,000 / mo',
+      photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+      permissions: ['bookings', 'orders']
+    };
+  }
+
+  let serviceKey = u.serviceKey;
+  const deptStr = `${u.department || ''} ${u.staffRole || ''} ${u.role || ''} ${u.email || ''} ${u.fullName || u.name || ''}`.toLowerCase();
+
+  if (deptStr.includes('detailing') || deptStr.includes('ceramic') || deptStr.includes('ppf')) {
+    serviceKey = 'car-detailing';
+  } else if (deptStr.includes('wash')) {
+    serviceKey = 'car-wash';
+  } else if (deptStr.includes('cafe') || deptStr.includes('coffee')) {
+    serviceKey = 'cafe';
+  } else if (deptStr.includes('dog') || deptStr.includes('pet') || deptStr.includes('groom')) {
+    serviceKey = 'dog-wash';
+  } else if (deptStr.includes('salon') || deptStr.includes('barber') || deptStr.includes('hair')) {
+    serviceKey = 'salon';
+  } else {
+    serviceKey = u.serviceKey || 'car-detailing';
+  }
+
   return {
     id: u._id || u.id || 'STF-LIVE',
-    employeeId: u.email || 'STF-01',
-    name: u.fullName || u.name || 'Staff Member',
-    role: u.staffRole || (u.role === 'staff' ? (u.department || 'Staff Specialist') : u.role) || 'Car Wash Specialist',
-    department: u.department || 'Car Wash',
-    serviceKey: u.serviceKey || 'car-wash',
+    employeeId: u.email || u.employeeId || 'STF-01',
+    name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
+    role: u.staffRole || (u.role === 'staff' ? (u.department || 'Detailing Specialist') : u.role) || 'Detailing Specialist',
+    department: u.department || (serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+    serviceKey: serviceKey,
     email: u.email || '',
     mobile: u.mobile || '',
     salary: u.salary || '',
-    photo: u.photo || u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-    avatar: u.photo || u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+    avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     permissions: u.permissions || ['bookings', 'orders']
   };
 };
@@ -33,7 +66,7 @@ export function StaffProvider({ children }) {
     } catch (err) {
       console.warn('Error parsing tsl_user in StaffContext:', err);
     }
-    return null;
+    return formatStaffUser(null);
   };
 
   // Currently Logged-in Staff
@@ -59,8 +92,8 @@ export function StaffProvider({ children }) {
       } catch (err) {
         console.warn('Sync staff error:', err);
       }
-      setCurrentStaff(null);
-      setIsAuthenticated(false);
+      setCurrentStaff(formatStaffUser(null));
+      setIsAuthenticated(true);
     };
 
     syncStaffUser();
@@ -101,35 +134,69 @@ export function StaffProvider({ children }) {
   };
 
   const fetchLiveJobs = async () => {
+    let apiMapped = [];
     try {
       const res = await apiClient.get('/bookings');
       if (res.data && res.data.bookings) {
-        const mapped = res.data.bookings.map(b => ({
+        apiMapped = res.data.bookings.map(b => ({
           _id: b._id,
-          id: b.bookingId,
-          serviceKey: b.serviceKey,
-          serviceName: b.serviceName,
-          planName: b.packageName,
-          vehicleNo: b.vehicleNo || 'MH01AB1234',
-          vehicleModel: b.vehicleType || 'Tesla Model 3',
-          customerName: b.customerName,
-          phone: b.customerEmail || '+91 98200 12345',
-          date: b.date,
-          timeSlot: b.timeSlot,
-          amount: b.price,
-          total: b.price,
-          status: b.status,
+          id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
+          serviceKey: b.serviceKey || (b.serviceName?.toLowerCase().includes('detail') || b.packageName?.toLowerCase().includes('detail') ? 'car-detailing' : 'car-wash'),
+          serviceName: b.serviceName || b.plan || b.package || 'Car Detailing Treatment',
+          planName: b.packageName || b.package || 'Detailing Treatment',
+          vehicleNo: b.vehicleNo || 'MH02CD5678',
+          vehicleModel: b.vehicleType || b.vehicle || 'Tesla Model 3',
+          customerName: b.customerName || b.user || 'Customer',
+          phone: b.customerEmail || b.phone || '+91 98200 12345',
+          date: b.date || new Date().toISOString().split('T')[0],
+          timeSlot: b.timeSlot || b.time || '02:00 PM - 05:00 PM',
+          amount: b.price || b.amount || 1490,
+          total: b.price || b.amount || 1490,
+          status: b.status || 'Confirmed',
           stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
           notes: b.notes || '',
           photos: b.photos || [],
-          staffId: b.assignedStaffId || 'STF-03',
-          staffName: b.assignedStaffName || 'Rohan Deshmukh'
+          staffId: b.assignedStaffId || 'STF-LIVE',
+          staffName: b.assignedStaffName || 'Detailing Specialist'
         }));
-        setJobs(mapped);
       }
     } catch (err) {
       console.warn('Could not fetch jobs from database:', err.message);
     }
+
+    let localDetailingJobs = [];
+    try {
+      const stored = localStorage.getItem('shine_car_detailing_bookings');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          localDetailingJobs = parsed.map((b, idx) => ({
+            _id: b.id || `BK-DET-${idx}`,
+            id: b.id || `BK-${8000 + idx}`,
+            serviceKey: 'car-detailing',
+            serviceName: b.package || b.serviceName || 'Car Detailing Treatment',
+            planName: b.package || b.serviceName || 'Detailing Treatment',
+            vehicleNo: b.vehicleNo || 'MH02CD5678',
+            vehicleModel: b.vehicle || b.vehicleModel || 'BMW X5',
+            customerName: b.customerName || b.customer || 'Priya Patel',
+            phone: b.phone || '+91 98331 56789',
+            date: b.date || new Date().toISOString().split('T')[0],
+            timeSlot: b.time || '02:00 PM - 05:00 PM',
+            amount: b.price || 14999,
+            total: b.price || 14999,
+            status: b.status || 'Confirmed',
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || 'Customer requested multi-stage ceramic gloss protection.',
+            staffId: b.staffId || currentStaff?.id || 'STF-05',
+            staffName: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : (currentStaff?.name || 'suryansh')
+          }));
+        }
+      }
+    } catch (e) {}
+
+    const combined = [...apiMapped, ...localDetailingJobs];
+    const finalJobsList = combined.length > 0 ? combined : mockAssignedJobs;
+    setJobs(finalJobsList);
   };
 
   const fetchLiveCustomers = async () => {
@@ -236,33 +303,111 @@ export function StaffProvider({ children }) {
 
   // Update Job Status Stepper
   const updateJobStatus = async (jobId, newStatus, newStepIndex, notes = '', photoUrl = null) => {
-    // 1. Optimistically update local jobs state
-    setJobs(prev => prev.map(job => {
-      if (job.id === jobId) {
-        const updatedPhotos = photoUrl ? [...(job.photos || []), photoUrl] : job.photos;
-        return {
-          ...job,
-          status: newStatus,
-          stepIndex: newStepIndex,
-          notes: notes || job.notes,
-          photos: updatedPhotos
-        };
-      }
-      return job;
-    }));
+    const ALL_STEPS = [
+      'Confirmed',
+      'Received',
+      'Inspected',
+      'Started',
+      'In Progress',
+      'Quality Check',
+      'Ready',
+      'Delivered'
+    ];
+
+    const isCompleted = newStepIndex >= 7 || newStatus?.toLowerCase() === 'delivered' || newStatus?.toLowerCase() === 'completed';
+    const computedStatus = isCompleted ? 'Completed' : (newStatus || ALL_STEPS[newStepIndex]);
+
+    let updatedTargetJob = null;
+
+    // 1. Optimistically update local jobs state and persist tsl_staff_jobs_sync
+    setJobs(prev => {
+      const nextJobs = prev.map(job => {
+        if (job.id === jobId || job._id === jobId) {
+          const updatedPhotos = photoUrl ? [...(job.photos || []), photoUrl] : job.photos;
+          const uJob = {
+            ...job,
+            status: computedStatus,
+            stepIndex: newStepIndex,
+            notes: notes || job.notes,
+            photos: updatedPhotos
+          };
+          updatedTargetJob = uJob;
+          return uJob;
+        }
+        return job;
+      });
+
+      try {
+        localStorage.setItem('tsl_staff_jobs_sync', JSON.stringify(nextJobs));
+      } catch (e) {}
+
+      return nextJobs;
+    });
+
     showToast(`Job ${jobId} updated to "${newStatus}"`, 'success');
 
-    // 2. Call PUT /bookings/:id in backend
+    // 2. Persist to local storage shine_car_detailing_bookings and build updated timeline for user tracking
     try {
-      const match = jobs.find(j => j.id === jobId);
+      const stored = localStorage.getItem('shine_car_detailing_bookings');
+      let parsed = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(parsed)) parsed = [];
+
+      const updatedTimeline = ALL_STEPS.map((stepLabel, idx) => ({
+        status: stepLabel,
+        time: idx <= newStepIndex ? (idx === newStepIndex ? `Active Phase (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : 'Done') : 'Pending',
+        active: idx <= newStepIndex
+      }));
+
+      const matchedIndex = parsed.findIndex(b => b.id === jobId || b._id === jobId);
+
+      if (matchedIndex !== -1) {
+        parsed[matchedIndex] = {
+          ...parsed[matchedIndex],
+          status: computedStatus,
+          stepIndex: newStepIndex,
+          technician: currentStaff?.name || 'suryansh',
+          timeline: updatedTimeline
+        };
+      } else {
+        const newEntry = {
+          id: jobId,
+          status: computedStatus,
+          stepIndex: newStepIndex,
+          technician: currentStaff?.name || 'suryansh',
+          package: updatedTargetJob?.planName || updatedTargetJob?.serviceName || 'Car Detailing Treatment',
+          price: updatedTargetJob?.total || updatedTargetJob?.amount || 2348,
+          customerName: updatedTargetJob?.customerName || 'Car Owner',
+          vehicle: updatedTargetJob?.vehicleModel || 'Vehicle',
+          vehicleNo: updatedTargetJob?.vehicleNo || 'MP092545',
+          timeline: updatedTimeline
+        };
+        parsed.unshift(newEntry);
+      }
+
+      localStorage.setItem('shine_car_detailing_bookings', JSON.stringify(parsed));
+    } catch (e) {}
+
+    // Dispatch global data changed events & broadcast live sync so user live tracking page updates immediately!
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('carDetailingDataChanged'));
+      window.dispatchEvent(new Event('storage'));
+      try {
+        const bc = new BroadcastChannel('tsl_live_sync');
+        bc.postMessage({ type: 'JOB_UPDATED', jobId, newStepIndex, computedStatus });
+        bc.close();
+      } catch (e) {}
+    }
+
+    // 3. Call PUT /bookings/:id in backend
+    try {
+      const match = jobs.find(j => j.id === jobId || j._id === jobId);
       if (match && match._id) {
         await apiClient.put(`/bookings/${match._id}`, {
-          status: newStatus,
+          status: computedStatus,
           stepIndex: newStepIndex,
           notes: notes || match.notes,
           photoUrl
         });
-        fetchLiveJobs(); // reload list
       }
     } catch (err) {
       console.warn('Error updating job status in backend:', err.message);

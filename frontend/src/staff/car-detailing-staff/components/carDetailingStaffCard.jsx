@@ -34,15 +34,26 @@ export default function CarDetailingStaffCard({ job, onUpdateStatus, onAddPhoto 
       </div>
 
       {/* Vehicle Info */}
-      <div className="bg-gray-50 rounded-xl p-2.5 flex items-center justify-between border border-gray-100">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-amber-500" />
-          <span className="font-black text-xs text-gray-900">{job.vehicleNo}</span>
-          <span className="text-xs text-gray-500">({job.vehicleModel})</span>
+      <div className="bg-gray-50/80 rounded-xl p-2.5 flex items-center justify-between border border-gray-200/60">
+        <div className="flex items-center gap-2 text-xs">
+          <ShieldCheck className="w-4 h-4 text-amber-600" />
+          <span className="font-extrabold text-gray-900">{job.vehicleNo}</span>
+          <span className="text-gray-500 font-medium">({job.vehicleModel})</span>
         </div>
-        <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
-          <Clock className="w-3 h-3" /> {job.timeSlot}
-        </span>
+      </div>
+
+      {/* Work Completion Progress Bar */}
+      <div className="space-y-1 pt-1">
+        <div className="flex justify-between text-xs font-extrabold text-gray-800">
+          <span>Work Progress ({Math.round(((job.stepIndex || 0) / 7) * 100)}% Completed)</span>
+          <span className="text-amber-600 font-black">{currentStep.label}</span>
+        </div>
+        <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+          <div
+            className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300"
+            style={{ width: `${Math.round(((job.stepIndex || 0) / 7) * 100)}%` }}
+          />
+        </div>
       </div>
 
       {/* 8-Step Detailing Stepper */}

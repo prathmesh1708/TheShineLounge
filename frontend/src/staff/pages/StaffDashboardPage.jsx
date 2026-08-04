@@ -134,26 +134,52 @@ export default function StaffDashboardPage() {
           </button>
         </div>
 
-        <div className="space-y-2">
-          {jobs.slice(0, 3).map(job => (
-            <div
-              key={job.id}
-              onClick={() => navigate('/staff/bookings')}
-              className="bg-white border border-gray-200 rounded-2xl p-3 flex items-center justify-between shadow-xs hover:border-amber-400 cursor-pointer transition-colors"
-            >
-              <div>
-                <span className="text-[9px] font-black text-amber-600 uppercase">{job.id}</span>
-                <h4 className="font-extrabold text-xs text-gray-900">{job.customerName}</h4>
-                <p className="text-[10px] text-gray-500">{job.serviceName} • {job.vehicleNo}</p>
+        <div className="space-y-2.5">
+          {jobs.slice(0, 5).map(job => {
+            const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
+            const progressPercent = Math.round((stepIdx / 7) * 100);
+
+            return (
+              <div
+                key={job.id}
+                onClick={() => navigate('/staff/bookings')}
+                className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-2 shadow-xs hover:border-amber-400 cursor-pointer transition-all"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">{job.id}</span>
+                      <h4 className="font-extrabold text-xs text-gray-900">{job.customerName}</h4>
+                    </div>
+                    <p className="text-[11px] font-bold text-blue-900 mt-0.5">
+                      {job.serviceName || job.planName || 'Car Detailing Treatment'}
+                    </p>
+                    <p className="text-[10px] text-gray-500 font-medium">
+                      🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
+                      {job.status || 'Confirmed'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Work Completed Progress Bar */}
+                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] gap-2">
+                  <div className="flex-1">
+                    <div className="flex justify-between font-extrabold text-gray-700 mb-0.5">
+                      <span>Work Completed</span>
+                      <span className="text-amber-600">{progressPercent}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-50 text-blue-900 border border-blue-200">
-                  {job.status}
-                </span>
-                <p className="text-[10px] text-gray-400 font-semibold mt-1">{job.timeSlot}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

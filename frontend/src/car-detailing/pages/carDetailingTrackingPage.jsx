@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin, Phone, MessageSquare, Clock, ShieldCheck, Navigation, ArrowLeft, CheckCircle2, PartyPopper, FileText, Sparkles } from 'lucide-react';
+import { Phone, MessageSquare, ShieldCheck, ArrowLeft, CheckCircle2, PartyPopper, FileText, Sparkles } from 'lucide-react';
 
 import { getTechnician, getBookingById, updateBookingStatus } from '../services/carDetailingApi';
 import { Toast, Drawer } from '../components/carDetailingUI';
@@ -46,8 +46,21 @@ export default function CarDetailingTrackingPage() {
     };
 
     window.addEventListener('carDetailingDataChanged', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
+    let bc;
+    try {
+      bc = new BroadcastChannel('tsl_live_sync');
+      bc.onmessage = handleDataChanged;
+    } catch (e) {}
+
+    const intervalId = setInterval(fetchTrackingDetails, 2000);
+
     return () => {
       window.removeEventListener('carDetailingDataChanged', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
+      if (bc) bc.close();
+      clearInterval(intervalId);
     };
   }, [bookingId]);
 
@@ -142,107 +155,11 @@ export default function CarDetailingTrackingPage() {
         </motion.div>
       )}
 
-      {/* Grid: Map on Left, Details on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+      {/* Main Content Layout: Detailer Info on Left, Detailing Progress Stepper on Right */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         
-        {/* Left Side: Live GPS Map Container (7 columns) */}
-        <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
-          <div className="relative h-[360px] md:h-[420px] rounded-24 border border-zinc-200 overflow-hidden bg-slate-50 shadow-premium">
-            
-            {/* Custom map visual */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(22,163,74,0.06),rgba(255,255,255,0))]" />
-            <div className="absolute inset-0 opacity-40" style={{
-              backgroundImage: `radial-gradient(circle, #94A3B8 1.5px, transparent 1.5px)`,
-              backgroundSize: '24px 24px'
-            }} />
-
-            {/* Custom SVG Streets layout representation */}
-            <svg className="absolute inset-0 w-full h-full text-slate-200 stroke-current fill-none" strokeWidth="2.5">
-              <path d="M 0 100 L 800 100" />
-              <path d="M 0 300 L 800 300" />
-              <path d="M 200 0 L 200 500" />
-              <path d="M 550 0 L 550 500" />
-              <path d="M 0 0 L 800 450" />
-            </svg>
-
-            {/* Route connecting line */}
-            <svg className="absolute inset-0 w-full h-full stroke-luxury-emerald fill-none" strokeWidth="3" strokeDasharray="6 6">
-              <path d="M 200 100 Q 375 200 550 300" />
-            </svg>
-
-            {/* Shop/Workshop Start point */}
-            <div className="absolute top-[80px] left-[180px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-              <div className="w-8 h-8 rounded-full bg-white border border-zinc-250 flex items-center justify-center shadow-premium backdrop-blur-md">
-                <span className="text-[10px]">🏪</span>
-              </div>
-              <span className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-wider">Studio</span>
-            </div>
-
-            {/* Tech Moving Vehicle icon */}
-            <motion.div
-              animate={{
-                x: isCompleted ? 530 : [340, 360, 350, 340],
-                y: isCompleted ? 280 : [180, 195, 190, 180]
-              }}
-              transition={{ repeat: isCompleted ? 0 : Infinity, duration: 8, ease: "easeInOut" }}
-              className="absolute top-0 left-0 z-10 flex flex-col items-center"
-            >
-              <div className="w-10 h-10 rounded-full bg-luxury-emerald border border-luxury-emeraldLight/30 flex items-center justify-center shadow-premium text-white animate-bounce">
-                <Navigation className="w-5 h-5 rotate-45 fill-current" />
-              </div>
-              <span className="text-[10px] bg-luxury-emerald text-white font-extrabold px-2.5 py-0.5 rounded-full mt-1.5 shadow-premium border border-white/10">
-                {isCompleted ? "Detailing Complete" : "Detailer Van"}
-              </span>
-            </motion.div>
-
-            {/* Destination/Home location */}
-            <div className="absolute top-[280px] left-[530px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-              <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center shadow-premium animate-pulse">
-                <MapPin className="w-5.5 h-5.5 text-blue-500 fill-current" />
-              </div>
-              <span className="text-[10px] bg-blue-600 text-white font-extrabold px-2.5 py-0.5 rounded-full mt-1.5 shadow-premium">
-                Service Location
-              </span>
-            </div>
-
-            {/* Bottom floating Map controls */}
-            <div className="absolute bottom-4 left-4 right-4 bg-white/95 border border-zinc-200 rounded-20 p-4 flex justify-between items-center z-10 shadow-sm backdrop-blur-md text-zinc-800">
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-luxury-emerald" />
-                <div>
-                  <span className="text-[10px] text-zinc-400 block font-bold uppercase">Estimated Timeline</span>
-                  <span className="text-sm font-extrabold text-zinc-800">
-                    {isCompleted ? "Service Finished Successfully" : `ETA ${booking?.eta || '30 mins'} (${booking?.status || 'In Progress'})`}
-                  </span>
-                </div>
-              </div>
-              <span className="text-[10px] bg-luxury-emerald/10 text-luxury-emerald border border-luxury-emerald/20 font-extrabold uppercase py-1 px-2.5 rounded-full">
-                LIVE GPS
-              </span>
-            </div>
-
-          </div>
-
-          {/* Quick Progress Simulation Control */}
-          {!isCompleted && (
-            <div className="bg-zinc-50 border border-zinc-200 rounded-20 p-3.5 flex justify-between items-center text-xs">
-              <span className="text-zinc-600 font-semibold flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-luxury-emerald" />
-                <span>Simulate detailing completion:</span>
-              </span>
-              <button
-                onClick={handleSimulateCompletion}
-                className="py-1.5 px-3 bg-luxury-emerald text-white font-bold rounded-16 text-xs hover:bg-luxury-emeraldHover transition-all shadow-sm"
-              >
-                Complete Detailing Job
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right Side: Detailer Info & Live Stepper (5 columns) */}
-        <div className="lg:col-span-5 space-y-6 flex flex-col justify-between">
-          
+        {/* Left Side: Detailer Info (5 columns) */}
+        <div className="md:col-span-5 space-y-6">
           {/* Tech Card */}
           <div className="bg-white border border-zinc-200/85 rounded-24 p-6 space-y-5 shadow-premium">
             <div className="flex items-center gap-4">
@@ -286,11 +203,42 @@ export default function CarDetailingTrackingPage() {
             </div>
           </div>
 
-          {/* Detailed timeline indicator */}
+          {/* Quick Progress Simulation Control */}
+          {!isCompleted && (
+            <div className="bg-zinc-50 border border-zinc-200 rounded-20 p-3.5 flex justify-between items-center text-xs">
+              <span className="text-zinc-600 font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-luxury-emerald" />
+                <span>Simulate detailing completion:</span>
+              </span>
+              <button
+                onClick={handleSimulateCompletion}
+                className="py-1.5 px-3 bg-luxury-emerald text-white font-bold rounded-16 text-xs hover:bg-luxury-emeraldHover transition-all shadow-sm"
+              >
+                Complete Detailing Job
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right Side: Detailing Progress Stepper (7 columns) */}
+        <div className="md:col-span-7">
           <div className="bg-white border border-zinc-200/85 rounded-24 p-6 space-y-4 shadow-premium flex-grow">
-            <h3 className="font-bold text-sm text-zinc-800 border-b border-zinc-100 pb-2">Detailing Progress Stepper</h3>
-            <div className="relative pl-6 space-y-4 text-xs font-semibold text-zinc-500">
-              
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
+              <h3 className="font-bold text-sm text-zinc-800">Detailing Progress Stepper</h3>
+              <span className="text-xs font-black text-luxury-emerald bg-luxury-emerald/10 px-2.5 py-1 rounded-full border border-luxury-emerald/20">
+                {Math.round(((booking?.stepIndex || 0) / 7) * 100)}% Completed
+              </span>
+            </div>
+
+            {/* Live Progress Bar */}
+            <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-luxury-emerald h-full transition-all duration-500 rounded-full"
+                style={{ width: `${Math.round(((booking?.stepIndex || 0) / 7) * 100)}%` }}
+              />
+            </div>
+
+            <div className="relative pl-6 space-y-4 text-xs font-semibold text-zinc-500 pt-2">
               {/* Vertical connector line */}
               <div className="absolute left-2.5 top-2 bottom-2 w-[1px] bg-zinc-200" />
 
@@ -298,13 +246,13 @@ export default function CarDetailingTrackingPage() {
                 <div key={idx} className="relative flex justify-between items-start gap-4">
                   {/* Circle check badge */}
                   <div className={`absolute -left-5 w-3.5 h-3.5 rounded-full border transition-all ${
-                    t.active ? 'bg-luxury-emerald border-luxury-emerald' : 'bg-white border-zinc-300'
+                    t.active ? 'bg-luxury-emerald border-luxury-emerald ring-2 ring-emerald-100' : 'bg-white border-zinc-300'
                   }`} />
-                  
+
                   <div className="space-y-0.5">
-                    <span className={`font-bold ${t.active ? 'text-zinc-800' : 'text-zinc-300'}`}>{t.status}</span>
+                    <span className={`font-bold ${t.active ? 'text-zinc-800 font-extrabold' : 'text-zinc-400'}`}>{t.status}</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 font-bold">{t.time}</span>
+                  <span className={`text-[10px] font-bold ${t.active ? 'text-luxury-emerald font-extrabold' : 'text-zinc-400'}`}>{t.time}</span>
                 </div>
               ))}
 

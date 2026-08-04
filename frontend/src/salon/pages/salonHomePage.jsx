@@ -5,7 +5,7 @@ import { Sparkles, ArrowRight, Star, Clock, Heart } from 'lucide-react';
 
 import { PrimaryButton } from '../components/salonUI';
 
-import { getServicesSync, getCategoriesSync } from '../services/salonApi';
+import { getServicesSync, getCategoriesSync, getSalonBannersSync } from '../services/salonApi';
 import serviceApi from '../../common/services/serviceApi';
 
 const HERO_SLIDES = [
@@ -42,24 +42,38 @@ export default function SalonHomePage() {
   const [dbService, setDbService] = useState(null);
   const [servicesList, setServicesList] = useState(getServicesSync());
   const [categoriesList, setCategoriesList] = useState(getCategoriesSync());
+  const [salonBanners, setSalonBanners] = useState(getSalonBannersSync());
+
+  const activeSlides = salonBanners.length > 0 ? salonBanners.map(b => ({
+    id: b.id,
+    tag: b.badge || "Special Offer",
+    title: b.title,
+    desc: b.subtitle,
+    btnText: "Book Now",
+    image: b.imageUrl || b.image,
+    link: b.link || '/salon/booking'
+  })) : HERO_SLIDES;
 
   // Auto Slider Timer
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
+      setCurrentSlide((prev) => (prev >= activeSlides.length - 1 ? 0 : prev + 1));
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeSlides.length]);
 
   // Listen to live admin data updates
   useEffect(() => {
     const handleDataChange = () => {
       setServicesList(getServicesSync());
       setCategoriesList(getCategoriesSync());
+      setSalonBanners(getSalonBannersSync());
     };
     window.addEventListener('salonDataChanged', handleDataChange);
+    window.addEventListener('storage', handleDataChange);
     return () => {
       window.removeEventListener('salonDataChanged', handleDataChange);
+      window.removeEventListener('storage', handleDataChange);
     };
   }, []);
 
@@ -108,7 +122,7 @@ export default function SalonHomePage() {
             className="absolute inset-0 w-full h-full"
           >
             <img 
-              src={dbService?.bannerImage || HERO_SLIDES[currentSlide].image} 
+              src={activeSlides[currentSlide || 0]?.image || HERO_SLIDES[0].image} 
               alt="Salon Banner"
               className="w-full h-full object-cover opacity-80"
             />
@@ -118,22 +132,21 @@ export default function SalonHomePage() {
 
         <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-end text-white max-w-2xl space-y-3">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-amber-500 text-zinc-950 w-fit">
-            <Sparkles className="w-3.5 h-3.5" /> {HERO_SLIDES[currentSlide].tag}
+            <Sparkles className="w-3.5 h-3.5" /> {activeSlides[currentSlide || 0]?.tag}
           </span>
           <h1 className="text-2xl sm:text-4xl font-black leading-tight">
-            {dbService?.serviceName || HERO_SLIDES[currentSlide].title}
+            {activeSlides[currentSlide || 0]?.title}
           </h1>
           <p className="text-xs sm:text-sm text-zinc-300 line-clamp-2">
-            {dbService?.shortDescription || HERO_SLIDES[currentSlide].desc}
+            {activeSlides[currentSlide || 0]?.desc}
           </p>
 
           <div className="pt-2">
             <PrimaryButton 
-              onClick={() => navigate('/salon/booking')}
+              onClick={() => navigate(activeSlides[currentSlide || 0]?.link || '/salon/booking')}
               className="shadow-lg active:scale-95 transition-transform"
-              style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
             >
-              {HERO_SLIDES[currentSlide].btnText} <ArrowRight className="w-4 h-4 ml-1 inline" />
+              {activeSlides[currentSlide || 0]?.btnText || "Book Now"} <ArrowRight className="w-4 h-4 ml-1 inline" />
             </PrimaryButton>
           </div>
         </div>

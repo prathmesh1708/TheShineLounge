@@ -23,7 +23,26 @@ export const AdminProvider = ({ children }) => {
   // Global State
   const [stats, setStats] = useState(initialDashboardStats);
   const [services, setServices] = useState([]);
-  const [banners, setBanners] = useState(initialBanners);
+  const [banners, setBanners] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_admin_banners');
+      return saved ? JSON.parse(saved) : initialBanners;
+    } catch (e) {
+      return initialBanners;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tsl_admin_banners', JSON.stringify(banners));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('salonDataChanged'));
+        window.dispatchEvent(new CustomEvent('carDetailingDataChanged'));
+      }
+    } catch (e) {
+      console.warn('Could not save banners to localStorage:', e);
+    }
+  }, [banners]);
   const [memberships, setMemberships] = useState(initialMemberships);
   const [staffList, setStaffList] = useState(() => {
     try {

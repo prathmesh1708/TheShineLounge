@@ -59,8 +59,11 @@ export default function CarDetailingCard({ service }) {
               <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span>{service.duration}</span>
             </div>
-            <div className="font-extrabold text-zinc-800 text-xs sm:text-base">
-              ₹{Number(service.price).toLocaleString('en-IN')}
+            <div>
+              <span className="text-[9px] sm:text-[10px] font-bold text-[#FF6B00] uppercase block leading-none">Starts from</span>
+              <div className="font-extrabold text-zinc-800 text-xs sm:text-base leading-tight">
+                ₹{Number(service.price).toLocaleString('en-IN')}
+              </div>
             </div>
           </div>
 

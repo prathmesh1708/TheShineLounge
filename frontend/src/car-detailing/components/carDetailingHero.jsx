@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Sparkles, ArrowRight } from 'lucide-react';
 import { PrimaryButton } from './carDetailingUI';
+import { getCarDetailingBannersSync } from '../services/carDetailingApi';
 
 const SLIDES = [
   {
@@ -37,24 +38,48 @@ const SLIDES = [
 export default function CarDetailingHero() {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(0);
+  const [dbBanners, setDbBanners] = useState(getCarDetailingBannersSync());
+
+  useEffect(() => {
+    const handleDataChange = () => {
+      setDbBanners(getCarDetailingBannersSync());
+    };
+    window.addEventListener('carDetailingDataChanged', handleDataChange);
+    window.addEventListener('storage', handleDataChange);
+    return () => {
+      window.removeEventListener('carDetailingDataChanged', handleDataChange);
+      window.removeEventListener('storage', handleDataChange);
+    };
+  }, []);
+
+  const activeSlides = dbBanners.length > 0 ? dbBanners.map(b => ({
+    id: b.id,
+    tag: b.badge || "Ceramic Special",
+    title: b.title,
+    desc: b.subtitle,
+    btnText: "Book Now",
+    image: b.imageUrl || b.image,
+    link: b.link || "/car-detailing/booking"
+  })) : SLIDES;
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrent((prev) => (prev === SLIDES.length - 1 ? 0 : prev + 1));
+      setCurrent((prev) => (prev >= activeSlides.length - 1 ? 0 : prev + 1));
     }, 6000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeSlides.length]);
 
   const handleNext = () => {
-    setCurrent((prev) => (prev === SLIDES.length - 1 ? 0 : prev + 1));
+    setCurrent((prev) => (prev >= activeSlides.length - 1 ? 0 : prev + 1));
   };
 
   const handlePrev = () => {
-    setCurrent((prev) => (prev === 0 ? SLIDES.length - 1 : prev - 1));
+    setCurrent((prev) => (prev === 0 ? activeSlides.length - 1 : prev - 1));
   };
 
   const handleAction = () => {
-    navigate("/car-detailing/booking");
+    const slide = activeSlides[current || 0];
+    navigate(slide?.link || "/car-detailing/booking");
   };
 
   return (
@@ -71,8 +96,8 @@ export default function CarDetailingHero() {
           {/* Background image with gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-luxury-black via-luxury-black/70 to-transparent z-10" />
           <img
-            src={SLIDES[current].image}
-            alt={SLIDES[current].title}
+            src={activeSlides[current || 0]?.image || SLIDES[0].image}
+            alt={activeSlides[current || 0]?.title}
             className="w-full h-full object-cover object-center"
           />
 
@@ -85,7 +110,7 @@ export default function CarDetailingHero() {
               className="hidden sm:flex items-center gap-1.5 mb-1.5 sm:mb-3 text-[#FF6B00] text-xs sm:text-sm uppercase tracking-widest font-extrabold"
             >
               <Sparkles className="w-4.5 h-4.5 fill-current" />
-              <span>{SLIDES[current].tag}</span>
+              <span>{activeSlides[current || 0]?.tag}</span>
             </motion.div>
             
             <motion.h1
@@ -94,8 +119,8 @@ export default function CarDetailingHero() {
               transition={{ delay: 0.3 }}
               className="text-lg sm:text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-2 sm:mb-4"
             >
-              {SLIDES[current].title.split(" ").map((word, i) => (
-                <span key={i} className={word === "Emerald" || word === "Best" || word === "9H" || word === "Ceramic" || word === "Steam" ? "text-[#FF6B00]" : ""}>
+              {(activeSlides[current || 0]?.title || '').split(" ").map((word, i) => (
+                <span key={i} className={word === "Emerald" || word === "Best" || word === "9H" || word === "Ceramic" || word === "Steam" || word === "PACKAGE" ? "text-[#FF6B00]" : ""}>
                   {word}{" "}
                 </span>
               ))}
@@ -107,17 +132,17 @@ export default function CarDetailingHero() {
               transition={{ delay: 0.4 }}
               className="hidden sm:block text-white/70 text-xs sm:text-sm md:text-base leading-relaxed mb-4 sm:mb-8 max-w-lg"
             >
-              {SLIDES[current].desc}
+              {activeSlides[current || 0]?.desc}
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="w-fit sm:w-48"
             >
-              <PrimaryButton onClick={handleAction} icon={<ArrowRight className="w-4 h-4" />}>
-                {SLIDES[current].btnText}
+              <PrimaryButton onClick={handleAction} className="group">
+                <span>{activeSlides[current || 0]?.btnText || "Book Now"}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </PrimaryButton>
             </motion.div>
           </div>

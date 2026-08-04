@@ -64,13 +64,13 @@ export const mockStaffMembers = [
   // Car Detailing Staff
   {
     id: 'STF-05',
-    employeeId: 'STF-05',
-    name: 'Deepak Joshi',
+    employeeId: 'suryansh@theshinelounge.com',
+    name: 'suryansh',
     role: 'Detailing Specialist',
     department: 'Car Detailing',
     serviceKey: 'car-detailing',
     phone: '+91 98210 55555',
-    email: 'deepak@theshinelounge.com',
+    email: 'suryansh@theshinelounge.com',
     avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=200&q=80',
     salary: '₹48,000 / mo',
     status: 'On Shift',
@@ -317,8 +317,8 @@ export const mockAssignedJobs = [
     total: 17698.82,
     paymentMode: 'Card',
     paymentStatus: 'Paid',
-    status: 'Work in Progress',
-    stepIndex: 4,
+    status: 'Confirmed',
+    stepIndex: 0,
     notes: '2nd Layer Ceramic Coat application in progress in clean room.',
     photos: [
       'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=400&q=80'
