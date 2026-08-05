@@ -177,7 +177,7 @@ export default function StaffDashboardPage() {
                       <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
                     </div>
                     <p className="text-[11px] font-bold text-blue-900 mt-0.5">
-                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Service Order')}
+                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
                     </p>
                     <div className="text-[10px] text-gray-600 font-medium mt-0.5">
                       {job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
