@@ -12,7 +12,15 @@ const apiClient = axios.create({
 // Request interceptor - attach JWT token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('tsl_token');
+    const isPathAdminOrStaff = window.location.pathname.startsWith('/admin') || window.location.pathname.startsWith('/staff');
+    const adminToken = localStorage.getItem('tsl_admin_token');
+    const customerToken = localStorage.getItem('tsl_customer_token');
+    const genericToken = localStorage.getItem('tsl_token');
+
+    let token = isPathAdminOrStaff
+      ? (adminToken || genericToken)
+      : (customerToken || genericToken);
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -25,18 +33,17 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response) {
-      // Token expired or invalid - clear auth state
-      if (error.response.status === 401) {
-        localStorage.removeItem('tsl_token');
-        localStorage.removeItem('tsl_user');
-        // Only redirect if not already on a login page
-        if (
-          !window.location.pathname.includes('/login') &&
-          !window.location.pathname.includes('/staff/login')
-        ) {
-          window.location.href = '/';
-        }
+    if (error.response && error.response.status === 401) {
+      const path = window.location.pathname;
+      // Only force redirect on protected admin/staff portal pages
+      if (path.startsWith('/admin')) {
+        localStorage.removeItem('tsl_admin_token');
+        localStorage.removeItem('tsl_admin_user');
+        window.location.href = '/admin/login';
+      } else if (path.startsWith('/staff')) {
+        localStorage.removeItem('tsl_admin_token');
+        localStorage.removeItem('tsl_admin_user');
+        window.location.href = '/staff/login';
       }
     }
     return Promise.reject(error);

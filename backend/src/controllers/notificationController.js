@@ -156,18 +156,46 @@ const deleteNotification = async (req, res) => {
 const getUserNotifications = async (req, res) => {
   try {
     const userId = req.user ? String(req.user._id) : null;
-    const userEmail = req.user ? req.user.email : req.query.email;
+    const userEmail = (req.user?.email || req.query.email || '').toLowerCase().trim();
+
+    // Check if user has any active membership or pass in database
+    const Booking = require('../models/Booking');
+    const userBookings = userEmail ? await Booking.find({ customerEmail: userEmail }) : [];
+    const hasMembership = userBookings.some(b => 
+      b.packageName && (
+        b.packageName.toLowerCase().includes('pass') ||
+        b.packageName.toLowerCase().includes('membership') ||
+        b.packageName.toLowerCase().includes('monthly') ||
+        b.packageName.toLowerCase().includes('yearly')
+      )
+    );
 
     const query = {
       $or: [
         { recipientType: 'all_users' },
+        { recipientType: 'segment' },
         { recipientType: 'user', targetUserId: userId }
       ]
     };
 
-    const notifications = await Notification.find(query).sort({ createdAt: -1 });
+    const rawNotifications = await Notification.find(query).sort({ createdAt: -1 });
 
-    const formatted = notifications.map((n) => {
+    // Filter out membership expiry / pass renewal notifications if user has no membership!
+    const filtered = rawNotifications.filter(n => {
+      const isMembershipAlert =
+        n.category === 'membership_expiry' ||
+        n.category === 'renewal_reminder' ||
+        n.targetSegment === 'expiring_soon' ||
+        n.targetSegment === 'active_members' ||
+        n.targetSegment === 'expired_members';
+
+      if (isMembershipAlert && !hasMembership) {
+        return false; // Users without memberships will NOT receive pass expiry warnings
+      }
+      return true;
+    });
+
+    const formatted = filtered.map((n) => {
       const isRead = userId ? n.readBy.includes(userId) : false;
       return {
         ...n.toObject(),

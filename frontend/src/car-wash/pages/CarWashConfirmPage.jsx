@@ -10,7 +10,7 @@ export default function CarWashConfirmPage() {
   const { service, slot, vehicle } = location.state || {
     service: { name: 'Premium Hydro Wash', price: 299, duration: '40 min' },
     slot: { label: 'Today 4:30 PM' },
-    vehicle: { name: 'Tesla Model 3', plate: 'TSL-3000', icon: '🚗' }
+    vehicle: { name: 'Hyundai Elite i20', plate: 'MP09WC4444', icon: '🏎️' }
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
@@ -40,13 +40,19 @@ export default function CarWashConfirmPage() {
         console.warn('Error reading customer from localStorage:', e);
       }
 
-      // Parse date and timeslot
-      let dateVal = 'July 18, 2026';
-      let timeSlotVal = '02:00 PM - 02:30 PM';
+      // Parse date and timeslot dynamically from system clock
+      const now = new Date();
+      const liveDateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      let dateVal = liveDateStr;
+      let timeSlotVal = `${liveTimeStart} - ${liveTimeEnd}`;
+
       if (slot?.label) {
         if (slot.label.includes('Today')) {
-          dateVal = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-          timeSlotVal = slot.label.replace('Today', '').trim();
+          dateVal = liveDateStr;
+          timeSlotVal = slot.label.replace('Today', '').trim() || `${liveTimeStart} - ${liveTimeEnd}`;
         } else {
           dateVal = slot.label;
           timeSlotVal = slot.label;
@@ -63,8 +69,8 @@ export default function CarWashConfirmPage() {
         timeSlot: timeSlotVal,
         customerName,
         customerEmail,
-        vehicleNo: vehicle?.plate || 'MH-01-AB-1234',
-        vehicleType: vehicle?.name || 'Tesla Model 3'
+        vehicleNo: vehicle?.plate || 'MP09WC4444',
+        vehicleType: vehicle?.name || 'Hyundai Elite i20'
       };
 
       await apiClient.post('/bookings', payload);

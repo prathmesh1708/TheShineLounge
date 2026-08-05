@@ -12,42 +12,55 @@ export function NotificationProvider({ children }) {
   // Fetch notifications for User App
   const fetchUserNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('tsl_token') || localStorage.getItem('tsl_customer_token');
-      if (!token) return;
+      const customerToken = localStorage.getItem('tsl_customer_token') || localStorage.getItem('tsl_token');
+      if (!customerToken) return;
+      
+      // Do not fetch user notifications on staff/admin pages
+      const path = window.location.pathname;
+      if (path.startsWith('/admin') || path.startsWith('/staff')) return;
+
       const res = await apiClient.get('/notifications/user');
       if (res.data && res.data.notifications) {
         setUserNotifications(res.data.notifications);
       }
     } catch (err) {
-      console.warn('Could not load user notifications:', err.message);
+      // Quiet fail
     }
   }, []);
 
   // Fetch notifications for Staff App
   const fetchStaffNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('tsl_token') || localStorage.getItem('tsl_admin_token');
-      if (!token) return;
+      const adminToken = localStorage.getItem('tsl_admin_token');
+      const path = window.location.pathname;
+
+      // Only fetch staff notifications if user is on staff portal or has admin token
+      if (!path.startsWith('/staff') && !adminToken) return;
+
       const res = await apiClient.get('/notifications/staff');
       if (res.data && res.data.notifications) {
         setStaffNotifications(res.data.notifications);
       }
     } catch (err) {
-      console.warn('Could not load staff notifications:', err.message);
+      // Quiet fail
     }
   }, []);
 
   // Fetch notifications for Admin Management
   const fetchAdminNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('tsl_token') || localStorage.getItem('tsl_admin_token');
-      if (!token) return;
+      const adminToken = localStorage.getItem('tsl_admin_token');
+      const path = window.location.pathname;
+
+      // Only fetch admin notifications if user is on admin dashboard or has admin token
+      if (!path.startsWith('/admin') && !adminToken) return;
+
       const res = await apiClient.get('/notifications/admin');
       if (res.data && res.data.notifications) {
         setAdminNotifications(res.data.notifications);
       }
     } catch (err) {
-      console.warn('Could not load admin notifications:', err.message);
+      // Quiet fail
     }
   }, []);
 

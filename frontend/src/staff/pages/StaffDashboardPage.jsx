@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, Ticket, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles } from 'lucide-react';
+import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles } from 'lucide-react';
 import NotificationBell from '../../common/components/NotificationBell';
 
 export default function StaffDashboardPage() {
@@ -128,15 +128,7 @@ export default function StaffDashboardPage() {
             <span className="text-[10px] font-bold text-gray-800 leading-tight">Create Invoice</span>
           </button>
 
-          <button
-            onClick={() => navigate(isDriveThrough ? '/drive-through-cafe' : '/staff/memberships')}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
-              <Ticket className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">{isDriveThrough ? 'Live Menu' : 'Sell Pass'}</span>
-          </button>
+
         </div>
       </div>
 

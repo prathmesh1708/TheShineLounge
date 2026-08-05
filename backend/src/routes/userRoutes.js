@@ -28,7 +28,7 @@ router.patch('/staff/:id/reset-password', authMiddleware, adminOnly, resetStaffP
 router.delete('/staff/:id', authMiddleware, adminOnly, deleteStaff);
 
 // ─── Customer Management (Admin & Staff) ───────────────────────
-router.get('/customers', authMiddleware, staffOnly, getCustomers);
-router.get('/customers/:id', authMiddleware, staffOnly, getCustomerById);
+router.get('/customers', authMiddleware, getCustomers);
+router.get('/customers/:id', authMiddleware, getCustomerById);
 
 module.exports = router;

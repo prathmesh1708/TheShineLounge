@@ -43,14 +43,25 @@ export default function BookingsPage() {
     return ['Pending', 'Confirmed', 'In Progress', 'Completed'];
   };
 
-  // Mock Active Bookings List
+  const getTodayFormattedDate = () => {
+    return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  const getLiveFormattedTimeSlot = () => {
+    const now = new Date();
+    const start = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const end = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return `${start} - ${end}`;
+  };
+
+  // Dynamic Active Bookings Fallback List
   const mockBookings = [
     {
       id: 'B-2026-9028',
       service: 'Car Wash',
-      package: 'Executive Wash (₹18.00)',
-      date: 'July 18, 2026',
-      time: '02:00 PM - 02:30 PM',
+      package: 'Monthly Membership (₹2949)',
+      date: getTodayFormattedDate(),
+      time: getLiveFormattedTimeSlot(),
       status: 'Confirmed',
       statusColor: '#2E7D32',
       statusBg: 'rgba(46, 125, 50, 0.08)',
@@ -64,8 +75,8 @@ export default function BookingsPage() {
       id: 'B-2026-4412',
       service: 'Men\'s Salon',
       package: 'Haircut & Styling (₹35.00)',
-      date: 'July 18, 2026',
-      time: '03:30 PM - 04:00 PM',
+      date: getTodayFormattedDate(),
+      time: getLiveFormattedTimeSlot(),
       status: 'Pending',
       statusColor: '#C17F19',
       statusBg: 'rgba(193, 127, 25, 0.08)',
@@ -93,21 +104,31 @@ export default function BookingsPage() {
             userBookings = res.data.bookings.filter(b => (b.customerEmail || '').toLowerCase() === email.toLowerCase());
           }
 
-          const mapped = userBookings.map(b => ({
-            id: b.bookingId,
-            service: b.serviceName,
-            package: `${b.packageName} (₹${b.price})`,
-            date: b.date,
-            time: b.timeSlot,
-            status: b.status,
-            statusColor: (b.status === 'Completed' || b.status === 'Delivered') ? '#2E7D32' : b.status === 'In Progress' ? '#1E4A7E' : '#C17F19',
-            statusBg: (b.status === 'Completed' || b.status === 'Delivered') ? 'rgba(46, 125, 50, 0.08)' : b.status === 'In Progress' ? 'rgba(30, 74, 126, 0.08)' : 'rgba(193, 127, 25, 0.08)',
-            serviceKey: b.serviceKey,
-            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-            notes: b.notes || '',
-            photos: b.photos || [],
-            staffAssigned: b.assignedStaffName || ''
-          }));
+          const mapped = userBookings.map(b => {
+            const rawDate = b.date || '';
+            const isLegacyStaticDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
+            const displayDate = isLegacyStaticDate ? getTodayFormattedDate() : rawDate;
+
+            const rawTime = b.timeSlot || '';
+            const isLegacyStaticTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
+            const displayTime = isLegacyStaticTime ? getLiveFormattedTimeSlot() : rawTime;
+
+            return {
+              id: b.bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+              service: b.serviceName || 'Car Wash',
+              package: `${b.packageName} (₹${b.price})`,
+              date: displayDate,
+              time: displayTime,
+              status: b.status || 'Confirmed',
+              statusColor: (b.status === 'Completed' || b.status === 'Delivered') ? '#2E7D32' : b.status === 'In Progress' ? '#1E4A7E' : '#C17F19',
+              statusBg: (b.status === 'Completed' || b.status === 'Delivered') ? 'rgba(46, 125, 50, 0.08)' : b.status === 'In Progress' ? 'rgba(30, 74, 126, 0.08)' : 'rgba(193, 127, 25, 0.08)',
+              serviceKey: b.serviceKey,
+              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+              notes: b.notes || '',
+              photos: b.photos || [],
+              staffAssigned: b.assignedStaffName || ''
+            };
+          });
 
           setBookings(mapped);
         } else {

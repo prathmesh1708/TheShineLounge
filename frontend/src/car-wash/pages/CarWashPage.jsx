@@ -5,7 +5,7 @@ import { carwashMockData } from '../data/carwashMockData';
 import serviceApi from '../../common/services/serviceApi';
 
 const DEFAULT_VEHICLES = [
-  { id: 'v1', brand: 'Tesla', name: 'Tesla Model 3', year: '2023', plate: 'TSL-3000', icon: '🚗' },
+  { id: 'v1', brand: 'Hyundai', name: 'Hyundai Elite i20', year: '2023', plate: 'MP09WC4444', icon: '🏎️' },
   { id: 'v2', brand: 'BMW', name: 'BMW X5', year: '2022', plate: 'MH-12-AB-1234', icon: '🚘' },
   { id: 'v3', brand: 'Audi', name: 'Audi A6', year: '2021', plate: 'MH-02-CD-5678', icon: '🏎️' }
 ];

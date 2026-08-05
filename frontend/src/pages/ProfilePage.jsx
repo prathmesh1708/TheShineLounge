@@ -138,8 +138,8 @@ export default function ProfilePage() {
   ]);
 
   const [receipts] = useState([
-    { id: 'REC-2026-9028', date: 'July 18, 2026', amount: '₹18.00', service: 'Car Wash' },
-    { id: 'REC-2026-4412', date: 'July 17, 2026', amount: '₹35.00', service: 'Men\'s Salon' }
+    { id: 'REC-2026-9028', date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), amount: '₹18.00', service: 'Car Wash' },
+    { id: 'REC-2026-4412', date: new Date(Date.now() - 86400000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), amount: '₹35.00', service: 'Men\'s Salon' }
   ]);
 
   // Temp form states
@@ -182,7 +182,15 @@ export default function ProfilePage() {
 
   const getDates = (membership) => {
     if (!membership) return { start: '', expiry: '' };
-    const start = new Date(membership.date || Date.now());
+    
+    let start;
+    const dateStr = membership.date || '';
+    if (dateStr && !dateStr.includes('July 18') && !isNaN(Date.parse(dateStr))) {
+      start = new Date(dateStr);
+    } else {
+      start = new Date();
+    }
+
     const isYearly = (membership.packageName || '').toLowerCase().includes('yearly');
     const expiry = new Date(start);
     if (isYearly) {

@@ -59,7 +59,7 @@ export default function AdminNotificationsPage() {
       message: 'Your Monthly Tunnel Wash Pass expires in 3 days. Renew now to enjoy uninterrupted daily washes & complimentary mat cleaning!',
       serviceKey: 'car-wash',
       category: 'membership_expiry',
-      recipientType: 'all_users',
+      recipientType: 'segment',
       targetSegment: 'expiring_soon',
       priority: 'high'
     },

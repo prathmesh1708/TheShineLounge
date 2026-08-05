@@ -29,10 +29,10 @@ export default function CustomerAuthPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // If already authenticated as user, redirect to profile
+  // If already authenticated as user, redirect to user dashboard
   useEffect(() => {
     if (isAuthenticated && user?.role === 'user') {
-      navigate('/profile');
+      navigate('/');
     }
   }, [isAuthenticated, user, navigate]);
 
@@ -49,7 +49,7 @@ export default function CustomerAuthPage() {
       if (data.success) {
         const role = data.user?.role;
         if (role === 'user') {
-          navigate('/profile');
+          navigate('/');
         } else {
           // Staff or Admin trying to log in via Customer Login
           await logout();
@@ -95,7 +95,7 @@ export default function CustomerAuthPage() {
       if (data.success) {
         setSuccessMsg('Account created successfully! Redirecting...');
         setTimeout(() => {
-          navigate('/profile');
+          navigate('/');
         }, 1000);
       } else {
         setError(data.message || 'Registration failed');

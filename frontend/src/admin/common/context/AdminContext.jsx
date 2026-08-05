@@ -95,22 +95,39 @@ export const AdminProvider = ({ children }) => {
     try {
       const res = await apiClient.get('/bookings');
       if (res.data && res.data.bookings) {
-        const mapped = res.data.bookings.map(b => ({
-          _id: b._id,
-          id: b.bookingId,
-          customerName: b.customerName,
-          serviceKey: b.serviceKey,
-          serviceName: b.serviceName,
-          plan: b.packageName,
-          timeSlot: `${b.date} | ${b.timeSlot}`,
-          total: b.price,
-          status: b.status,
-          staffAssigned: b.assignedStaffName || 'Not Assigned',
-          assignedStaffId: b.assignedStaffId,
-          stepIndex: b.stepIndex,
-          notes: b.notes,
-          photos: b.photos
-        }));
+        const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const now = new Date();
+        const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
+
+        const mapped = res.data.bookings.map(b => {
+          const rawDate = b.date || '';
+          const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
+          const displayDate = isLegacyDate ? liveDateStr : rawDate;
+
+          const rawTime = b.timeSlot || '';
+          const isLegacyTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
+          const displayTime = isLegacyTime ? defaultSlot : rawTime;
+
+          return {
+            _id: b._id,
+            id: b.bookingId,
+            customerName: b.customerName,
+            serviceKey: b.serviceKey,
+            serviceName: b.serviceName,
+            plan: b.packageName,
+            date: displayDate,
+            timeSlot: `${displayDate} | ${displayTime}`,
+            total: b.price,
+            status: b.status,
+            staffAssigned: b.assignedStaffName || 'Not Assigned',
+            assignedStaffId: b.assignedStaffId,
+            stepIndex: b.stepIndex,
+            notes: b.notes,
+            photos: b.photos
+          };
+        });
         setBookings(mapped);
       }
     } catch (err) {
@@ -456,7 +473,7 @@ export const AdminProvider = ({ children }) => {
         packageName: bookingData.plan || 'Executive Wash',
         price: totalVal,
         date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        timeSlot: bookingData.timeSlot || '02:00 PM - 02:30 PM',
+        timeSlot: bookingData.timeSlot || `${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(Date.now() + 30*60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
         customerName: bookingData.customerName,
         customerEmail: bookingData.customerEmail || 'customer@example.com',
         vehicleNo: bookingData.vehicleNo || 'MH-01-AB-1234',

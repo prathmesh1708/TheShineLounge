@@ -26,6 +26,15 @@ const createBooking = async (req, res) => {
       });
     }
 
+    // Ensure live date and time if static/legacy date was passed
+    const now = new Date();
+    const liveDateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const finalDate = (!date || date.includes('July 18')) ? liveDateStr : date;
+    const finalTimeSlot = (!timeSlot || timeSlot === '02:00 PM - 02:30 PM') ? `${liveTimeStart} - ${liveTimeEnd}` : timeSlot;
+
     // Auto generate booking ID if not supplied
     const finalBookingId = bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -35,8 +44,8 @@ const createBooking = async (req, res) => {
       serviceName,
       packageName,
       price,
-      date,
-      timeSlot,
+      date: finalDate,
+      timeSlot: finalTimeSlot,
       customerName,
       customerEmail: customerEmail || '',
       vehicleNo: vehicleNo || '',
