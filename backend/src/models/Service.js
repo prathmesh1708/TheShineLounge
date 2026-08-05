@@ -153,6 +153,9 @@ const serviceSchema = new mongoose.Schema({
   // Operational Settings
   gstPercentage: { type: Number, default: 18 },
   serviceDuration: { type: String, default: '30 mins' },
+  perCarDiscountActive: { type: Boolean, default: false },
+  perCarDiscountAmount: { type: Number, default: 0 },
+  perCarDiscountType: { type: String, default: 'fixed' },
   cancellationPolicy: { type: String, default: 'Free cancellation up to 2 hours before appointment.' },
   termsConditions: { type: String, default: 'Standard lounge terms and conditions apply.' },
 

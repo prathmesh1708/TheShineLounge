@@ -51,6 +51,7 @@ export default function CarWashAdminHubPage() {
     staffList,
     banners,
     inventory,
+    customers,
     toggleServiceStatus,
     updateServicePrice,
     addServicePlan,
@@ -149,18 +150,21 @@ export default function CarWashAdminHubPage() {
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);
   const [dbStaff, setDbStaff] = useState([]);
+  const [isLiveConnection, setIsLiveConnection] = useState(true);
 
   const fetchLiveService = async () => {
     try {
       const res = await serviceApi.getServiceBySlug('car-wash');
       if (res.success && res.service) {
         setDbService(res.service);
+        setIsLiveConnection(true);
         localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
         return;
       }
     } catch (err) {
       console.warn('Could not fetch live car-wash service, checking local storage');
     }
+    setIsLiveConnection(false);
     const cached = localStorage.getItem('tsl_car_wash_service');
     if (cached) {
       setDbService(JSON.parse(cached));
@@ -371,12 +375,47 @@ export default function CarWashAdminHubPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('/videos/car-tunnel.mp4');
   const [heroPosterUrl, setHeroPosterUrl] = useState('https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=800&q=80');
 
+  // Per Car Discount configuration states
+  const [discountModal, setDiscountModal] = useState(false);
+  const [discountActive, setDiscountActive] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountType, setDiscountType] = useState('fixed');
+
   useEffect(() => {
     if (dbService) {
       if (dbService.heroVideo) setHeroVideoUrl(dbService.heroVideo);
       if (dbService.bannerImage) setHeroPosterUrl(dbService.bannerImage);
+      setDiscountActive(!!dbService.perCarDiscountActive);
+      setDiscountAmount(dbService.perCarDiscountAmount || 0);
+      setDiscountType(dbService.perCarDiscountType || 'fixed');
     }
   }, [dbService]);
+
+  const handleSaveDiscount = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      const targetId = await getTargetServiceId();
+      const payload = {
+        perCarDiscountActive: discountActive,
+        perCarDiscountAmount: Number(discountAmount) || 0,
+        perCarDiscountType: discountType
+      };
+
+      if (targetId) {
+        const res = await serviceApi.updateService(targetId, payload);
+        if (res.success && res.service) {
+          setDbService(res.service);
+          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+          window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...res.service, slug: 'car-wash' } }));
+        }
+      }
+
+      if (showToast) showToast('✅ Per Car Discount settings saved successfully!');
+      setDiscountModal(false);
+    } catch (err) {
+      alert('Error updating discount settings: ' + err.message);
+    }
+  };
 
   const handleSaveHeroMedia = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -410,6 +449,60 @@ export default function CarWashAdminHubPage() {
       alert('✅ Hero Tunnel Video configuration saved successfully! The /car-wash page video is now updated live.');
     } catch (err) {
       alert('Error updating hero media: ' + err.message);
+    }
+  };
+
+  // Upload Handlers — upload to server via /api/upload, get back a short URL path
+  const uploadFileToServer = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('token');
+    const res = await fetch('http://localhost:5005/api/upload', {
+      method: 'POST',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      body: formData
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Upload failed');
+    return data.url; // e.g. "/uploads/hero-video-1722856789.mp4"
+  };
+
+  const handleHeroVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      if (showToast) showToast('⏳ Uploading video... please wait');
+      const url = await uploadFileToServer(file);
+      setHeroVideoUrl(url);
+      if (showToast) showToast('📁 Video uploaded successfully!');
+    } catch (err) {
+      alert('Video upload failed: ' + err.message);
+    }
+  };
+
+  const handleHeroPosterUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      if (showToast) showToast('⏳ Uploading image... please wait');
+      const url = await uploadFileToServer(file);
+      setHeroPosterUrl(url);
+      if (showToast) showToast('🖼️ Poster image uploaded!');
+    } catch (err) {
+      alert('Image upload failed: ' + err.message);
+    }
+  };
+
+  const handleBannerImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      if (showToast) showToast('⏳ Uploading banner image...');
+      const url = await uploadFileToServer(file);
+      setBannerForm(prev => ({ ...prev, imageUrl: url }));
+      if (showToast) showToast('🖼️ Banner image uploaded!');
+    } catch (err) {
+      alert('Banner image upload failed: ' + err.message);
     }
   };
 
@@ -713,37 +806,53 @@ export default function CarWashAdminHubPage() {
     if (!numPrice || numPrice <= 0 || !editingItem || !editTitle.trim()) return;
 
     const newTitle = editTitle.trim();
+    const itemType = editingItem.type;
+    const editId = editingItem.id;
+    const editTitleVal = editingItem.title;
 
     try {
       let currentPricing = activePricing.map(p => {
-        if ((p._id && p._id === editingItem.id) || (p.id && p.id === editingItem.id) || p.title === editingItem.title) {
-          return { ...p, title: newTitle, price: numPrice, description: editDescription.trim() };
+        if (itemType === 'pricing') {
+          const pId = p._id || p.id;
+          const pTitle = p.title || p.name;
+          const isMatch = (editId && pId && String(pId) === String(editId)) ||
+            (editTitleVal && pTitle && String(pTitle).toLowerCase().trim() === String(editTitleVal).toLowerCase().trim());
+          if (isMatch) {
+            return { ...p, title: newTitle, price: numPrice, description: editDescription.trim() };
+          }
+        }
+        return p;
+      });
+
+      // Reset Single Wash if it was mistakenly set to 25000 by previous bug
+      currentPricing = currentPricing.map(p => {
+        const title = (p.title || p.name || '').toLowerCase();
+        if ((title.includes('single') || title.includes('express')) && p.price >= 20000) {
+          return { ...p, price: 699 };
         }
         return p;
       });
 
       let currentMemberships = activeMemberships.map(m => {
-        const mId = m._id || m.id;
-        const mName = m.name || m.title;
-        const editId = editingItem?.id;
-        const editTitleVal = editingItem?.title;
-
-        if (
-          (editId && mId && String(mId) === String(editId)) ||
-          (editTitleVal && mName && String(mName).toLowerCase().trim() === String(editTitleVal).toLowerCase().trim())
-        ) {
-          return {
-            ...m,
-            name: newTitle,
-            price: numPrice,
-            benefits: editBenefits.filter(b => b.trim()),
-            badge: editBadge.trim() || m.badge || '',
-            duration: Number(editDuration) || 30,
-            visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : 4,
-            isPopular: editIsPopular,
-            renewable: editRenewable,
-            upgradeAvailable: editRenewable
-          };
+        if (itemType === 'membership') {
+          const mId = m._id || m.id;
+          const mName = m.name || m.title;
+          const isMatch = (editId && mId && String(mId) === String(editId)) ||
+            (editTitleVal && mName && String(mName).toLowerCase().trim() === String(editTitleVal).toLowerCase().trim());
+          if (isMatch) {
+            return {
+              ...m,
+              name: newTitle,
+              price: numPrice,
+              benefits: editBenefits.filter(b => b.trim()),
+              badge: editBadge.trim() || m.badge || '',
+              duration: Number(editDuration) || 30,
+              visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : 4,
+              isPopular: editIsPopular,
+              renewable: editRenewable,
+              upgradeAvailable: editRenewable
+            };
+          }
         }
         return m;
       });
@@ -801,10 +910,13 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
-      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast('Car Wash package title, price & details updated live!');
-      updateServicePrice(serviceMain.id, numPrice);
+      
+      if (itemType === 'pricing') {
+        updateServicePrice(serviceMain.id, numPrice);
+      }
     } catch (err) {
       console.error('Failed to update package details:', err);
     }
@@ -899,7 +1011,7 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
-      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast('New Car Wash service package created!');
       setAddPackageModal(false);
@@ -987,7 +1099,7 @@ export default function CarWashAdminHubPage() {
 
       setDbService(newDbService);
       localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
-      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: newDbService }));
+      window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast(`Package "${itemTitle}" deleted successfully`, 'error');
     } catch (err) {
@@ -1084,17 +1196,26 @@ export default function CarWashAdminHubPage() {
 
       {activeTab === 'packages' && (
         <div className="space-y-6">
+
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-sm font-bold text-gray-900">Active Packages & Memberships</h3>
               <p className="text-xs text-gray-500">Click "Edit Price" on any plan to update live title, price and description, or create/delete packages</p>
             </div>
-            <button
-              onClick={() => setAddPackageModal(true)}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" /> Add New Package
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => setDiscountModal(true)}
+                className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <span>🏷️ Per Car Discount</span>
+              </button>
+              <button
+                onClick={() => setAddPackageModal(true)}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> Add New Package
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -1422,7 +1543,14 @@ export default function CarWashAdminHubPage() {
               <form onSubmit={handleSaveHeroMedia} className="lg:col-span-2 space-y-3 text-xs flex flex-col justify-between">
                 <div className="space-y-3">
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Hero Tunnel Video URL / Local Path *</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block font-bold text-gray-700">Hero Tunnel Video URL / Local Path *</label>
+                      <label className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-2xs transition-all flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        <span>📁 Upload Video File</span>
+                        <input type="file" accept="video/*" onChange={handleHeroVideoUpload} className="hidden" />
+                      </label>
+                    </div>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1441,20 +1569,30 @@ export default function CarWashAdminHubPage() {
                       </button>
                     </div>
                     <span className="text-[10px] text-gray-400 block mt-1">
-                      Accepts internal MP4 paths (e.g. <code className="font-bold text-gray-600">/videos/car-tunnel.mp4</code>) or any direct MP4 video URL.
+                      Option 1: Paste URL or local path above • Option 2: Click "📁 Upload Video File" to choose an MP4/WEBM video file.
                     </span>
                   </div>
 
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Fallback Poster Image URL *</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block font-bold text-gray-700">Fallback Poster Image URL *</label>
+                      <label className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-2xs transition-all flex items-center gap-1">
+                        <ImageIcon className="w-3 h-3" />
+                        <span>🖼️ Upload Image File</span>
+                        <input type="file" accept="image/*" onChange={handleHeroPosterUpload} className="hidden" />
+                      </label>
+                    </div>
                     <input
                       type="text"
                       required
                       value={heroPosterUrl}
                       onChange={e => setHeroPosterUrl(e.target.value)}
-                      placeholder="https://images.unsplash.com/..."
+                      placeholder="https://images.unsplash.com/... or upload image"
                       className="w-full p-2.5 border rounded-xl font-mono text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
+                    <span className="text-[10px] text-gray-400 block mt-1">
+                      Option 1: Paste image URL above • Option 2: Click "🖼️ Upload Image File" to select an image from your computer.
+                    </span>
                   </div>
                 </div>
 
@@ -2364,14 +2502,21 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block font-bold text-gray-700">Banner Image URL *</label>
+              <label className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-2xs transition-all flex items-center gap-1">
+                <ImageIcon className="w-3 h-3" />
+                <span>🖼️ Upload Image</span>
+                <input type="file" accept="image/*" onChange={handleBannerImageUpload} className="hidden" />
+              </label>
+            </div>
             <input
               type="text"
               required
               value={bannerForm.imageUrl}
               onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
-              placeholder="https://..."
-              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              placeholder="https://... or click Upload Image button"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono text-xs"
             />
           </div>
 
@@ -2421,13 +2566,21 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div>
-            <label className="block font-bold text-gray-700 mb-1">Banner Image URL *</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block font-bold text-gray-700">Banner Image URL *</label>
+              <label className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-2xs transition-all flex items-center gap-1">
+                <ImageIcon className="w-3 h-3" />
+                <span>🖼️ Upload Image</span>
+                <input type="file" accept="image/*" onChange={handleBannerImageUpload} className="hidden" />
+              </label>
+            </div>
             <input
               type="text"
               required
               value={bannerForm.imageUrl}
               onChange={e => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
-              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono text-xs"
+              placeholder="https://... or click Upload Image button"
             />
           </div>
 
@@ -2456,6 +2609,66 @@ export default function CarWashAdminHubPage() {
               Save Details
             </button>
           </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Per Car Discount Configuration */}
+      <AdminModal isOpen={discountModal} onClose={() => setDiscountModal(false)} title="Configure Per Car Discount">
+        <form onSubmit={handleSaveDiscount} className="space-y-4 text-xs p-1">
+          <div className="bg-amber-50/50 border border-amber-200/60 p-3 rounded-xl">
+            <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+              ℹ️ <strong>What is Per Car Discount?</strong><br />
+              This discount applies dynamically in the checkout page when a customer registers and schedules a wash session.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 bg-gray-50 border rounded-xl p-3">
+            <input 
+              type="checkbox" 
+              id="perCarDiscountActive"
+              checked={discountActive} 
+              onChange={(e) => setDiscountActive(e.target.checked)}
+              className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4 cursor-pointer" 
+            />
+            <label htmlFor="perCarDiscountActive" className="cursor-pointer">
+              <span className="font-bold text-gray-800 block text-xs">Enable Discount Policy</span>
+              <span className="text-[10px] text-gray-500">Enable or disable this discount globally</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Discount Type</label>
+            <select
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value)}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            >
+              <option value="fixed">Flat Amount (₹)</option>
+              <option value="percent">Percentage (%)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">
+              Discount Value {discountType === 'percent' ? '(%)' : '(₹)'} *
+            </label>
+            <input
+              type="number"
+              min="0"
+              required
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(Number(e.target.value))}
+              placeholder={discountType === 'percent' ? 'e.g. 10' : 'e.g. 100'}
+              className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+          >
+            Save Discount Configuration
+          </button>
         </form>
       </AdminModal>
     </div>

@@ -20,7 +20,7 @@ router.put('/profile', authMiddleware, updateProfile);
 
 // ─── Staff Management (Admin Only) ──────────────────────────
 router.post('/staff', authMiddleware, adminOnly, createStaff);
-router.get('/staff', authMiddleware, adminOnly, getStaffList);
+router.get('/staff', authMiddleware, staffOnly, getStaffList);
 router.get('/staff/:id', authMiddleware, adminOnly, getStaffById);
 router.put('/staff/:id', authMiddleware, adminOnly, updateStaff);
 router.patch('/staff/:id/status', authMiddleware, adminOnly, toggleStaffStatus);

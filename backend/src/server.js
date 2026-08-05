@@ -28,6 +28,7 @@ const admin = require('./admin');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
@@ -94,6 +95,11 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/upload', uploadRoutes);
+
+// Serve uploaded files as static assets
+const path = require('path');
+app.use('/uploads', express.static(path.resolve(__dirname, '../../frontend/public/uploads')));
 
 // Root Route
 app.get('/', (req, res) => {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
-const { adminOnly } = require('../middleware/roleMiddleware');
+const { adminOnly, staffOnly } = require('../middleware/roleMiddleware');
 
 const {
   createService,
@@ -27,19 +27,19 @@ router.get('/', getAllServices);
 router.get('/:slug', getServiceBySlug);
 
 // Admin Protected Routes
-router.get('/admin/:id', authMiddleware, adminOnly, getServiceById);
-router.post('/', authMiddleware, adminOnly, createService);
-router.put('/:id', authMiddleware, adminOnly, updateService);
-router.patch('/reorder', authMiddleware, adminOnly, reorderServices);
-router.patch('/:id/status', authMiddleware, adminOnly, toggleServiceStatus);
-router.delete('/:id', authMiddleware, adminOnly, deleteService);
+router.get('/admin/:id', authMiddleware, staffOnly, getServiceById);
+router.post('/', authMiddleware, staffOnly, createService);
+router.put('/:id', authMiddleware, staffOnly, updateService);
+router.patch('/reorder', authMiddleware, staffOnly, reorderServices);
+router.patch('/:id/status', authMiddleware, staffOnly, toggleServiceStatus);
+router.delete('/:id', authMiddleware, staffOnly, deleteService);
 
 // Sub-resource Admin Routes
-router.post('/:id/memberships', authMiddleware, adminOnly, addMembership);
-router.delete('/:id/memberships/:memId', authMiddleware, adminOnly, deleteMembership);
-router.post('/:id/plans', authMiddleware, adminOnly, addPlan);
-router.delete('/:id/plans/:planId', authMiddleware, adminOnly, deletePlan);
-router.post('/:id/sections', authMiddleware, adminOnly, addSection);
-router.delete('/:id/sections/:sectionId', authMiddleware, adminOnly, deleteSection);
+router.post('/:id/memberships', authMiddleware, staffOnly, addMembership);
+router.delete('/:id/memberships/:memId', authMiddleware, staffOnly, deleteMembership);
+router.post('/:id/plans', authMiddleware, staffOnly, addPlan);
+router.delete('/:id/plans/:planId', authMiddleware, staffOnly, deletePlan);
+router.post('/:id/sections', authMiddleware, staffOnly, addSection);
+router.delete('/:id/sections/:sectionId', authMiddleware, staffOnly, deleteSection);
 
 module.exports = router;

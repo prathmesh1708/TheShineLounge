@@ -113,11 +113,18 @@ export default function ProfilePage() {
     // Listen to live real-time updates from Admin panel updates
     const handleLiveUpdate = (e) => {
       if (e?.detail) {
-        setDbService(e.detail);
+        if (e.detail.slug === 'car-wash') {
+          setDbService(e.detail);
+        }
       } else {
         const cached = localStorage.getItem('tsl_car_wash_service');
         if (cached) {
-          try { setDbService(JSON.parse(cached)); } catch (err) {}
+          try { 
+            const parsed = JSON.parse(cached);
+            if (parsed.slug === 'car-wash' || !parsed.slug) {
+              setDbService(parsed);
+            }
+          } catch (err) {}
         }
       }
       fetchMyBookings();

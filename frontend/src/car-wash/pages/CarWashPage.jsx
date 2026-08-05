@@ -192,11 +192,18 @@ export default function CarWashPage() {
 
     const handleLiveUpdate = (e) => {
       if (e?.detail) {
-        setDbService(e.detail);
+        if (e.detail.slug === 'car-wash') {
+          setDbService(e.detail);
+        }
       } else {
         const cached = localStorage.getItem('tsl_car_wash_service');
         if (cached) {
-          try { setDbService(JSON.parse(cached)); } catch (err) {}
+          try { 
+            const parsed = JSON.parse(cached);
+            if (parsed.slug === 'car-wash' || !parsed.slug) {
+              setDbService(parsed);
+            }
+          } catch (err) {}
         }
       }
     };
@@ -253,12 +260,17 @@ export default function CarWashPage() {
           { _id: 'super', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' }
         ]);
 
-  const pricingItems = rawPricing.map(p => ({
-    _id: p._id || p.id || p.title || p.name,
-    title: p.title || p.name,
-    price: p.price,
-    description: p.description || (p.features && p.features.join(', '))
-  }));
+  const pricingItems = rawPricing.map(p => {
+    const titleLower = (p.title || p.name || '').toLowerCase();
+    const isSingleWash = titleLower.includes('single') || titleLower.includes('express');
+    const safePrice = (isSingleWash && Number(p.price) >= 20000) ? 699 : (Number(p.price) || 699);
+    return {
+      _id: p._id || p.id || p.title || p.name,
+      title: p.title || p.name,
+      price: safePrice,
+      description: p.description || (p.features && p.features.join(', '))
+    };
+  });
 
   // Dynamic Memberships list
   const rawMemberships = (dbService?.memberships !== undefined)

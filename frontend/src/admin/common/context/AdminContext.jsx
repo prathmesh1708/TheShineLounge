@@ -254,14 +254,9 @@ export const AdminProvider = ({ children }) => {
     try {
       const res = await serviceApi.getServices();
       if (res.success && res.services) {
-        const target = res.services.find(s => s._id === id || s.slug === id || s.slug === 'car-wash' || s.serviceName.toLowerCase().includes(String(id).toLowerCase()));
-        if (target) {
-          const updatedPricing = [...(target.pricing || [])];
-          if (updatedPricing.length > 0) {
-            updatedPricing[0].price = numPrice;
-          } else {
-            updatedPricing.push({ title: 'Single Wash', price: numPrice });
-          }
+        const target = res.services.find(s => s._id === id || s.slug === id || s.serviceName.toLowerCase().includes(String(id).toLowerCase()));
+        if (target && target.pricing && target.pricing.length > 0) {
+          const updatedPricing = target.pricing.map((p, idx) => idx === 0 ? { ...p, price: numPrice } : p);
           await serviceApi.updateService(target._id, { pricing: updatedPricing });
         }
       }

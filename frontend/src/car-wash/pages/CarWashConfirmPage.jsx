@@ -14,13 +14,70 @@ export default function CarWashConfirmPage() {
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [dbService, setDbService] = useState(null);
+
+  React.useEffect(() => {
+    const fetchServiceData = async () => {
+      try {
+        const cached = localStorage.getItem('tsl_car_wash_service');
+        if (cached) {
+          setDbService(JSON.parse(cached));
+        }
+        const res = await apiClient.get('/services/car-wash');
+        if (res.data && res.data.service) {
+          setDbService(res.data.service);
+          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.data.service));
+        }
+      } catch (err) {
+        console.warn('Could not load service details for discount computation');
+      }
+    };
+    fetchServiceData();
+  }, []);
+
+  // Detect number of registered cars
+  let numCars = 1;
+  const isMembership = (service.name || '').toLowerCase().includes('membership') || (service.name || '').toLowerCase().includes('pass');
+  
+  try {
+    const saved = localStorage.getItem('tsl_saved_vehicles');
+    if (saved) {
+      const list = JSON.parse(saved);
+      if (Array.isArray(list) && list.length > 0) {
+        numCars = list.length;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not parse saved vehicles:', e);
+  }
 
   // Price calculations
   const basePrice = service.price;
+  const totalBasePrice = isMembership ? (basePrice * numCars) : basePrice;
   const isPremiumWashPromo = service.id === 'premium-wash';
-  const discount = isPremiumWashPromo ? Math.round(basePrice * 0.2) : 0; // 20% off Premium Wash
+  
+  // Calculate discounts
+  let totalDiscount = 0;
+  if (isMembership && numCars > 1) {
+    // Per-car discount is only applicable if the user has added multiple cars (numCars > 1)
+    if (dbService?.perCarDiscountActive) {
+      let discountPerCar = 0;
+      if (dbService.perCarDiscountType === 'percent') {
+        discountPerCar = Math.round(basePrice * (dbService.perCarDiscountAmount / 100));
+      } else {
+        discountPerCar = dbService.perCarDiscountAmount;
+      }
+      totalDiscount = discountPerCar * numCars;
+    } else {
+      totalDiscount = isPremiumWashPromo ? Math.round(basePrice * 0.2) * numCars : 0;
+    }
+  } else {
+    // For single car or single wash bookings, no per-car discount is applied
+    totalDiscount = isPremiumWashPromo ? Math.round(basePrice * 0.2) : 0;
+  }
+
   const taxRate = 0.18; // 18% GST
-  const taxableAmount = basePrice - discount;
+  const taxableAmount = Math.max(0, totalBasePrice - totalDiscount);
   const gst = Math.round(taxableAmount * taxRate);
   const finalTotal = taxableAmount + gst;
 
@@ -146,13 +203,19 @@ export default function CarWashConfirmPage() {
             <h3 className="confirm-card-heading">Bill Details</h3>
             <div className="bill-breakdown-list">
               <div className="bill-row">
-                <span className="bill-label">Service Base Price</span>
-                <span className="bill-val">₹{basePrice}</span>
+                <span className="bill-label">
+                  {isMembership && numCars > 1 ? `Service Base Price (₹${basePrice} × ${numCars} cars)` : 'Service Base Price'}
+                </span>
+                <span className="bill-val">₹{totalBasePrice}</span>
               </div>
-              {discount > 0 && (
+              {totalDiscount > 0 && (
                 <div className="bill-row promo">
-                  <span className="bill-label">Promo Discount (20% off)</span>
-                  <span className="bill-val">-₹{discount}</span>
+                  <span className="bill-label">
+                    {isMembership && numCars > 1 && dbService?.perCarDiscountActive
+                      ? `Applied Discount (${dbService.perCarDiscountType === 'percent' ? `${dbService.perCarDiscountAmount}%` : `₹${dbService.perCarDiscountAmount}`} off per car × ${numCars})`
+                      : 'Promo Discount (20% off)'}
+                  </span>
+                  <span className="bill-val">-₹{totalDiscount}</span>
                 </div>
               )}
               <div className="bill-row">
