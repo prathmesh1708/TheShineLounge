@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
 import { Camera, UserPlus, Receipt, Ticket, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles } from 'lucide-react';
+import NotificationBell from '../../common/components/NotificationBell';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
@@ -47,11 +48,15 @@ export default function StaffDashboardPage() {
             <h2 className="text-base font-black truncate">{currentStaff?.name || 'Staff Member'}</h2>
             <p className="text-xs text-blue-200">{currentStaff?.role} • {currentStaff?.department || 'Drive-Through Café'}</p>
           </div>
-          <img
-            src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80'}
-            alt="Avatar"
-            className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover shadow-sm flex-shrink-0"
-          />
+
+          <div className="flex items-center gap-2">
+            <NotificationBell isStaff={true} />
+            <img
+              src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80'}
+              alt="Avatar"
+              className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover shadow-sm flex-shrink-0"
+            />
+          </div>
         </div>
 
         {/* Check-In Bar */}

@@ -138,13 +138,6 @@ export default function StaffLoginPage() {
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
-                <a 
-                  href="#" 
-                  onClick={(e) => { e.preventDefault(); alert('Please contact administrator to reset password.'); }}
-                  className="text-xs font-extrabold text-orange-600 hover:text-orange-700 transition-colors"
-                >
-                  Forgot Password?
-                </a>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-3.5" />
