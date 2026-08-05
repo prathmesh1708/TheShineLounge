@@ -119,14 +119,6 @@ export default function DriveThroughCafeAdminHubPage() {
     try {
       const res = await serviceApi.getServiceBySlug('drive-through-cafe');
       if (res.success && res.service) {
-<<<<<<< HEAD
-        setDbService(res.service);
-        try {
-          localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
-        } catch (storageErr) {
-          console.warn('Could not cache drive through cafe service:', storageErr);
-        }
-=======
         const hasValidPlans = Array.isArray(res.service.plans) && res.service.plans.some(p => p.section);
         const hasValidSecs = Array.isArray(res.service.menuSections) && res.service.menuSections.length > 0;
         const svc = {
@@ -135,8 +127,11 @@ export default function DriveThroughCafeAdminHubPage() {
           plans: hasValidPlans ? res.service.plans : defaultPlans
         };
         setDbService(svc);
-        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(svc));
->>>>>>> 05a6c8ba6e3b07c8ebbf4a6b9bc5019fc559340b
+        try {
+          localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(svc));
+        } catch (storageErr) {
+          console.warn('Could not cache drive through cafe service:', storageErr);
+        }
         return;
       }
     } catch (err) {
