@@ -1,12 +1,6 @@
 // Role-based access control middleware
 
 const adminOnly = (req, res, next) => {
-  console.log('--- ADMINONLY MIDDLEWARE CHECK ---', {
-    email: req.user?.email,
-    role: req.user?.role,
-    method: req.method,
-    url: req.originalUrl
-  });
   if (req.user && req.user.role === 'admin') {
     return next();
   }
@@ -17,12 +11,6 @@ const adminOnly = (req, res, next) => {
 };
 
 const staffOnly = (req, res, next) => {
-  console.log('--- STAFFONLY MIDDLEWARE CHECK ---', {
-    email: req.user?.email,
-    role: req.user?.role,
-    method: req.method,
-    url: req.originalUrl
-  });
   if (req.user && (req.user.role === 'staff' || req.user.role === 'admin')) {
     return next();
   }

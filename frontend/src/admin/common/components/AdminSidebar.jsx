@@ -335,7 +335,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
           )}
           {!isCollapsed && (
             <button
-              onClick={async () => { await logout(); navigate('/staff/login'); }}
+              onClick={async () => { await logout(); navigate('/admin/login'); }}
               className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors"
               title="Logout"
             >

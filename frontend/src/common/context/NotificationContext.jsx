@@ -34,8 +34,8 @@ export function NotificationProvider({ children }) {
       const adminToken = localStorage.getItem('tsl_admin_token');
       const path = window.location.pathname;
 
-      // Only fetch staff notifications if user is on staff portal or has admin token
-      if (!path.startsWith('/staff') && !adminToken) return;
+      // Only fetch staff notifications if user is on staff portal (not login) or has admin token
+      if ((!path.startsWith('/staff') || path === '/staff/login') && !adminToken) return;
 
       const res = await apiClient.get('/notifications/staff');
       if (res.data && res.data.notifications) {
@@ -52,8 +52,8 @@ export function NotificationProvider({ children }) {
       const adminToken = localStorage.getItem('tsl_admin_token');
       const path = window.location.pathname;
 
-      // Only fetch admin notifications if user is on admin dashboard or has admin token
-      if (!path.startsWith('/admin') && !adminToken) return;
+      // Only fetch admin notifications if user is on admin dashboard (not login) or has admin token
+      if ((!path.startsWith('/admin') || path === '/admin/login') && !adminToken) return;
 
       const res = await apiClient.get('/notifications/admin');
       if (res.data && res.data.notifications) {

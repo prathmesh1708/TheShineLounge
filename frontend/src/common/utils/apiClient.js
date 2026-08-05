@@ -36,11 +36,11 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       const path = window.location.pathname;
       // Only force redirect on protected admin/staff portal pages
-      if (path.startsWith('/admin')) {
+      if (path.startsWith('/admin') && path !== '/admin/login') {
         localStorage.removeItem('tsl_admin_token');
         localStorage.removeItem('tsl_admin_user');
         window.location.href = '/admin/login';
-      } else if (path.startsWith('/staff')) {
+      } else if (path.startsWith('/staff') && path !== '/staff/login') {
         localStorage.removeItem('tsl_admin_token');
         localStorage.removeItem('tsl_admin_user');
         window.location.href = '/staff/login';
