@@ -37,10 +37,21 @@ export default function DriveThroughStaffCard({ job, onUpdateStatus }) {
           <Car className="w-4 h-4 text-blue-600" />
           <span className="font-black text-xs text-gray-900">{job.vehicleNo}</span>
         </div>
-        <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
-          <Clock className="w-3 h-3" /> {job.timeSlot}
+        <span className="text-[10px] text-amber-700 font-bold flex items-center gap-1">
+          <Clock className="w-3 h-3" /> {job.pickupTime || job.timeSlot}
         </span>
       </div>
+
+      {job.items && job.items.length > 0 && (
+        <ul className="text-[11px] text-gray-700 space-y-0.5">
+          {job.items.map((item, idx) => (
+            <li key={idx} className="flex justify-between">
+              <span className="font-semibold">{item.quantity}x {item.name}</span>
+              <span className="text-gray-500">₹{(item.price * item.quantity).toFixed(2)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <ExpressOrderStepper
         currentStepIndex={job.stepIndex || 0}

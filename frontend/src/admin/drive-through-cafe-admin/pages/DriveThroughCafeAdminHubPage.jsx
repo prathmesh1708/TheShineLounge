@@ -41,6 +41,7 @@ import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
+import { cacheService } from '../../../common/utils/serviceCache';
 
 export default function DriveThroughCafeAdminHubPage() {
   const serviceKey = 'drive-through-cafe';
@@ -128,7 +129,7 @@ export default function DriveThroughCafeAdminHubPage() {
         };
         setDbService(svc);
         try {
-          localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(svc));
+          cacheService('tsl_drive_through_cafe_service', svc);
         } catch (storageErr) {
           console.warn('Could not cache drive through cafe service:', storageErr);
         }
@@ -197,7 +198,7 @@ export default function DriveThroughCafeAdminHubPage() {
 
   const persistDbService = async (newServiceObj) => {
     setDbService(newServiceObj);
-    localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(newServiceObj));
+    cacheService('tsl_drive_through_cafe_service', newServiceObj);
     window.dispatchEvent(new Event('tsl_drive_through_cafe_updated'));
     try {
       const targetId = await getTargetServiceId();
@@ -757,7 +758,7 @@ export default function DriveThroughCafeAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(newDbService));
+      cacheService('tsl_drive_through_cafe_service', newDbService);
 
       if (showToast) showToast('Cafe item title, price & details updated live!');
       updateServicePrice(serviceMain.id, numPrice);
@@ -843,7 +844,7 @@ export default function DriveThroughCafeAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(newDbService));
+      cacheService('tsl_drive_through_cafe_service', newDbService);
 
       if (showToast) showToast('New Cafe menu item created!');
       setAddPackageModal(false);
@@ -908,7 +909,7 @@ export default function DriveThroughCafeAdminHubPage() {
           });
           if (res.success && res.service) {
             setDbService(res.service);
-            localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+            cacheService('tsl_drive_through_cafe_service', res.service);
           }
         } catch (apiErr) {
           console.warn('API delete package error:', apiErr.message);
@@ -924,7 +925,7 @@ export default function DriveThroughCafeAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(newDbService));
+      cacheService('tsl_drive_through_cafe_service', newDbService);
 
       if (showToast) showToast(`Package "${itemTitle}" deleted successfully`, 'error');
     } catch (err) {

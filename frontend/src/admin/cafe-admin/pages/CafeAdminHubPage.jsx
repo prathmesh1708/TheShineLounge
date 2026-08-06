@@ -4,7 +4,6 @@ import {
   IndianRupee,
   TrendingUp,
   CalendarCheck,
-  Package,
   Wrench,
   Users,
   Image as ImageIcon,
@@ -32,7 +31,6 @@ import {
 import { useAdmin } from '../../common/context/AdminContext';
 import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
-import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import apiClient from '../../../common/utils/apiClient';
 
@@ -43,10 +41,10 @@ export default function CafeAdminHubPage() {
     bookings,
     staffList,
     banners,
-    inventory,
     toggleServiceStatus,
     updateServicePrice,
     addServicePlan,
+    updateServicePlan,
     deleteServicePlan,
     addServiceSection,
     deleteServiceSection,
@@ -60,12 +58,16 @@ export default function CafeAdminHubPage() {
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabFromUrl = searchParams.get('tab') || 'overview';
+  // Bookings, vehicles and stock aren't part of the café hub, so a stale link
+  // or a hand-typed ?tab= for those lands on the overview, not a blank page.
+  const CAFE_TABS = ['overview', 'packages', 'staff', 'marketing'];
+  const normalizeTab = (tab) => (CAFE_TABS.includes(tab) ? tab : 'overview');
+  const tabFromUrl = normalizeTab(searchParams.get('tab'));
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
     if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
+      setActiveTabState(normalizeTab(searchParams.get('tab')));
     }
   }, [searchParams]);
 
@@ -80,7 +82,6 @@ export default function CafeAdminHubPage() {
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
-  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
   const [editingPriceModal, setEditingPriceModal] = useState(false);
   const [newPrice, setNewPrice] = useState(serviceMain?.price || 0);
@@ -88,6 +89,20 @@ export default function CafeAdminHubPage() {
   // Dish Form state
   const [addPlanModal, setAddPlanModal] = useState(false);
   const [planForm, setPlanForm] = useState({
+    name: '',
+    price: '',
+    description: '',
+    duration: '15 mins',
+    section: 'Main Menu',
+    subcat: 'Brunch',
+    weight: '220g',
+    image: ''
+  });
+
+  // Edit Dish Form state
+  const [editPlanModal, setEditPlanModal] = useState(false);
+  const [editPlanForm, setEditPlanForm] = useState({
+    _id: '',
     name: '',
     price: '',
     description: '',
@@ -121,6 +136,54 @@ export default function CafeAdminHubPage() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleEditDishPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditPlanForm(prev => ({ ...prev, image: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleOpenEditPlan = (plan) => {
+    setEditPlanForm({
+      _id: plan._id || plan.id,
+      name: plan.name || '',
+      price: plan.price !== undefined ? plan.price : '',
+      description: plan.description || '',
+      duration: plan.duration || '15 mins',
+      section: plan.section || serviceMain?.menuSections?.[0]?.title || 'Main Menu',
+      subcat: plan.subcat || 'General',
+      weight: plan.weight || '',
+      image: plan.image || ''
+    });
+    setEditPlanModal(true);
+  };
+
+  const handleUpdatePlan = () => {
+    if (!editPlanForm.name || editPlanForm.price === '') {
+      alert('Please fill out dish name and price');
+      return;
+    }
+    updateServicePlan(serviceMain?._id || serviceMain?.id, editPlanForm._id, {
+      name: editPlanForm.name,
+      price: Number(editPlanForm.price),
+      description: editPlanForm.description,
+      duration: editPlanForm.duration,
+      section: editPlanForm.section,
+      subcat: editPlanForm.subcat,
+      weight: editPlanForm.weight,
+      image: editPlanForm.image
+    });
+    setEditPlanModal(false);
   };
 
   const handleSectionPhotoChange = (e) => {
@@ -580,8 +643,7 @@ export default function CafeAdminHubPage() {
           { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
           { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
           { id: 'staff', label: `Department Staff (${serviceStaff.length})`, icon: Users },
-          { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon },
-          { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
+          { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -758,18 +820,35 @@ export default function CafeAdminHubPage() {
                             <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 leading-relaxed">{plan.description || 'Premium chef-crafted item.'}</p>
                           </div>
                           <div className="flex justify-between items-center pt-3 border-t">
-                            <span className="text-base font-black text-amber-600">₹{plan.price}</span>
                             <button
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete "${plan.name}"?`)) {
-                                  deleteServicePlan(serviceMain._id || serviceMain.id, plan._id || plan.id);
-                                }
-                              }}
-                              className="text-gray-400 hover:text-red-500 p-1.5 rounded-xl hover:bg-red-50 transition-colors"
-                              title="Delete Dish"
+                              type="button"
+                              onClick={() => handleOpenEditPlan(plan)}
+                              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity text-left group/price"
+                              title="Click to Edit Price & Details"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <span className="text-base font-black text-amber-600">₹{plan.price}</span>
+                              <Edit2 className="w-3.5 h-3.5 text-amber-500 opacity-70 group-hover/price:opacity-100 transition-opacity" />
                             </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditPlan(plan)}
+                                className="text-gray-400 hover:text-amber-600 p-1.5 rounded-xl hover:bg-amber-50 transition-colors"
+                                title="Edit Dish & Price"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete "${plan.name}"?`)) {
+                                    deleteServicePlan(serviceMain._id || serviceMain.id, plan._id || plan.id);
+                                  }
+                                }}
+                                className="text-gray-400 hover:text-red-500 p-1.5 rounded-xl hover:bg-red-50 transition-colors"
+                                title="Delete Dish"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -920,18 +999,6 @@ export default function CafeAdminHubPage() {
         </div>
       )}
 
-      {activeTab === 'inventory' && (
-        <DataTable
-          columns={[
-            { header: 'Product Item', accessorKey: 'name' },
-            { header: 'Category', accessorKey: 'category' },
-            { header: 'Stock Level', accessorKey: 'currentStock' },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceInventory}
-        />
-      )}
-
       {/* Modal: Edit Base Price */}
       <AdminModal isOpen={editingPriceModal} onClose={() => setEditingPriceModal(false)} title="Edit Rate">
         <div className="space-y-4 text-xs">
@@ -1061,6 +1128,131 @@ export default function CafeAdminHubPage() {
             className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs select-none active:scale-[0.98] transition-all"
           >
             Save Item
+          </button>
+        </div>
+      </AdminModal>
+
+      {/* Modal: Edit Dish / Drink & Pricing */}
+      <AdminModal isOpen={editPlanModal} onClose={() => setEditPlanModal(false)} title="Edit Dish & Pricing">
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Dish / Drink Name</label>
+            <input
+              type="text"
+              value={editPlanForm.name}
+              onChange={e => setEditPlanForm({ ...editPlanForm, name: e.target.value })}
+              placeholder="e.g. Ceremonial Matcha Latte"
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Price (₹)</label>
+              <input
+                type="number"
+                value={editPlanForm.price}
+                onChange={e => setEditPlanForm({ ...editPlanForm, price: e.target.value })}
+                placeholder="e.g. 240"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold text-amber-600"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Menu Category Section</label>
+              <select
+                value={editPlanForm.section}
+                onChange={e => setEditPlanForm({ ...editPlanForm, section: e.target.value })}
+                className="w-full p-2.5 border rounded-xl bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                {serviceMain?.menuSections?.map(sec => (
+                  <option key={sec._id} value={sec.title}>{sec.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Sub-Category</label>
+              <input
+                type="text"
+                value={editPlanForm.subcat}
+                onChange={e => setEditPlanForm({ ...editPlanForm, subcat: e.target.value })}
+                placeholder="e.g. Coffee"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Weight/Size</label>
+              <input
+                type="text"
+                value={editPlanForm.weight}
+                onChange={e => setEditPlanForm({ ...editPlanForm, weight: e.target.value })}
+                placeholder="e.g. 220g"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Prep Duration</label>
+              <input
+                type="text"
+                value={editPlanForm.duration}
+                onChange={e => setEditPlanForm({ ...editPlanForm, duration: e.target.value })}
+                placeholder="e.g. 15 mins"
+                className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Dish Image</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center justify-center px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl cursor-pointer text-gray-700 font-bold text-xs gap-2 select-none active:scale-[0.98] transition-all">
+                <Upload className="w-4 h-4 text-gray-500" />
+                <span>Change Dish Image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEditDishPhotoChange}
+                  className="hidden"
+                />
+              </label>
+
+              {editPlanForm.image && (
+                <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-gray-300 shadow-sm bg-gray-100 group">
+                  <img
+                    src={editPlanForm.image}
+                    alt="Dish Preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditPlanForm({ ...editPlanForm, image: '' })}
+                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity duration-200"
+                    title="Remove Photo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description</label>
+            <textarea
+              value={editPlanForm.description}
+              onChange={e => setEditPlanForm({ ...editPlanForm, description: e.target.value })}
+              placeholder="Enter dish ingredients or brief description..."
+              className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none min-h-[60px]"
+            />
+          </div>
+
+          <button
+            onClick={handleUpdatePlan}
+            className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs select-none active:scale-[0.98] transition-all"
+          >
+            Update Dish & Save Changes
           </button>
         </div>
       </AdminModal>

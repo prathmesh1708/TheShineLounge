@@ -91,18 +91,12 @@ export default function BookingsPage() {
   useEffect(() => {
     const fetchMyBookings = async () => {
       try {
-        let email = '';
-        const stored = localStorage.getItem('tsl_user');
-        if (stored) {
-          email = JSON.parse(stored).email;
-        }
-
+        // The API already scopes bookings to the signed-in customer. Filtering
+        // again here on a localStorage identity is what used to blank the page
+        // when a staff or admin login had overwritten the shared `tsl_user` key.
         const res = await apiClient.get('/bookings');
-        if (res.data && Array.isArray(res.data.bookings) && res.data.bookings.length > 0) {
-          let userBookings = res.data.bookings;
-          if (email) {
-            userBookings = res.data.bookings.filter(b => (b.customerEmail || '').toLowerCase() === email.toLowerCase());
-          }
+        if (res.data && Array.isArray(res.data.bookings)) {
+          const userBookings = res.data.bookings;
 
           const mapped = userBookings.map(b => {
             const rawDate = b.date || '';
@@ -156,6 +150,15 @@ export default function BookingsPage() {
         initial="hidden"
         animate="show"
       >
+        {!loading && bookings.length === 0 && (
+          <div className="section-card" style={{ padding: '2rem', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.4rem' }}>No bookings yet</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Bookings you make will appear here with live progress tracking.
+            </p>
+          </div>
+        )}
+
         {bookings.map((booking) => (
           <motion.div 
             key={booking.id} 

@@ -3,7 +3,7 @@ import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, 
 import AdminModal from '../common/components/AdminModal';
 import userService from '../../common/services/userService';
 
-const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
+const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Drive-Through Café', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
 const ALL_PERMISSIONS = ['dashboard', 'bookings', 'memberships', 'customers', 'orders', 'inventory', 'reports', 'payments'];
 
 const emptyForm = {

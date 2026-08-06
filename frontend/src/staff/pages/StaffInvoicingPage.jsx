@@ -5,11 +5,34 @@ import { Receipt, Plus, Trash2, IndianRupee, Printer, Check, QrCode, Tag } from 
 export default function StaffInvoicingPage() {
   const { customers, currentStaff, showToast } = useStaff();
 
+  const isCafe = currentStaff?.serviceKey === 'cafe' || (currentStaff?.department || '').toLowerCase().includes('caf');
+  const isDog = currentStaff?.serviceKey === 'dog-wash' || (currentStaff?.department || '').toLowerCase().includes('dog');
+  const isSalon = currentStaff?.serviceKey === 'salon' || (currentStaff?.department || '').toLowerCase().includes('salon');
+
   const [selectedCustomer, setSelectedCustomer] = useState(customers[0]?.id || '');
-  const [items, setItems] = useState([
-    { id: '1', name: 'Deluxe Foam Car Wash', price: 699, qty: 1 },
-    { id: '2', name: 'Artisanal Iced Latte', price: 250, qty: 2 }
-  ]);
+  const [items, setItems] = useState(() => {
+    if (isCafe) {
+      return [
+        { id: '1', name: 'Artisanal Iced Latte', price: 250, qty: 2 },
+        { id: '2', name: 'Drive-Through Breakfast Burrito', price: 350, qty: 1 }
+      ];
+    }
+    if (isDog) {
+      return [
+        { id: '1', name: 'Full Hydrobath & De-shedding Spa', price: 899, qty: 1 }
+      ];
+    }
+    if (isSalon) {
+      return [
+        { id: '1', name: 'Executive Haircut & Beard Grooming', price: 799, qty: 1 }
+      ];
+    }
+    return [
+      { id: '1', name: 'Deluxe Foam Car Wash', price: 699, qty: 1 },
+      { id: '2', name: 'Artisanal Iced Latte', price: 250, qty: 1 }
+    ];
+  });
+
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -36,10 +59,15 @@ export default function StaffInvoicingPage() {
   };
 
   const handleAddItem = () => {
-    setItems(prev => [
-      ...prev,
-      { id: Date.now().toString(), name: 'Executive Grooming Service', price: 499, qty: 1 }
-    ]);
+    const newItem = isCafe
+      ? { id: Date.now().toString(), name: 'Commuter Cold Brew (16 oz)', price: 299, qty: 1 }
+      : isDog
+      ? { id: Date.now().toString(), name: 'Pet Nail Trimming & Ear Cleaning', price: 349, qty: 1 }
+      : isSalon
+      ? { id: Date.now().toString(), name: 'Organic Beard Oil Treatment', price: 399, qty: 1 }
+      : { id: Date.now().toString(), name: 'Executive Grooming Service', price: 499, qty: 1 };
+
+    setItems(prev => [...prev, newItem]);
   };
 
   const handleRemoveItem = (id) => {

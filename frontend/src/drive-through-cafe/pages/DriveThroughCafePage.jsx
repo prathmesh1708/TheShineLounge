@@ -10,14 +10,32 @@ import gourmetChicken from '../../assets/images/gourmet_chicken.png';
 import gourmetDessert from '../../assets/images/gourmet_dessert.png';
 
 import serviceApi from '../../common/services/serviceApi';
+import apiClient from '../../common/utils/apiClient';
 import { useAuth } from '../../common/context/AuthContext';
 import CustomerAuthModal from '../../common/components/CustomerAuthModal';
+import { cacheService } from '../../common/utils/serviceCache';
+
+// Vehicles the customer can pick at the drive-through window. Any vehicle saved
+// on the logged-in account is prepended to this fallback list.
+const FALLBACK_VEHICLES = [
+  { model: 'Tesla Model 3', plate: 'TSL-3000' },
+  { model: 'Mercedes Benz C-Class', plate: 'MBZ-5500' },
+  { model: 'Porsche Taycan', plate: 'PC-911' }
+];
+
+// Minutes ahead of now that each pickup option represents.
+const PICKUP_OPTIONS = [
+  { label: 'Now (Ready in 2 min)', minutes: 2 },
+  { label: 'In 5 minutes', minutes: 5 },
+  { label: 'In 15 minutes', minutes: 15 },
+  { label: 'In 30 minutes', minutes: 30 }
+];
 
 export default function DriveThroughCafePage() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isCustomer: authIsCustomer } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const isCustomer = isAuthenticated && (user?.role === 'customer' || !user?.role);
+  const isCustomer = authIsCustomer || (isAuthenticated && user?.role !== 'staff' && user?.role !== 'admin');
 
   // State variables for catalog flow
   const [activeCategory, setActiveCategory] = useState(null); // null = Home, otherwise name of category
@@ -29,9 +47,35 @@ export default function DriveThroughCafePage() {
   const [cart, setCart] = useState([]); // Array of { item, quantity }
   const [showCheckout, setShowCheckout] = useState(false);
   const [orderStep, setOrderStep] = useState(0); // 0 = Browse/Cart, 1 = Checkout, 2 = Sending, 3 = Preparing, 4 = Ready
-  const [pickupTime, setPickupTime] = useState('Now (Ready in 2 min)');
-  const [selectedVehicle, setSelectedVehicle] = useState('Tesla Model 3 (TSL-3000)');
+  const [pickupTime, setPickupTime] = useState(PICKUP_OPTIONS[0].label);
   const [prepProgress, setPrepProgress] = useState(0);
+  const [orderError, setOrderError] = useState('');
+  const [placedOrder, setPlacedOrder] = useState(null);
+
+  // Vehicles saved on the account come first so the plate the staff sees is the
+  // one the customer actually registered.
+  const vehicleOptions = React.useMemo(() => {
+    const saved = (user?.vehicles || []).map(v => ({
+      model: [v.brand, v.model].filter(Boolean).join(' ') || 'My Vehicle',
+      plate: v.registrationNumber || v.plate || ''
+    })).filter(v => v.plate);
+
+    const seen = new Set();
+    return [...saved, ...FALLBACK_VEHICLES].filter(v => {
+      if (seen.has(v.plate)) return false;
+      seen.add(v.plate);
+      return true;
+    });
+  }, [user]);
+
+  const [selectedPlate, setSelectedPlate] = useState('');
+  const selectedVehicle = vehicleOptions.find(v => v.plate === selectedPlate) || vehicleOptions[0];
+
+  useEffect(() => {
+    if (!selectedPlate && vehicleOptions.length > 0) {
+      setSelectedPlate(vehicleOptions[0].plate);
+    }
+  }, [vehicleOptions, selectedPlate]);
 
   // Live Backend Database State for Drive-Through Cafe Service
   const [liveService, setLiveService] = useState(() => {
@@ -44,7 +88,7 @@ export default function DriveThroughCafePage() {
       const res = await serviceApi.getServiceBySlug('drive-through-cafe');
       if (res.success && res.service) {
         setLiveService(res.service);
-        localStorage.setItem('tsl_drive_through_cafe_service', JSON.stringify(res.service));
+        cacheService('tsl_drive_through_cafe_service', res.service);
         return;
       }
     } catch (err) {
@@ -227,12 +271,9 @@ export default function DriveThroughCafePage() {
   // Order processing animation effect
   useEffect(() => {
     let timer;
-    if (orderStep === 2) {
-      // Step 2: Sending order (1.5s)
-      timer = setTimeout(() => {
-        setOrderStep(3);
-      }, 1500);
-    } else if (orderStep === 3) {
+    // Step 2 (transmitting) is driven by the actual POST in handlePlaceOrder,
+    // so it only advances once the order is really saved.
+    if (orderStep === 3) {
       // Step 3: Preparing order (3s progress animation)
       const interval = setInterval(() => {
         setPrepProgress(prev => {
@@ -249,13 +290,60 @@ export default function DriveThroughCafePage() {
     return () => clearTimeout(timer);
   }, [orderStep]);
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!isCustomer) {
       setShowAuthModal(true);
       return;
     }
+    if (cart.length === 0) return;
+
+    setOrderError('');
     setPrepProgress(0);
-    setOrderStep(2); // Start sending order
+    setOrderStep(2); // Transmitting screen
+
+    const now = new Date();
+    const pickupOption = PICKUP_OPTIONS.find(p => p.label === pickupTime) || PICKUP_OPTIONS[0];
+    const expectedAt = new Date(now.getTime() + pickupOption.minutes * 60000);
+
+    const fmtTime = (d) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const bookingId = `DT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const itemsSummary = cart.map(c => `${c.quantity}x ${c.item.name}`).join(', ');
+
+    const payload = {
+      bookingId,
+      serviceKey: 'drive-through-cafe',
+      serviceName: 'Drive-Through Café',
+      packageName: itemsSummary.slice(0, 120) || 'Express Order',
+      price: Number(getCartTotal().toFixed(2)),
+      date: now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      timeSlot: `${fmtTime(now)} - ${fmtTime(expectedAt)}`,
+      customerName: user?.fullName || user?.name || 'Guest Customer',
+      customerEmail: user?.email || '',
+      vehicleNo: selectedVehicle?.plate || '',
+      vehicleType: selectedVehicle?.model || '',
+      items: cart.map(c => ({
+        name: c.item.name,
+        quantity: c.quantity,
+        price: c.item.price
+      })),
+      pickupTime,
+      expectedAt: expectedAt.toISOString(),
+      status: 'Order Received'
+    };
+
+    try {
+      const res = await apiClient.post('/bookings', payload);
+      setPlacedOrder(res.data?.booking || { ...payload, _id: bookingId });
+      setOrderStep(3); // Preparing
+    } catch (err) {
+      console.error('Error placing drive-through order:', err);
+      setOrderError(
+        err.response?.data?.message || err.message || 'Could not reach the drive-through console.'
+      );
+      setOrderStep(1); // Back to checkout so the customer can retry
+      setShowCheckout(true);
+    }
   };
 
   const handleCompleteOrder = () => {
@@ -263,6 +351,8 @@ export default function DriveThroughCafePage() {
     setOrderStep(0);
     setShowCheckout(false);
     setActiveCategory(null);
+    setPlacedOrder(null);
+    setOrderError('');
   };
 
   // Framer Motion Animation Variants
@@ -327,7 +417,13 @@ export default function DriveThroughCafePage() {
                 <div className="success-icon-badge">✨</div>
                 <h2 className="success-title">Ready for Pickup!</h2>
                 <p className="success-desc">
-                  Drive up to **Window 2** now. Show this screen or mention order **#DT-4820**.
+                  Drive up to <strong>Window 2</strong> now. Show this screen or mention order{' '}
+                  <strong>#{placedOrder?.bookingId || 'DT-0000'}</strong>.
+                </p>
+                <p className="success-desc" style={{ marginTop: '0.35rem' }}>
+                  Vehicle <strong>{placedOrder?.vehicleNo || selectedVehicle?.plate}</strong> ·
+                  Pickup <strong>{placedOrder?.pickupTime || pickupTime}</strong>
+                  {placedOrder?.assignedStaffName ? <> · Barista <strong>{placedOrder.assignedStaffName}</strong></> : null}
                 </p>
 
                 {/* Simulated QR Code */}
@@ -427,14 +523,14 @@ export default function DriveThroughCafePage() {
                 <div className="confirm-details-list">
                   <div className="confirm-detail-item">
                     <span className="confirm-detail-label">Vehicle Registered</span>
-                    <select 
-                      value={selectedVehicle}
-                      onChange={(e) => setSelectedVehicle(e.target.value)}
-                      style={{ 
-                        border: '1px solid var(--border-color)', 
-                        background: '#ffffff', 
-                        borderRadius: '0.5rem', 
-                        padding: '0.4rem', 
+                    <select
+                      value={selectedPlate}
+                      onChange={(e) => setSelectedPlate(e.target.value)}
+                      style={{
+                        border: '1px solid var(--border-color)',
+                        background: '#ffffff',
+                        borderRadius: '0.5rem',
+                        padding: '0.4rem',
                         fontSize: '0.85rem',
                         fontWeight: 700,
                         color: 'var(--text-main)',
@@ -442,9 +538,11 @@ export default function DriveThroughCafePage() {
                         width: '100%'
                       }}
                     >
-                      <option>Tesla Model 3 (TSL-3000)</option>
-                      <option>Mercedes Benz C-Class (MBZ-5500)</option>
-                      <option>Porsche Taycan (PC-911)</option>
+                      {vehicleOptions.map(v => (
+                        <option key={v.plate} value={v.plate}>
+                          {v.model} ({v.plate})
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="confirm-detail-item">
@@ -493,8 +591,25 @@ export default function DriveThroughCafePage() {
                 </div>
               </div>
 
+              {orderError && (
+                <div
+                  role="alert"
+                  style={{
+                    background: '#fee2e2',
+                    border: '1px solid #fca5a5',
+                    color: '#991b1b',
+                    borderRadius: '0.75rem',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 700
+                  }}
+                >
+                  Order not sent: {orderError}
+                </div>
+              )}
+
               {/* Order CTA */}
-              <button 
+              <button
                 className="confirm-final-btn"
                 onClick={handlePlaceOrder}
                 style={{ background: '#f38200' }}

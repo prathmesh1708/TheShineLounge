@@ -311,6 +311,34 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const updateServicePlan = async (serviceId, planId, updatedPlan) => {
+    try {
+      const res = await serviceApi.getServices();
+      if (res.success && res.services) {
+        const target = res.services.find(s => s._id === serviceId || s.slug === serviceId || s.key === serviceId || s.serviceName.toLowerCase().includes(String(serviceId).toLowerCase()));
+        if (target) {
+          await serviceApi.updatePlan(target._id, planId, {
+            name: updatedPlan.name,
+            price: Number(updatedPlan.price),
+            description: updatedPlan.description || '',
+            duration: updatedPlan.duration || '30 mins',
+            features: updatedPlan.features || [],
+            recommended: updatedPlan.recommended || false,
+            section: updatedPlan.section || 'Main Menu',
+            weight: updatedPlan.weight || '',
+            subcat: updatedPlan.subcat || '',
+            image: updatedPlan.image || ''
+          });
+          showToast('Sub-service plan updated successfully!');
+          await fetchServicesList();
+        }
+      }
+    } catch (err) {
+      console.warn('API sync update plan error:', err.message);
+      showToast('Error updating item', 'error');
+    }
+  };
+
   const addServiceSection = async (serviceId, newSection) => {
     try {
       const res = await serviceApi.getServices();
@@ -625,6 +653,7 @@ export const AdminProvider = ({ children }) => {
       toggleServiceStatus,
       updateServicePrice,
       addServicePlan,
+      updateServicePlan,
       deleteServicePlan,
       addServiceSection,
       deleteServiceSection,

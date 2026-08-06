@@ -47,6 +47,27 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Line items for food/beverage orders (cafe & drive-through-cafe)
+  items: {
+    type: [
+      {
+        name: { type: String, default: '' },
+        quantity: { type: Number, default: 1 },
+        price: { type: Number, default: 0 }
+      }
+    ],
+    default: []
+  },
+  // Human-readable arrival/pickup window chosen by the customer
+  pickupTime: {
+    type: String,
+    default: ''
+  },
+  // Absolute time the customer is expected at the bay, used for sorting the queue
+  expectedAt: {
+    type: Date,
+    default: null
+  },
   status: {
     type: String,
     enum: [

@@ -12,8 +12,20 @@ export default function StaffDashboardPage() {
   const staffDept = (currentStaff?.department || '').toLowerCase();
   const isDriveThrough = staffKey === 'drive-through-cafe' || staffDept.includes('drive');
 
+  const myStaffId = String(currentStaff?.id || '');
+  const myStaffName = (currentStaff?.name || '').toLowerCase();
+
+  // A job belongs to me when the admin assigned it to me. Jobs nobody has been
+  // assigned to yet stay visible to the whole department so they are not lost.
+  const isMine = (job) => {
+    const jobStaffId = String(job.staffId || '');
+    if (!jobStaffId) return true;
+    if (jobStaffId === myStaffId) return true;
+    return Boolean(job.staffName) && job.staffName.toLowerCase() === myStaffName;
+  };
+
   // Filter jobs strictly to the logged-in staff member's department
-  const filteredJobs = jobs.filter(j => {
+  const departmentJobs = jobs.filter(j => {
     if (isDriveThrough) {
       return j.serviceKey === 'drive-through-cafe' || (j.serviceName && j.serviceName.toLowerCase().includes('drive'));
     }
@@ -29,8 +41,20 @@ export default function StaffDashboardPage() {
     if (staffKey === 'salon' || staffDept.includes('salon')) {
       return j.serviceKey === 'salon' || (j.serviceName && j.serviceName.toLowerCase().includes('salon'));
     }
-    return j.serviceKey === 'car-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('wash'));
+    if (staffKey === 'car-wash' || staffDept.includes('wash')) {
+      return j.serviceKey === 'car-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('wash'));
+    }
+    return j.serviceKey === staffKey;
   });
+
+  // Newest arrivals first, and only what this staff member is responsible for.
+  const filteredJobs = departmentJobs
+    .filter(isMine)
+    .sort((a, b) => {
+      const aTime = a.expectedAt ? new Date(a.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.expectedAt ? new Date(b.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
 
   const assignedCount = filteredJobs.length;
   const completedCount = filteredJobs.filter(j => j.status?.toLowerCase().includes('completed') || j.status?.toLowerCase().includes('delivered')).length;
@@ -160,73 +184,94 @@ export default function StaffDashboardPage() {
         </div>
 
         <div className="space-y-3">
-          {(jobs || []).slice(0, 5).map(job => {
-            const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
-            const progressPercent = Math.round((stepIdx / 7) * 100);
-
-            return (
-              <div
-                key={job.id}
-                onClick={() => navigate('/staff/bookings')}
-                className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-2 shadow-xs hover:border-amber-400 cursor-pointer transition-all"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">{job.id}</span>
-                      <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
-                    </div>
-                    <p className="text-[11px] font-bold text-blue-900 mt-0.5">
-                      {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
-                    </p>
-                    <div className="text-[10px] text-gray-600 font-medium mt-0.5">
-                      {job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
-                        <span className="flex items-center gap-1">
-                          🐶 <span className="font-bold text-emerald-800">{job.vehicleNo || 'Pet'}</span>
-                        </span>
-                      ) : job.serviceKey === 'salon' ? (
-                        <span className="flex items-center gap-1">
-                          ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
-                        </span>
-                      ) : job.serviceKey === 'cafe' ? (
-                        <span className="flex items-center gap-1">
-                          ☕ <span className="font-bold text-amber-800">{job.vehicleNo || 'Table / Order'}</span>
-                        </span>
-                      ) : (
-                        <span>
-                          🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
-                      {job.status || 'Confirmed'}
-                    </span>
-                    <p className="text-xs font-black text-amber-700 mt-1">₹{job.total || job.amount || 350}</p>
-                  </div>
-                </div>
-
-                {/* Work Completed Progress Bar */}
-                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] gap-2">
-                  <div className="flex-1">
-                    <div className="flex justify-between font-extrabold text-gray-700 mb-0.5">
-                      <span>Work Completed</span>
-                      <span className="text-amber-600">{progressPercent}%</span>
-                    </div>
-                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          {(!jobs || jobs.length === 0) && (
-            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-              <p className="text-xs font-bold text-gray-400">No active orders in queue for this department</p>
+          {filteredJobs.length === 0 ? (
+            <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200 p-6 space-y-2 shadow-2xs">
+              <span className="text-3xl">☕</span>
+              <p className="text-xs font-bold text-gray-800">No active {isDriveThrough ? 'Drive-Thru' : staffKey === 'cafe' ? 'Café' : staffKey === 'dog-wash' ? 'Dog Spa' : staffKey === 'salon' ? 'Salon' : 'department'} orders in queue</p>
+              <p className="text-[10px] text-gray-400 font-medium">New assigned orders for your department will appear here automatically in real time.</p>
             </div>
+          ) : (
+            filteredJobs.slice(0, 5).map(job => {
+              const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
+              // Services have different stepper lengths — a drive-thru order on
+              // its last step is done, not 3/7ths done.
+              const lastStepIdx = job.serviceKey === 'drive-through-cafe' || job.serviceKey === 'cafe' ? 3 : 7;
+              const progressPercent = Math.min(100, Math.round((stepIdx / lastStepIdx) * 100));
+
+              return (
+                <div
+                  key={job.id}
+                  onClick={() => navigate('/staff/bookings')}
+                  className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-2 shadow-xs hover:border-amber-400 cursor-pointer transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">{job.id}</span>
+                        <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
+                      </div>
+                      <p className="text-[11px] font-bold text-blue-900 mt-0.5">
+                        {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
+                      </p>
+                      <div className="text-[10px] text-gray-600 font-medium mt-0.5">
+                        {job.serviceKey === 'drive-through-cafe' ? (
+                          <div className="space-y-1">
+                            <span className="flex items-center gap-1 flex-wrap">
+                              🚗
+                              <span className="font-mono font-black text-sm text-blue-900 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                {job.vehicleNo || 'No plate registered'}
+                              </span>
+                              <span className="text-gray-500">{job.vehicleModel}</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-amber-800 font-bold">
+                              ⏱ Arriving {job.pickupTime || job.timeSlot}
+                            </span>
+                            {job.items && job.items.length > 0 && (
+                              <span className="block text-gray-700">☕ {job.itemsSummary}</span>
+                            )}
+                          </div>
+                        ) : job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
+                          <span className="flex items-center gap-1">
+                            🐶 <span className="font-bold text-emerald-800">{job.vehicleNo || 'Pet'}</span>
+                          </span>
+                        ) : job.serviceKey === 'salon' ? (
+                          <span className="flex items-center gap-1">
+                            ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
+                          </span>
+                        ) : job.serviceKey === 'cafe' ? (
+                          <span className="flex items-center gap-1">
+                            ☕ <span className="font-bold text-amber-800">{job.vehicleNo || 'Table / Order'}</span>
+                          </span>
+                        ) : (
+                          <span>
+                            🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
+                        {job.status || 'Confirmed'}
+                      </span>
+                      <p className="text-xs font-black text-amber-700 mt-1">₹{job.total || job.amount || 350}</p>
+                    </div>
+                  </div>
+
+                  {/* Work Completed Progress Bar */}
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] gap-2">
+                    <div className="flex-1">
+                      <div className="flex justify-between font-extrabold text-gray-700 mb-0.5">
+                        <span>Work Completed</span>
+                        <span className="text-amber-600">{progressPercent}%</span>
+                      </div>
+                      <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       </div>

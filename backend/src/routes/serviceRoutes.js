@@ -17,6 +17,7 @@ const {
   deleteMembership,
   addPlan,
   deletePlan,
+  updatePlan,
   addSection,
   deleteSection
 } = require('../controllers/serviceController');
@@ -38,6 +39,7 @@ router.delete('/:id', authMiddleware, staffOnly, deleteService);
 router.post('/:id/memberships', authMiddleware, staffOnly, addMembership);
 router.delete('/:id/memberships/:memId', authMiddleware, staffOnly, deleteMembership);
 router.post('/:id/plans', authMiddleware, staffOnly, addPlan);
+router.put('/:id/plans/:planId', authMiddleware, staffOnly, updatePlan);
 router.delete('/:id/plans/:planId', authMiddleware, staffOnly, deletePlan);
 router.post('/:id/sections', authMiddleware, staffOnly, addSection);
 router.delete('/:id/sections/:sectionId', authMiddleware, staffOnly, deleteSection);

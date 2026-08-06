@@ -73,6 +73,12 @@ export const serviceApi = {
     return response.data;
   },
 
+  // Admin - Sub-resources: Update Plan
+  updatePlan: async (serviceId, planId, data) => {
+    const response = await apiClient.put(`/services/${serviceId}/plans/${planId}`, data);
+    return response.data;
+  },
+
   // Admin - Sub-resources: Delete Plan
   deletePlan: async (serviceId, planId) => {
     const response = await apiClient.delete(`/services/${serviceId}/plans/${planId}`);

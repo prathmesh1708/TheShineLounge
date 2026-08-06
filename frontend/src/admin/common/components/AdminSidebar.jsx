@@ -128,6 +128,17 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
       ];
     }
 
+    // The café hub tracks counter orders, not bookings, and has no vehicle or
+    // stock modules — those entries rendered empty pages.
+    if (key === 'cafe') {
+      return [
+        { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
+        { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
+        { id: 'staff', label: `Department Staff (${sCount})`, icon: Users },
+        { id: 'marketing', label: `Promos & Banners (${banCount})`, icon: ImageIcon }
+      ];
+    }
+
     if (key === 'dog-wash') {
       return [
         { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },

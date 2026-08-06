@@ -42,6 +42,7 @@ import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
+import { cacheService } from '../../../common/utils/serviceCache';
 
 export default function CarWashAdminHubPage() {
   const serviceKey = 'car-wash';
@@ -158,7 +159,7 @@ export default function CarWashAdminHubPage() {
       if (res.success && res.service) {
         setDbService(res.service);
         setIsLiveConnection(true);
-        localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+        cacheService('tsl_car_wash_service', res.service);
         return;
       }
     } catch (err) {
@@ -256,6 +257,28 @@ export default function CarWashAdminHubPage() {
     : (serviceMain?.memberships || [
         { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR', duration: 30, visitLimit: 999 }
       ]);
+
+  // Per Car Discount as it is currently stored on the service. Read from
+  // dbService rather than the modal's form state so the packages tab shows the
+  // saved policy even before the modal has ever been opened.
+  const savedDiscount = {
+    active: !!dbService?.perCarDiscountActive,
+    amount: Number(dbService?.perCarDiscountAmount) || 0,
+    type: dbService?.perCarDiscountType || 'fixed'
+  };
+  savedDiscount.label = savedDiscount.type === 'percent'
+    ? `${savedDiscount.amount}%`
+    : `₹${savedDiscount.amount}`;
+
+  // Mirrors the checkout math in CarWashConfirmPage so the preview matches
+  // what the customer is actually charged.
+  const applyPerCarDiscount = (price) => {
+    if (!savedDiscount.active) return price;
+    const off = savedDiscount.type === 'percent'
+      ? Math.round(price * (savedDiscount.amount / 100))
+      : savedDiscount.amount;
+    return Math.max(0, price - off);
+  };
 
   // Modal Editing States
   const [editingPriceModal, setEditingPriceModal] = useState(false);
@@ -391,6 +414,15 @@ export default function CarWashAdminHubPage() {
     }
   }, [dbService]);
 
+  // Always open the modal on the saved policy, so an abandoned edit from a
+  // previous open doesn't linger in the form.
+  const openDiscountModal = () => {
+    setDiscountActive(!!dbService?.perCarDiscountActive);
+    setDiscountAmount(Number(dbService?.perCarDiscountAmount) || 0);
+    setDiscountType(dbService?.perCarDiscountType || 'fixed');
+    setDiscountModal(true);
+  };
+
   const handleSaveDiscount = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     try {
@@ -405,7 +437,7 @@ export default function CarWashAdminHubPage() {
         const res = await serviceApi.updateService(targetId, payload);
         if (res.success && res.service) {
           setDbService(res.service);
-          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+          cacheService('tsl_car_wash_service', res.service);
           window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...res.service, slug: 'car-wash' } }));
         }
       }
@@ -443,7 +475,7 @@ export default function CarWashAdminHubPage() {
         bannerImage: heroPosterUrl.trim()
       };
       setDbService(updated);
-      localStorage.setItem('tsl_car_wash_service', JSON.stringify(updated));
+      cacheService('tsl_car_wash_service', updated);
 
       if (showToast) showToast('✅ Hero Video & Poster updated live for /car-wash!');
       alert('✅ Hero Tunnel Video configuration saved successfully! The /car-wash page video is now updated live.');
@@ -909,7 +941,7 @@ export default function CarWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_car_wash_service', newDbService);
       window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast('Car Wash package title, price & details updated live!');
@@ -1010,7 +1042,7 @@ export default function CarWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_car_wash_service', newDbService);
       window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast('New Car Wash service package created!');
@@ -1082,7 +1114,7 @@ export default function CarWashAdminHubPage() {
           });
           if (res.success && res.service) {
             setDbService(res.service);
-            localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+            cacheService('tsl_car_wash_service', res.service);
           }
         } catch (apiErr) {
           console.warn('API delete package error:', apiErr.message);
@@ -1098,7 +1130,7 @@ export default function CarWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_car_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_car_wash_service', newDbService);
       window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...newDbService, slug: 'car-wash' } }));
 
       if (showToast) showToast(`Package "${itemTitle}" deleted successfully`, 'error');
@@ -1204,10 +1236,15 @@ export default function CarWashAdminHubPage() {
             </div>
             <div className="flex items-center gap-2.5">
               <button
-                onClick={() => setDiscountModal(true)}
+                onClick={openDiscountModal}
                 className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
               >
                 <span>🏷️ Per Car Discount</span>
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] uppercase tracking-wider font-black ${
+                  savedDiscount.active ? 'bg-emerald-400 text-emerald-950' : 'bg-zinc-700 text-zinc-300'
+                }`}>
+                  {savedDiscount.active ? 'On' : 'Off'}
+                </span>
               </button>
               <button
                 onClick={() => setAddPackageModal(true)}
@@ -1216,6 +1253,67 @@ export default function CarWashAdminHubPage() {
                 <Plus className="w-4 h-4" /> Add New Package
               </button>
             </div>
+          </div>
+
+          {/* Saved Per Car Discount policy — reflects what is stored on the
+              service right now, so it survives a re-login and is visible
+              without having to open the configuration modal. */}
+          <div className={`rounded-2xl border p-4 shadow-sm ${
+            savedDiscount.active ? 'bg-emerald-50/60 border-emerald-200' : 'bg-gray-50 border-gray-200'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg">🏷️</span>
+                <div>
+                  <h4 className="text-xs font-black text-gray-900 flex items-center gap-2">
+                    Per Car Discount Policy
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] uppercase tracking-wider font-black ${
+                      savedDiscount.active
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-gray-300 text-gray-700'
+                    }`}>
+                      {savedDiscount.active ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-gray-600 mt-0.5">
+                    {savedDiscount.active ? (
+                      <>
+                        <strong>{savedDiscount.label}</strong> off per car — applied at checkout on
+                        membership bookings covering more than one car.
+                      </>
+                    ) : (
+                      <>No discount is being applied at checkout right now.</>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={openDiscountModal}
+                className="px-3 py-2 bg-white border border-gray-300 hover:border-amber-400 text-gray-800 text-[11px] font-bold rounded-xl transition-all"
+              >
+                Change Policy
+              </button>
+            </div>
+
+            {savedDiscount.active && activeMemberships.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-emerald-200/70 flex flex-wrap gap-2">
+                {activeMemberships.map((m) => {
+                  const original = Number(m.price) || 0;
+                  const effective = applyPerCarDiscount(original);
+                  return (
+                    <div
+                      key={`disc-${m._id || m.id || m.name}`}
+                      className="bg-white border border-emerald-200 rounded-xl px-3 py-2 text-[11px]"
+                    >
+                      <span className="block font-bold text-gray-700">{m.name}</span>
+                      <span className="text-gray-400 line-through mr-1.5">₹{original}</span>
+                      <span className="font-black text-emerald-700">₹{effective}</span>
+                      <span className="text-gray-500"> / car</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

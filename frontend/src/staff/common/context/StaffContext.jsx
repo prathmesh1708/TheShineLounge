@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecords, mockStaffNotifications } from '../data/staffMockData';
 import apiClient from '../../../common/utils/apiClient';
+import { useAuth } from '../../../common/context/AuthContext';
 
 const StaffContext = createContext();
 
@@ -89,10 +90,18 @@ export function StaffProvider({ children }) {
     return initial !== null;
   });
 
-  // Sync staff context whenever localStorage tsl_user changes or mounts
+  // Sync staff context whenever localStorage tsl_user changes or authUser changes
+  const { user: authUser } = useAuth();
+
   useEffect(() => {
     const syncStaffUser = () => {
       try {
+        if (authUser && authUser.role === 'staff') {
+          setCurrentStaff(formatStaffUser(authUser));
+          setIsAuthenticated(true);
+          return;
+        }
+
         const stored = localStorage.getItem('tsl_user');
         if (stored) {
           const u = JSON.parse(stored);
@@ -112,7 +121,7 @@ export function StaffProvider({ children }) {
     syncStaffUser();
     window.addEventListener('storage', syncStaffUser);
     return () => window.removeEventListener('storage', syncStaffUser);
-  }, []);
+  }, [authUser]);
 
   // State
   const [jobs, setJobs] = useState([]);
@@ -162,7 +171,9 @@ export function StaffProvider({ children }) {
               resolvedKey = 'dog-wash';
             } else if (sName.includes('salon') || sName.includes('hair') || sName.includes('barber') || pName.includes('salon')) {
               resolvedKey = 'salon';
-            } else if (sName.includes('cafe') || sName.includes('coffee') || sName.includes('drive')) {
+            } else if (sName.includes('drive') || sName.includes('drive-thru')) {
+              resolvedKey = 'drive-through-cafe';
+            } else if (sName.includes('cafe') || sName.includes('coffee')) {
               resolvedKey = 'cafe';
             } else if (sName.includes('detail') || pName.includes('detail') || pName.includes('ceramic') || pName.includes('ppf')) {
               resolvedKey = 'car-detailing';
@@ -177,8 +188,12 @@ export function StaffProvider({ children }) {
             serviceKey: resolvedKey,
             serviceName: b.serviceName || b.plan || b.package || (resolvedKey === 'dog-wash' ? 'Dog Wash' : 'Car Wash'),
             planName: b.packageName || b.package || b.serviceName || (resolvedKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Wash'),
-            itemsSummary: b.itemsSummary || b.packageName || 'Service Order',
+            itemsSummary: (b.items && b.items.length > 0)
+              ? b.items.map(i => `${i.quantity}x ${i.name}`).join(', ')
+              : (b.itemsSummary || b.packageName || 'Service Order'),
             items: b.items || [],
+            pickupTime: b.pickupTime || '',
+            expectedAt: b.expectedAt || null,
             vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
@@ -192,8 +207,8 @@ export function StaffProvider({ children }) {
             stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
             notes: b.notes || '',
             photos: b.photos || [],
-            staffId: b.assignedStaffId || 'STF-LIVE',
-            staffName: b.assignedStaffName || 'Specialist'
+            staffId: b.assignedStaffId ? String(b.assignedStaffId) : '',
+            staffName: b.assignedStaffName || ''
           };
         });
       }
@@ -263,7 +278,16 @@ export function StaffProvider({ children }) {
       }
     } catch (e) {}
 
-    const combined = [...apiMapped, ...localDetailingJobs, ...localDogJobs];
+    // A job already returned by the API must not be duplicated by its local
+    // storage mirror — the mirror carries only the display id as its _id.
+    const apiIds = new Set(apiMapped.flatMap(j => [j.id, j._id].filter(Boolean)));
+    const notAlreadyLive = (j) => !apiIds.has(j.id) && !apiIds.has(j._id);
+
+    const combined = [
+      ...apiMapped,
+      ...localDetailingJobs.filter(notAlreadyLive),
+      ...localDogJobs.filter(notAlreadyLive)
+    ];
     const finalJobsList = combined.length > 0 ? combined : mockAssignedJobs;
     setJobs(finalJobsList);
   };
@@ -328,13 +352,17 @@ export function StaffProvider({ children }) {
   };
 
   useEffect(() => {
-    if (currentStaff) {
-      if (currentStaff.id && !currentStaff.id.toString().startsWith('STF-')) {
-        fetchLiveAttendance(currentStaff.id);
-      }
-      fetchLiveJobs();
-      fetchLiveCustomers();
+    if (!currentStaff) return;
+
+    if (currentStaff.id && !currentStaff.id.toString().startsWith('STF-')) {
+      fetchLiveAttendance(currentStaff.id);
     }
+    fetchLiveJobs();
+    fetchLiveCustomers();
+
+    // Poll so orders placed by customers land in the queue without a refresh.
+    const interval = setInterval(fetchLiveJobs, 10000);
+    return () => clearInterval(interval);
   }, [currentStaff]);
 
   // Camera Modal State
@@ -425,10 +453,18 @@ export function StaffProvider({ children }) {
 
     let updatedTargetJob = null;
 
+    // The same job can appear twice — once from the API and once from a local
+    // storage mirror whose _id is only the display id — so lock onto the
+    // database-backed copy first and never let the mirror overwrite it.
+    const isMongoId = (val) => /^[a-f\d]{24}$/i.test(String(val || ''));
+    const matchesJob = (job) => job.id === jobId || job._id === jobId;
+    const preferredId =
+      jobs.find(job => matchesJob(job) && isMongoId(job._id))?._id || null;
+
     // 1. Optimistically update local jobs state and persist tsl_staff_jobs_sync
     setJobs(prev => {
       const nextJobs = prev.map(job => {
-        if (job.id === jobId || job._id === jobId) {
+        if (matchesJob(job)) {
           const updatedPhotos = photoUrl ? [...(job.photos || []), photoUrl] : job.photos;
           const uJob = {
             ...job,
@@ -437,7 +473,7 @@ export function StaffProvider({ children }) {
             notes: notes || job.notes,
             photos: updatedPhotos
           };
-          updatedTargetJob = uJob;
+          if (!updatedTargetJob || isMongoId(job._id)) updatedTargetJob = uJob;
           return uJob;
         }
         return job;
@@ -452,46 +488,52 @@ export function StaffProvider({ children }) {
 
     showToast(`Job ${jobId} updated to "${newStatus}"`, 'success');
 
-    // 2. Persist to local storage shine_car_detailing_bookings and build updated timeline for user tracking
-    try {
-      const stored = localStorage.getItem('shine_car_detailing_bookings');
-      let parsed = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(parsed)) parsed = [];
+    // 2. Persist to local storage shine_car_detailing_bookings and build updated timeline for user tracking.
+    // Only detailing jobs belong in this mirror — writing other services here
+    // re-imports them as phantom detailing jobs on the next poll.
+    const isDetailingJob =
+      !updatedTargetJob || updatedTargetJob.serviceKey === 'car-detailing';
+    if (isDetailingJob) {
+      try {
+        const stored = localStorage.getItem('shine_car_detailing_bookings');
+        let parsed = stored ? JSON.parse(stored) : [];
+        if (!Array.isArray(parsed)) parsed = [];
 
-      const updatedTimeline = ALL_STEPS.map((stepLabel, idx) => ({
-        status: stepLabel,
-        time: idx <= newStepIndex ? (idx === newStepIndex ? `Active Phase (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : 'Done') : 'Pending',
-        active: idx <= newStepIndex
-      }));
+        const updatedTimeline = ALL_STEPS.map((stepLabel, idx) => ({
+          status: stepLabel,
+          time: idx <= newStepIndex ? (idx === newStepIndex ? `Active Phase (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : 'Done') : 'Pending',
+          active: idx <= newStepIndex
+        }));
 
-      const matchedIndex = parsed.findIndex(b => b.id === jobId || b._id === jobId);
+        const matchedIndex = parsed.findIndex(b => b.id === jobId || b._id === jobId);
 
-      if (matchedIndex !== -1) {
-        parsed[matchedIndex] = {
-          ...parsed[matchedIndex],
-          status: computedStatus,
-          stepIndex: newStepIndex,
-          technician: currentStaff?.name || 'suryansh',
-          timeline: updatedTimeline
-        };
-      } else {
-        const newEntry = {
-          id: jobId,
-          status: computedStatus,
-          stepIndex: newStepIndex,
-          technician: currentStaff?.name || 'suryansh',
-          package: updatedTargetJob?.planName || updatedTargetJob?.serviceName || 'Car Detailing Treatment',
-          price: updatedTargetJob?.total || updatedTargetJob?.amount || 2348,
-          customerName: updatedTargetJob?.customerName || 'Car Owner',
-          vehicle: updatedTargetJob?.vehicleModel || 'Vehicle',
-          vehicleNo: updatedTargetJob?.vehicleNo || 'MP092545',
-          timeline: updatedTimeline
-        };
-        parsed.unshift(newEntry);
-      }
+        if (matchedIndex !== -1) {
+          parsed[matchedIndex] = {
+            ...parsed[matchedIndex],
+            status: computedStatus,
+            stepIndex: newStepIndex,
+            technician: currentStaff?.name || 'suryansh',
+            timeline: updatedTimeline
+          };
+        } else {
+          const newEntry = {
+            id: jobId,
+            status: computedStatus,
+            stepIndex: newStepIndex,
+            technician: currentStaff?.name || 'suryansh',
+            package: updatedTargetJob?.planName || updatedTargetJob?.serviceName || 'Car Detailing Treatment',
+            price: updatedTargetJob?.total || updatedTargetJob?.amount || 2348,
+            customerName: updatedTargetJob?.customerName || 'Car Owner',
+            vehicle: updatedTargetJob?.vehicleModel || 'Vehicle',
+            vehicleNo: updatedTargetJob?.vehicleNo || 'MP092545',
+            timeline: updatedTimeline
+          };
+          parsed.unshift(newEntry);
+        }
 
-      localStorage.setItem('shine_car_detailing_bookings', JSON.stringify(parsed));
-    } catch (e) {}
+        localStorage.setItem('shine_car_detailing_bookings', JSON.stringify(parsed));
+      } catch (e) {}
+    }
 
     // Dispatch global data changed events & broadcast live sync so user live tracking page updates immediately!
     if (typeof window !== 'undefined') {
@@ -506,12 +548,17 @@ export function StaffProvider({ children }) {
 
     // 3. Call PUT /bookings/:id in backend
     try {
-      const mongoId = updatedTargetJob?._id;
-      if (mongoId) {
-        await apiClient.put(`/bookings/${mongoId}`, {
+      // Prefer the Mongo _id; otherwise send the booking id, which the API
+      // resolves too. Never send a local-mirror _id that is neither.
+      const targetId = preferredId
+        || (isMongoId(updatedTargetJob?._id) ? updatedTargetJob._id : null)
+        || updatedTargetJob?.id
+        || jobId;
+      if (targetId) {
+        await apiClient.put(`/bookings/${targetId}`, {
           status: computedStatus,
           stepIndex: newStepIndex,
-          notes: notes || updatedTargetJob.notes,
+          notes: notes || updatedTargetJob?.notes,
           photoUrl
         });
       }

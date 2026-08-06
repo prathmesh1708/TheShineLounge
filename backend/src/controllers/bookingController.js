@@ -1,4 +1,20 @@
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
+const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
+
+// Staff screens address a job by whatever id they have on hand — the Mongo _id
+// for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
+// for ones that came from local storage. Accept either instead of letting a
+// non-ObjectId blow up findById with a CastError.
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const findBookingByAnyId = async (id) => {
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    const byObjectId = await Booking.findById(id);
+    if (byObjectId) return byObjectId;
+  }
+  return Booking.findOne({ bookingId: id });
+};
 
 // @desc    Create a new booking
 // @route   POST /api/bookings
@@ -16,7 +32,11 @@ const createBooking = async (req, res) => {
       customerName,
       customerEmail,
       vehicleNo,
-      vehicleType
+      vehicleType,
+      items,
+      pickupTime,
+      expectedAt,
+      status
     } = req.body;
 
     if (!serviceKey || !serviceName || !packageName || !price || !date || !timeSlot || !customerName) {
@@ -38,6 +58,10 @@ const createBooking = async (req, res) => {
     // Auto generate booking ID if not supplied
     const finalBookingId = bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    // Route the job to whichever staff member the admin has staffed on this
+    // service, so it lands in that person's queue the moment it is created.
+    const assignedStaff = await findStaffForService(serviceKey);
+
     const booking = await Booking.create({
       bookingId: finalBookingId,
       serviceKey,
@@ -49,8 +73,18 @@ const createBooking = async (req, res) => {
       customerName,
       customerEmail: customerEmail || '',
       vehicleNo: vehicleNo || '',
-      vehicleType: vehicleType || ''
+      vehicleType: vehicleType || '',
+      items: Array.isArray(items) ? items : [],
+      pickupTime: pickupTime || '',
+      expectedAt: expectedAt ? new Date(expectedAt) : null,
+      ...(status ? { status } : {}),
+      assignedStaffId: assignedStaff ? assignedStaff._id : null,
+      assignedStaffName: assignedStaff ? assignedStaff.fullName : ''
     });
+
+    if (assignedStaff) {
+      await notifyStaffOfBooking(assignedStaff, booking);
+    }
 
     res.status(201).json({
       success: true,
@@ -70,10 +104,25 @@ const createBooking = async (req, res) => {
 // @access  Private (Admin/Staff)
 const getBookings = async (req, res) => {
   try {
-    const { serviceKey } = req.query;
+    const { serviceKey, assignedStaffId, mine } = req.query;
     const query = {};
     if (serviceKey) {
       query.serviceKey = serviceKey;
+    }
+    // `mine=true` lets a logged-in staff member pull only their own queue
+    // without having to know their own id client-side.
+    if (mine === 'true' && req.user) {
+      query.assignedStaffId = req.user._id;
+    } else if (assignedStaffId) {
+      query.assignedStaffId = assignedStaffId;
+    }
+
+    // A customer only ever sees their own bookings. Scoping here rather than in
+    // the client means the customer app can't be thrown off by a stale
+    // localStorage identity, and no one else's bookings leave the server.
+    const role = req.user?.role;
+    if (req.user && role !== 'admin' && role !== 'staff') {
+      query.customerEmail = new RegExp(`^${escapeRegex(req.user.email || '')}$`, 'i');
     }
 
     const bookings = await Booking.find(query).sort({ createdAt: -1 });
@@ -96,7 +145,7 @@ const getBookings = async (req, res) => {
 // @access  Private (Admin/Staff)
 const updateBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await findBookingByAnyId(req.params.id);
 
     if (!booking) {
       return res.status(404).json({
@@ -114,6 +163,10 @@ const updateBooking = async (req, res) => {
       assignedStaffName
     } = req.body;
 
+    const previousStaffId = booking.assignedStaffId
+      ? String(booking.assignedStaffId)
+      : null;
+
     if (status !== undefined) booking.status = status;
     if (stepIndex !== undefined) booking.stepIndex = stepIndex;
     if (notes !== undefined) booking.notes = notes;
@@ -126,6 +179,15 @@ const updateBooking = async (req, res) => {
     }
 
     await booking.save();
+
+    // Admin moved this job to a different staff member — tell the new owner.
+    const newStaffId = booking.assignedStaffId ? String(booking.assignedStaffId) : null;
+    if (newStaffId && newStaffId !== previousStaffId) {
+      await notifyStaffOfBooking(
+        { _id: booking.assignedStaffId, fullName: booking.assignedStaffName },
+        booking
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -145,7 +207,7 @@ const updateBooking = async (req, res) => {
 // @access  Private (Admin Only)
 const deleteBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await findBookingByAnyId(req.params.id);
 
     if (!booking) {
       return res.status(404).json({

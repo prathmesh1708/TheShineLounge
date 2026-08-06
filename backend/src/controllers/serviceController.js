@@ -165,6 +165,15 @@ const deletePlan = async (req, res) => {
   }
 };
 
+const updatePlan = async (req, res) => {
+  try {
+    const service = await serviceService.updatePlan(req.params.id, req.params.planId, req.body);
+    res.status(200).json({ success: true, message: 'Plan updated successfully', service });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 const addSection = async (req, res) => {
   try {
     const service = await serviceService.addSection(req.params.id, req.body);
@@ -197,6 +206,7 @@ module.exports = {
   deleteMembership,
   addPlan,
   deletePlan,
+  updatePlan,
   addSection,
   deleteSection
 };

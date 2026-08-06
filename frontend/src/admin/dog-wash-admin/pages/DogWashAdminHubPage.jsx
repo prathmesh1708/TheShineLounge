@@ -46,6 +46,7 @@ import AdminModal from '../../common/components/AdminModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { getMachineConfig, saveMachineConfig } from '../../../dog-wash/services/dogWashApi';
+import { cacheService } from '../../../common/utils/serviceCache';
 
 export default function DogWashAdminHubPage() {
   const serviceKey = 'dog-wash';
@@ -102,7 +103,7 @@ export default function DogWashAdminHubPage() {
       if (res.success && res.service) {
         setDbService(res.service);
         try {
-          localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+          cacheService('tsl_dog_wash_service', res.service);
         } catch (storageErr) {
           console.warn('Could not cache dog wash service to localStorage:', storageErr);
         }
@@ -286,7 +287,7 @@ export default function DogWashAdminHubPage() {
 
       setDbService(updatedDb);
       try {
-        localStorage.setItem('tsl_dog_wash_service', JSON.stringify(updatedDb));
+        cacheService('tsl_dog_wash_service', updatedDb);
       } catch (storageErr) {
         console.warn('LocalStorage quota exceeded when storing video; updated state live in-memory:', storageErr);
       }
@@ -637,7 +638,7 @@ export default function DogWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_dog_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_dog_wash_service', newDbService);
 
       if (showToast) showToast('Dog Wash package title, price & details updated live!');
       updateServicePrice(serviceMain.id, numPrice);
@@ -723,7 +724,7 @@ export default function DogWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_dog_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_dog_wash_service', newDbService);
 
       if (showToast) showToast('New Dog Wash service package created!');
       setAddPackageModal(false);
@@ -788,7 +789,7 @@ export default function DogWashAdminHubPage() {
           });
           if (res.success && res.service) {
             setDbService(res.service);
-            localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+            cacheService('tsl_dog_wash_service', res.service);
           }
         } catch (apiErr) {
           console.warn('API delete package error:', apiErr.message);
@@ -804,7 +805,7 @@ export default function DogWashAdminHubPage() {
       };
 
       setDbService(newDbService);
-      localStorage.setItem('tsl_dog_wash_service', JSON.stringify(newDbService));
+      cacheService('tsl_dog_wash_service', newDbService);
 
       if (showToast) showToast(`Package "${itemTitle}" deleted successfully`, 'error');
     } catch (err) {

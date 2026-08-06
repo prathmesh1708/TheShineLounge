@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../../common/utils/apiClient';
+import { cacheService } from '../../common/utils/serviceCache';
 
 export default function CarWashConfirmPage() {
   const location = useLocation();
@@ -26,7 +27,7 @@ export default function CarWashConfirmPage() {
         const res = await apiClient.get('/services/car-wash');
         if (res.data && res.data.service) {
           setDbService(res.data.service);
-          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.data.service));
+          cacheService('tsl_car_wash_service', res.data.service);
         }
       } catch (err) {
         console.warn('Could not load service details for discount computation');

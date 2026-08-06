@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { carwashMockData } from '../data/carwashMockData';
 import serviceApi from '../../common/services/serviceApi';
+import { cacheService } from '../../common/utils/serviceCache';
 
 const DEFAULT_VEHICLES = [
   { id: 'v1', brand: 'Hyundai', name: 'Hyundai Elite i20', year: '2023', plate: 'MP09WC4444', icon: '🏎️' },
@@ -174,7 +175,7 @@ export default function CarWashPage() {
         const res = await serviceApi.getServiceBySlug('car-wash');
         if (res.success && res.service) {
           setDbService(res.service);
-          localStorage.setItem('tsl_car_wash_service', JSON.stringify(res.service));
+          cacheService('tsl_car_wash_service', res.service);
           const liveItems = (res.service.pricing && res.service.pricing.length > 0) ? res.service.pricing : res.service.plans;
           if (liveItems && liveItems.length > 0) {
             setSelectedService({

@@ -219,6 +219,20 @@ class ServiceService {
     return service;
   }
 
+  // Update Plan
+  async updatePlan(serviceId, planId, planData) {
+    const service = await Service.findOne({ _id: serviceId, isDeleted: false });
+    if (!service) throw new Error('Service not found');
+
+    const plan = service.plans.id(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    Object.assign(plan, planData);
+    await service.save();
+    return service;
+  }
+
+
   // Add Menu Section
   async addSection(serviceId, sectionData) {
     const service = await Service.findOne({ _id: serviceId, isDeleted: false });

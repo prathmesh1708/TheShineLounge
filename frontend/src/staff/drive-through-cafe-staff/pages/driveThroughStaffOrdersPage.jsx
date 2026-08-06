@@ -4,10 +4,26 @@ import DriveThroughStaffCard from '../components/driveThroughStaffCard';
 import { CupSoda } from 'lucide-react';
 
 export default function DriveThroughStaffOrdersPage() {
-  const { jobs, updateJobStatus } = useStaff();
+  const { jobs, updateJobStatus, currentStaff } = useStaff();
   const [filter, setFilter] = useState('all');
 
-  const dtJobs = jobs.filter(j => j.serviceKey === 'drive-through-cafe');
+  const myStaffId = String(currentStaff?.id || '');
+  const myStaffName = (currentStaff?.name || '').toLowerCase();
+
+  // Show orders the admin assigned to me, plus any not yet assigned to anyone.
+  const dtJobs = jobs
+    .filter(j => j.serviceKey === 'drive-through-cafe')
+    .filter(j => {
+      const jobStaffId = String(j.staffId || '');
+      if (!jobStaffId) return true;
+      if (jobStaffId === myStaffId) return true;
+      return Boolean(j.staffName) && j.staffName.toLowerCase() === myStaffName;
+    })
+    .sort((a, b) => {
+      const aTime = a.expectedAt ? new Date(a.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.expectedAt ? new Date(b.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
 
   const filteredJobs = dtJobs.filter(j => {
     if (filter === 'in-progress') return j.stepIndex > 0 && j.stepIndex < 3;

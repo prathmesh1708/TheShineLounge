@@ -11,10 +11,10 @@ export default function BookingForm({
   extraFieldOptions = [],
   accentColor 
 }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isCustomer: authIsCustomer } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  const isCustomer = isAuthenticated && (user?.role === 'customer' || !user?.role);
+  const isCustomer = authIsCustomer || (isAuthenticated && user?.role !== 'staff' && user?.role !== 'admin');
 
   const [formData, setFormData] = useState({
     fullName: isCustomer ? (user?.fullName || user?.name || '') : '',

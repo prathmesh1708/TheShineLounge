@@ -3,6 +3,13 @@ import authService from '../services/authService';
 
 const AuthContext = createContext(null);
 
+// /admin and /staff share the privileged session; everything else is the
+// customer app. Without /staff here the staff panel would restore whatever
+// customer token happened to be in storage and act as that customer.
+const isStaffOrAdminPath = () =>
+  window.location.pathname.startsWith('/admin') ||
+  window.location.pathname.startsWith('/staff');
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('tsl_token') || null);
@@ -11,7 +18,7 @@ export function AuthProvider({ children }) {
   // Validate existing token on mount (Route-Aware: Customer vs Admin)
   useEffect(() => {
     const validateSession = async () => {
-      const isPathAdmin = window.location.pathname.startsWith('/admin');
+      const isPathAdmin = isStaffOrAdminPath();
 
       let storedToken = localStorage.getItem('tsl_token');
       const customerToken = localStorage.getItem('tsl_customer_token');
@@ -38,6 +45,10 @@ export function AuthProvider({ children }) {
         if (data.success) {
           setUser(data.user);
           setToken(targetToken);
+
+          // Keep the shared key pointing at the identity actually in use here,
+          // so consumers still reading `tsl_user` don't see a stale role.
+          localStorage.setItem('tsl_user', JSON.stringify(data.user));
 
           // Store scoped session backup
           if (data.user.role === 'admin' || data.user.role === 'staff') {
@@ -82,16 +93,25 @@ export function AuthProvider({ children }) {
   const clearAuth = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('tsl_token');
-    localStorage.removeItem('tsl_user');
 
-    const isPathAdmin = window.location.pathname.startsWith('/admin');
+    const isPathAdmin = isStaffOrAdminPath();
+    const scopedTokenKey = isPathAdmin ? 'tsl_admin_token' : 'tsl_customer_token';
+    const scopedToken = localStorage.getItem(scopedTokenKey);
+
     if (isPathAdmin) {
       localStorage.removeItem('tsl_admin_token');
       localStorage.removeItem('tsl_admin_user');
     } else {
       localStorage.removeItem('tsl_customer_token');
       localStorage.removeItem('tsl_customer_user');
+    }
+
+    // Only drop the shared keys if they belong to the session being cleared.
+    // A failed customer session used to sign the admin out of its own tab.
+    const sharedToken = localStorage.getItem('tsl_token');
+    if (!sharedToken || !scopedToken || sharedToken === scopedToken) {
+      localStorage.removeItem('tsl_token');
+      localStorage.removeItem('tsl_user');
     }
   };
 
@@ -152,7 +172,7 @@ export function AuthProvider({ children }) {
     token,
     loading,
     isAuthenticated: !!user && !!token,
-    isCustomer: !!user && !!token && (user.role === 'customer' || !user.role),
+    isCustomer: !!user && !!token && user.role !== 'staff' && user.role !== 'admin',
     isStaff: !!user && !!token && user.role === 'staff',
     isAdmin: !!user && !!token && user.role === 'admin',
     role: user?.role || null,

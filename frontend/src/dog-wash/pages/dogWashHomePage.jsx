@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import serviceApi from '../../common/services/serviceApi';
 import dogWashVideo from '../../assets/images/dog-wash-banner.mp4';
 import { getMachineConfig } from '../services/dogWashApi';
+import { cacheService } from '../../common/utils/serviceCache';
 
 const DEFAULT_FAQS = [
   {
@@ -77,7 +78,7 @@ export default function DogWashHomePage() {
         const res = await serviceApi.getServiceBySlug('dog-wash');
         if (res.success && res.service) {
           setDbService(res.service);
-          localStorage.setItem('tsl_dog_wash_service', JSON.stringify(res.service));
+          cacheService('tsl_dog_wash_service', res.service);
           const livePricing = res.service.pricing && res.service.pricing.length > 0
             ? res.service.pricing
             : res.service.plans;

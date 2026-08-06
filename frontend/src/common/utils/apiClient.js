@@ -17,9 +17,16 @@ apiClient.interceptors.request.use(
     const customerToken = localStorage.getItem('tsl_customer_token');
     const genericToken = localStorage.getItem('tsl_token');
 
+    // `tsl_token` is shared and gets rewritten by whichever panel loaded last,
+    // so only fall back to it when it isn't the other scope's token. Sending a
+    // customer token to an admin page 401s, and the response interceptor below
+    // turns that into a forced logout.
+    const genericIsCustomers = genericToken && genericToken === customerToken;
+    const genericIsAdmins = genericToken && genericToken === adminToken;
+
     let token = isPathAdminOrStaff
-      ? (adminToken || genericToken)
-      : (customerToken || genericToken);
+      ? (adminToken || (genericIsCustomers ? null : genericToken))
+      : (customerToken || (genericIsAdmins ? null : genericToken));
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
