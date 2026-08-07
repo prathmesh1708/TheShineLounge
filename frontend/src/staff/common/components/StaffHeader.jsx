@@ -1,18 +1,18 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Bell, Sparkles, Camera, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Camera } from 'lucide-react';
 import TSLLogo from '../../../common/components/TSLLogo';
 import { useStaff } from '../context/StaffContext';
 import { useAuth } from '../../../common/context/AuthContext';
+import NotificationBell from '../../../common/components/NotificationBell';
 
 export default function StaffHeader({ title }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentStaff, isCheckedIn, notifications } = useStaff();
+  const { currentStaff, isCheckedIn } = useStaff();
   const { user } = useAuth();
 
   const isHome = location.pathname === '/staff' || location.pathname === '/staff/dashboard';
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
     <header className="sticky top-0 z-30 h-14 px-4 flex items-center justify-between shadow-md" style={{ backgroundColor: '#1e4a7e' }}>
@@ -43,7 +43,7 @@ export default function StaffHeader({ title }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 text-white">
         <button
           onClick={() => navigate('/staff/attendance')}
           className="px-2 py-1 rounded-full text-[10px] font-extrabold flex items-center gap-1 text-white border border-blue-400/40 hover:bg-blue-800/60"
@@ -52,15 +52,7 @@ export default function StaffHeader({ title }) {
           <span>{isCheckedIn ? 'Checked In' : 'Check In'}</span>
         </button>
 
-        <button
-          onClick={() => navigate('/staff/notifications')}
-          className="relative p-2 rounded-xl text-blue-100 hover:text-white hover:bg-blue-800/60 transition-colors"
-        >
-          <Bell className="w-5 h-5" />
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-          )}
-        </button>
+        <NotificationBell isStaff={true} />
       </div>
     </header>
   );

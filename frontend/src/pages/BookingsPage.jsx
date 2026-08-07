@@ -54,6 +54,17 @@ export default function BookingsPage() {
     return `${start} - ${end}`;
   };
 
+  const shouldShowTimeSlot = (booking) => {
+    const key = (booking.serviceKey || '').toLowerCase();
+    const serviceName = (booking.service || '').toLowerCase();
+    return (
+      key.includes('salon') ||
+      key.includes('cafe') ||
+      serviceName.includes('salon') ||
+      serviceName.includes('cafe')
+    );
+  };
+
   // Dynamic Active Bookings Fallback List
   const mockBookings = [
     {
@@ -202,10 +213,12 @@ export default function BookingsPage() {
                 <span className="summary-label">Date:</span>
                 <span className="summary-value">{booking.date}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span className="summary-label">Time Slot:</span>
-                <span className="summary-value">{booking.time}</span>
-              </div>
+              {shouldShowTimeSlot(booking) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="summary-label">Time Slot:</span>
+                  <span className="summary-value">{booking.time}</span>
+                </div>
+              )}
             </div>
 
             {/* Expanded Real-Time Progress Tracker Stepper */}

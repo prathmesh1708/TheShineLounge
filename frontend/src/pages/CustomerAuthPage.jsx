@@ -4,6 +4,24 @@ import { Mail, Lock, User, Phone, Eye, EyeOff, AlertCircle, Sparkles, CheckCircl
 import TSLLogo from '../common/components/TSLLogo';
 import { useAuth } from '../common/context/AuthContext';
 
+const COUNTRY_CODES = [
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+  { code: '+1', country: 'USA / Canada', flag: '🇺🇸' },
+  { code: '+44', country: 'UK', flag: '🇬🇧' },
+  { code: '+971', country: 'UAE', flag: '🇦🇪' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪' },
+  { code: '+33', country: 'France', flag: '🇫🇷' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+977', country: 'Nepal', flag: '🇳🇵' },
+  { code: '+94', country: 'Sri Lanka', flag: '🇱🇰' },
+  { code: '+880', country: 'Bangladesh', flag: '🇧🇩' },
+];
+
 export default function CustomerAuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,6 +39,7 @@ export default function CustomerAuthPage() {
   // Form State
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [countryCode, setCountryCode] = useState('+91');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -28,6 +47,12 @@ export default function CustomerAuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Mobile input handler - restrict strictly to digits and max 10
+  const handleMobileChange = (e) => {
+    const sanitized = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setMobile(sanitized);
+  };
 
   // If already authenticated as user, redirect to user dashboard
   useEffect(() => {
@@ -72,6 +97,11 @@ export default function CustomerAuthPage() {
     setError('');
     setSuccessMsg('');
 
+    if (!mobile || mobile.length !== 10) {
+      setError('Mobile phone number must be strictly 10 digits');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -89,7 +119,7 @@ export default function CustomerAuthPage() {
         fullName,
         email,
         password,
-        mobile
+        mobile: `${countryCode} ${mobile}`
       });
 
       if (data.success) {
@@ -275,16 +305,48 @@ export default function CustomerAuthPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Mobile Phone Number</label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-4 top-3.5" />
-                  <input
-                    type="text"
-                    value={mobile}
-                    onChange={e => setMobile(e.target.value)}
-                    placeholder="+91 98000 00000"
-                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white/50 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                  />
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Mobile Phone Number * <span className="text-[10px] text-slate-400 font-normal">(10 digits required)</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <select
+                      value={countryCode}
+                      onChange={e => setCountryCode(e.target.value)}
+                      className="h-full pl-3 pr-7 py-3 rounded-xl border border-slate-200 bg-white/50 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all appearance-none cursor-pointer"
+                    >
+                      {COUNTRY_CODES.map((item) => (
+                        <option key={item.code + item.country} value={item.code}>
+                          {item.flag} {item.code}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400">
+                      <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20">
+                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="relative flex-1">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-4 top-3.5" />
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      value={mobile}
+                      onChange={handleMobileChange}
+                      placeholder="9800000000"
+                      required
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white/50 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-1 text-[10px]">
+                  <span className={mobile.length === 10 ? "text-emerald-600 font-extrabold" : "text-slate-400 font-semibold"}>
+                    {mobile.length === 10 ? "✓ 10 digits entered" : "Enter exactly 10 digits"}
+                  </span>
+                  <span className="text-slate-400 font-medium">{mobile.length}/10</span>
                 </div>
               </div>
 
