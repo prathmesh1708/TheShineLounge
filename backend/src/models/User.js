@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { normalizePlate } = require('../utils/plateNormalizer');
 
 const userSchema = new mongoose.Schema(
   {
@@ -102,6 +103,75 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: 'Main Branch'
     },
+    city: {
+      type: String,
+      default: 'Mumbai'
+    },
+    loyaltyPoints: {
+      type: Number,
+      default: 0
+    },
+    totalSpent: {
+      type: Number,
+      default: 0
+    },
+    vehicles: [
+      {
+        plateNumber: { type: String, default: '' },
+        // Separators-stripped, uppercased copy of plateNumber. ANPR cameras and
+        // customers never format a plate the same way, so every lookup goes
+        // through this field. Kept in sync by the pre-save hook below.
+        plateNormalized: { type: String, default: '', index: true },
+        model: { type: String, default: '' },
+        category: { type: String, default: 'Car' },
+        isPrimary: { type: Boolean, default: false },
+        // How this vehicle came to be on the account, so an unverified plate
+        // seen once by a camera is not treated like one the customer entered.
+        addedVia: {
+          type: String,
+          enum: ['self', 'staff', 'admin', 'anpr'],
+          default: 'self'
+        },
+        verifiedAt: { type: Date, default: null }
+      }
+    ],
+    membership: {
+      planName: { type: String, default: '' },
+      serviceKey: { type: String, default: 'car-wash' },
+      startDate: { type: Date, default: null },
+      expiryDate: { type: Date, default: null },
+      status: {
+        type: String,
+        enum: ['Active', 'Due for Renewal', 'Expired', 'Suspended', 'None'],
+        default: 'None'
+      },
+      suspensionReason: { type: String, default: '' },
+      maxPerDay: { type: Number, default: 1 },
+      maxPerMonth: { type: Number, default: 4 },
+      coolOffHours: { type: Number, default: 24 },
+      boundVehiclesOnly: { type: Boolean, default: true },
+      boundVehicles: [{ type: String }],
+      // Prepaid wash balance. `unlimited` plans ignore it entirely; leaving it
+      // null means the plan is capped by maxPerDay/maxPerMonth alone.
+      unlimited: { type: Boolean, default: false },
+      washesRemaining: { type: Number, default: null },
+      usageCountToday: { type: Number, default: 0 },
+      // Site-local period the counters belong to ("2026-08-08" / "2026-08").
+      // Storing the key rather than inferring it from lastUsedAt makes the
+      // daily and monthly resets exact across DST and midnight boundaries.
+      usageDayKey: { type: String, default: '' },
+      usageCountMonth: { type: Number, default: 0 },
+      usageMonthKey: { type: String, default: '' },
+      usagePeriodStart: { type: Date, default: null },
+      lastUsedAt: { type: Date, default: null },
+      misuseAlerts: [
+        {
+          date: { type: Date, default: Date.now },
+          alertType: { type: String, default: 'Limit Breach' },
+          description: { type: String, default: '' }
+        }
+      ]
+    },
     isDeleted: {
       type: Boolean,
       default: false
@@ -117,6 +187,16 @@ userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Keep the ANPR lookup key in step with whatever was typed into plateNumber.
+// Doing it here rather than at each call site means a vehicle added through the
+// admin panel, the customer app or a seed script is matchable straight away.
+userSchema.pre('save', function () {
+  if (!this.isModified('vehicles')) return;
+  for (const vehicle of this.vehicles || []) {
+    vehicle.plateNormalized = normalizePlate(vehicle.plateNumber);
+  }
 });
 
 

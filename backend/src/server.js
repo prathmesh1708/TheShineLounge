@@ -24,6 +24,9 @@ const salonStaff = require('./staff/salon-staff');
 // Import Admin Module
 const admin = require('./admin');
 
+// Import Hardware Integration Module (ANPR cameras, tunnel wash controller)
+const integrations = require('./integrations');
+
 // Import Auth, User & Dynamic Service Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -65,6 +68,13 @@ app.use(cors({
 
 // Handle preflight OPTIONS for all routes
 app.options('*', cors());
+
+// Hardware integration routes are mounted ahead of the global JSON parser on
+// purpose. Device requests are HMAC-signed over the exact bytes sent, so the
+// router has to read the raw body itself; once express.json() has consumed the
+// stream it is gone, and every signature check would fail.
+app.use('/api/integrations', integrations.routes);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(logger);

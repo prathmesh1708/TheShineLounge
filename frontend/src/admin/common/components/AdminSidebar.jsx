@@ -25,7 +25,9 @@ import {
   CupSoda,
   Scissors,
   TrendingUp,
-  Cpu
+  Cpu,
+  HelpCircle,
+  MessageSquare
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useAuth } from '../../../common/context/AuthContext';
@@ -39,7 +41,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
-    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications'].includes(location.pathname.replace('/admin/', ''))
+    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback'].includes(location.pathname.replace('/admin/', ''))
       ? location.pathname.replace('/admin/', '')
       : null;
 
@@ -60,6 +62,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     { label: 'All Bookings', path: '/admin/bookings', icon: CalendarCheck, badge: stats.pendingBookings },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
+    { label: 'Feedback & Support', path: '/admin/feedback', icon: HelpCircle },
     { label: 'Customer CRM', path: '/admin/customers', icon: Users },
     { label: 'All Staff Roster', path: '/admin/staff', icon: UserCheck },
     { label: 'Global Inventory', path: '/admin/inventory', icon: Package, badge: stats.lowStockItems, badgeColor: 'bg-amber-500' },
@@ -67,6 +70,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     { label: 'Offers & Coupons', path: '/admin/coupons', icon: Ticket },
     { label: 'Settings', path: '/admin/settings', icon: Settings }
   ];
+
 
   const serviceModules = [
     { label: 'Car Wash Hub', path: '/admin/car-wash', icon: Car, key: 'car-wash', serviceName: 'Car Wash' },
