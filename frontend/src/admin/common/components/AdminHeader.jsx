@@ -32,7 +32,9 @@ export default function AdminHeader({ isSidebarCollapsed }) {
     if (path.startsWith('/admin/services')) return 'Service Management & Pricing';
     if (path.startsWith('/admin/banners')) return 'Promotional Banners';
     if (path.startsWith('/admin/notifications')) return 'Notification Broadcasts';
+    if (path.startsWith('/admin/feedback')) return 'Feedback & Support Management';
     if (path.startsWith('/admin/memberships')) return 'Membership Subscriptions';
+
     if (path.startsWith('/admin/bookings')) return 'Unified Booking Management';
     if (path.startsWith('/admin/staff')) return 'Staff & Employee Operations';
     if (path.startsWith('/admin/customers')) return 'Customer CRM Database';

@@ -174,10 +174,23 @@ export const AdminProvider = ({ children }) => {
         const mapped = res.data.customers.map(c => ({
           _id: c._id,
           id: c.email || c._id,
-          name: c.fullName,
-          fullName: c.fullName,
+          name: c.fullName || c.name || 'Customer',
+          fullName: c.fullName || c.name || 'Customer',
           email: c.email,
-          mobile: c.mobile || '',
+          // No invented vehicles or memberships. ANPR arrivals are matched
+          // against this data and washes are deducted from it, so a placeholder
+          // here becomes a real car checked in against a plan nobody bought.
+          // Blank means blank; the UI shows a dash.
+          phone: c.phone || c.mobile || '',
+          mobile: c.mobile || c.phone || '',
+          city: c.city || '',
+          segment: c.segment || 'Regular Customer',
+          totalSpent: c.totalSpent !== undefined ? c.totalSpent : 0,
+          loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : 0,
+          vehicles: c.vehicles || [],
+          rawVehicles: c.rawVehicles || [],
+          membership: c.membership || null,
+          lastVisit: c.lastVisit || null,
           role: c.role,
           createdAt: c.createdAt
         }));
@@ -637,6 +650,75 @@ export const AdminProvider = ({ children }) => {
     showToast('Business & Tax settings saved!');
   };
 
+  // 11. Customer CRM & Membership Anti-Misuse Actions
+  const updateCustomerMembership = async (customerId, data) => {
+    try {
+      const target = customers.find(c => c._id === customerId || c.id === customerId);
+      const targetId = target ? (target._id || target.id) : customerId;
+      await apiClient.put(`/users/customers/${targetId}/membership`, data);
+      await fetchCustomersList();
+      showToast('Customer membership status updated');
+    } catch (err) {
+      console.warn('Error updating customer membership:', err.message);
+      setCustomers(prev => prev.map(c => {
+        if (c._id === customerId || c.id === customerId) {
+          const updatedMembership = { ...(c.membership || {}), ...data };
+          let newSegment = c.segment;
+          if (data.status === 'Suspended') newSegment = 'Suspended Member';
+          else if (data.status === 'Active') newSegment = 'Active Member';
+          return { ...c, membership: updatedMembership, segment: newSegment };
+        }
+        return c;
+      }));
+      showToast('Customer membership updated');
+    }
+  };
+
+  const updateCustomerUsageRules = async (customerId, rules) => {
+    try {
+      const target = customers.find(c => c._id === customerId || c.id === customerId);
+      const targetId = target ? (target._id || target.id) : customerId;
+      await apiClient.put(`/users/customers/${targetId}/usage-rules`, rules);
+      await fetchCustomersList();
+      showToast('Membership usage & anti-misuse rules saved');
+    } catch (err) {
+      console.warn('Error updating usage rules:', err.message);
+      setCustomers(prev => prev.map(c => {
+        if (c._id === customerId || c.id === customerId) {
+          return {
+            ...c,
+            membership: { ...(c.membership || {}), ...rules }
+          };
+        }
+        return c;
+      }));
+      showToast('Usage rules saved');
+    }
+  };
+
+  const addCustomerVehicle = async (customerId, vehicleData) => {
+    try {
+      const target = customers.find(c => c._id === customerId || c.id === customerId);
+      const targetId = target ? (target._id || target.id) : customerId;
+      await apiClient.post(`/users/customers/${targetId}/vehicles`, vehicleData);
+      await fetchCustomersList();
+      showToast('Vehicle added to customer profile');
+    } catch (err) {
+      console.warn('Error adding vehicle:', err.message);
+      const formatted = `${vehicleData.plateNumber} (${vehicleData.model || 'Vehicle'})`;
+      setCustomers(prev => prev.map(c => {
+        if (c._id === customerId || c.id === customerId) {
+          return {
+            ...c,
+            vehicles: [...(c.vehicles || []), formatted]
+          };
+        }
+        return c;
+      }));
+      showToast('Vehicle registered');
+    }
+  };
+
   return (
     <AdminContext.Provider value={{
       stats,
@@ -678,6 +760,9 @@ export const AdminProvider = ({ children }) => {
       deleteStaff,
       toggleStaffStatus,
       addCustomer,
+      updateCustomerMembership,
+      updateCustomerUsageRules,
+      addCustomerVehicle,
       addInventoryItem,
       updateStock,
       addCoupon,

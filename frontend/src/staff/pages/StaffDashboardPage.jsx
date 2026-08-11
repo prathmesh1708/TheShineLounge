@@ -70,7 +70,7 @@ export default function StaffDashboardPage() {
   return (
     <div className="space-y-4">
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-2xl p-4 text-white shadow-md relative">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">

@@ -71,37 +71,43 @@ export default function NotificationBell({ isStaff = false }) {
         <>
           {/* Backdrop Overlay */}
           <div
-            className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40"
             onClick={() => setIsOpen(false)}
           />
 
           {/* Drawer Dropdown Panel */}
-          <div className="fixed sm:absolute right-2 sm:right-0 top-16 sm:top-12 w-[calc(100vw-1rem)] sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden text-left animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-12 sm:w-96 max-h-[82vh] sm:max-h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200/90 z-50 overflow-hidden text-left animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col">
             {/* Header */}
-            <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between">
+            <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-orange-400" />
-                <h3 className="font-extrabold text-xs tracking-wider uppercase">Notifications</h3>
-                {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 bg-orange-500/20 border border-orange-400/30 text-orange-300 text-[10px] font-bold rounded-full">
-                    {unreadCount} new
-                  </span>
-                )}
+                <div className="p-1.5 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-xs tracking-wider uppercase text-slate-100">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <span className="px-2 py-0.5 bg-orange-500/20 border border-orange-400/30 text-orange-300 text-[10px] font-bold rounded-full">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 {unreadCount > 0 && (
                   <button
                     type="button"
                     onClick={markAllAsRead}
-                    className="text-[10px] font-bold text-slate-300 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/10 transition-colors"
+                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
                   >
-                    <CheckCheck className="w-3 h-3 text-emerald-400" /> Read All
+                    <CheckCheck className="w-3 h-3" /> Mark Read
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -109,7 +115,7 @@ export default function NotificationBell({ isStaff = false }) {
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex border-b border-slate-100 bg-slate-50/50 p-1 text-[11px] font-bold gap-1">
+            <div className="flex border-b border-slate-100 bg-slate-50/80 p-1.5 text-[11px] font-bold gap-1 overflow-x-auto no-scrollbar shrink-0">
               {[
                 { id: 'all', label: 'All' },
                 { id: 'membership', label: 'Pass / Reminders' },
@@ -120,7 +126,7 @@ export default function NotificationBell({ isStaff = false }) {
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id)}
-                  className={`flex-1 py-1.5 rounded-lg transition-all text-center ${
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-center whitespace-nowrap flex-shrink-0 sm:flex-1 ${
                     activeTab === t.id
                       ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 font-black'
                       : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
@@ -132,7 +138,7 @@ export default function NotificationBell({ isStaff = false }) {
             </div>
 
             {/* Notification List */}
-            <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 min-h-0">
               {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center space-y-2">
                   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">

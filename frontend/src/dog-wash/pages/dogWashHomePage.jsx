@@ -4,6 +4,8 @@ import serviceApi from '../../common/services/serviceApi';
 import dogWashVideo from '../../assets/images/dog-wash-banner.mp4';
 import { getMachineConfig } from '../services/dogWashApi';
 import { cacheService } from '../../common/utils/serviceCache';
+import { getUserPets, getActivePet, setActivePet } from '../utils/petStorage';
+import AddPetModal from '../components/AddPetModal';
 
 const DEFAULT_FAQS = [
   {
@@ -31,11 +33,11 @@ const DEFAULT_FAQS = [
 export default function DogWashHomePage() {
   const navigate = useNavigate();
 
-  const pet = {
-    name: 'Max',
-    breed: 'Golden Retriever · 25 kg',
-    icon: '🐕'
-  };
+  // Dynamic Pet State
+  const [pets, setPets] = useState(() => getUserPets());
+  const [activePet, setActivePetState] = useState(() => getActivePet());
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingPet, setEditingPet] = useState(null);
 
   const [dbService, setDbService] = useState(null);
   const [machineConfig, setMachineConfig] = useState(getMachineConfig());
@@ -45,6 +47,25 @@ export default function DogWashHomePage() {
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
   const [faqSearchQuery, setFaqSearchQuery] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+  // Sync pet updates across components
+  useEffect(() => {
+    const handlePetsChange = () => {
+      setPets(getUserPets());
+      setActivePetState(getActivePet());
+    };
+    const handleActiveChange = (e) => {
+      if (e.detail) setActivePetState(e.detail);
+      else setActivePetState(getActivePet());
+    };
+
+    window.addEventListener('tslPetsChanged', handlePetsChange);
+    window.addEventListener('tslActivePetChanged', handleActiveChange);
+    return () => {
+      window.removeEventListener('tslPetsChanged', handlePetsChange);
+      window.removeEventListener('tslActivePetChanged', handleActiveChange);
+    };
+  }, []);
 
   useEffect(() => {
     const handleMachineChange = () => setMachineConfig(getMachineConfig());
@@ -129,14 +150,32 @@ export default function DogWashHomePage() {
     }
   }, [prefersReducedMotion]);
 
+  const handleSelectPet = (p) => {
+    const updated = setActivePet(p);
+    setActivePetState(updated);
+    setShowPetSwitcher(false);
+  };
+
+  const handleOpenAddModal = (e, petToEdit = null) => {
+    e.stopPropagation();
+    setEditingPet(petToEdit);
+    setIsAddModalOpen(true);
+    setShowPetSwitcher(false);
+  };
+
   const handleBook = () => {
+    const currentPet = activePet || pets[0] || { name: 'Max', breed: 'Golden Retriever', weight: '25 kg', icon: '🐕' };
+    const formattedPlate = `${currentPet.breed}${currentPet.weight ? ' · ' + currentPet.weight : ''}`;
     navigate('/dog-wash/confirm', {
       state: {
         service: selectedService,
         vehicle: {
-          name: pet.name,
-          plate: pet.breed,
-          icon: pet.icon
+          id: currentPet.id,
+          name: currentPet.name,
+          breed: currentPet.breed,
+          weight: currentPet.weight,
+          plate: formattedPlate,
+          icon: currentPet.icon || '🐕'
         }
       }
     });
@@ -161,6 +200,7 @@ export default function DogWashHomePage() {
   }));
 
   const activeVideoSrc = dbService?.heroVideo || dbService?.bannerVideo || dogWashVideo;
+  const currentPetDisplay = activePet || pets[0] || { name: 'Max', breed: 'Golden Retriever', weight: '25 kg', icon: '🐕' };
 
   return (
     <div className="carwash-booking-container space-y-6">
@@ -188,19 +228,21 @@ export default function DogWashHomePage() {
         )}
       </div>
 
-      {/* 2. Pet Selector Card */}
-      <div className="carwash-vehicle-card-wrapper">
+      {/* 2. Dynamic Pet Selector Card */}
+      <div className="carwash-vehicle-card-wrapper relative">
         <div 
-          className="carwash-vehicle-card"
+          className="carwash-vehicle-card cursor-pointer select-none"
           onClick={() => setShowPetSwitcher(!showPetSwitcher)}
         >
           <div className="carwash-vehicle-info">
             <span className="carwash-vehicle-icon" style={{ fontSize: '1.75rem', lineHeight: 1 }}>
-              🐕
+              {currentPetDisplay.icon || '🐕'}
             </span>
             <div className="carwash-vehicle-text">
-              <span className="carwash-vehicle-name">{pet.name}</span>
-              <span className="carwash-vehicle-plate">{pet.breed}</span>
+              <span className="carwash-vehicle-name">{currentPetDisplay.name}</span>
+              <span className="carwash-vehicle-plate">
+                {currentPetDisplay.breed}{currentPetDisplay.weight ? ` · ${currentPetDisplay.weight}` : ''}
+              </span>
             </div>
           </div>
           <svg 
@@ -216,15 +258,80 @@ export default function DogWashHomePage() {
           </svg>
         </div>
 
+        {/* Dropdown menu */}
         {showPetSwitcher && (
-          <div className="carwash-vehicle-dropdown">
-            <div className="carwash-dropdown-item active">
-              <span>🐕 {pet.name} ({pet.breed})</span>
-              <span className="active-tag">Active</span>
+          <div className="carwash-vehicle-dropdown shadow-2xl border border-[#2A2E36] bg-[#15171D] rounded-2xl overflow-hidden mt-2 z-30">
+            <div className="p-2 space-y-1">
+              <div className="px-3 py-1.5 text-[11px] font-bold tracking-wider text-zinc-400 uppercase">
+                Select Your Dog
+              </div>
+              {pets.map((p) => {
+                const isActive = currentPetDisplay.id === p.id;
+                return (
+                  <div 
+                    key={p.id}
+                    onClick={() => handleSelectPet(p)}
+                    className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition ${
+                      isActive 
+                        ? 'bg-[#FF8C1A]/15 border border-[#FF8C1A]/40 text-white' 
+                        : 'hover:bg-[#1E222B] text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xl">{p.icon || '🐕'}</span>
+                      <div>
+                        <div className="font-bold text-sm text-white flex items-center space-x-2">
+                          <span>{p.name}</span>
+                          {isActive && (
+                            <span className="bg-[#FF8C1A] text-black text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-zinc-400">
+                          {p.breed} {p.weight ? `· ${p.weight}` : ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenAddModal(e, p)}
+                      className="text-xs text-zinc-400 hover:text-[#FF8C1A] p-1.5 rounded-lg hover:bg-zinc-800 transition"
+                      title="Edit Dog Details"
+                    >
+                      ✏️ Edit
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add New Pet Trigger */}
+            <div className="p-2 border-t border-[#2A2E36] bg-[#1A1D24]">
+              <button
+                type="button"
+                onClick={(e) => handleOpenAddModal(e, null)}
+                className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-[#FF8C1A]/10 border border-[#FF8C1A]/30 text-[#FF8C1A] font-bold text-xs hover:bg-[#FF8C1A] hover:text-black transition"
+              >
+                <span>➕</span>
+                <span>Add New Dog</span>
+              </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Add / Edit Pet Modal */}
+      <AddPetModal 
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        initialPet={editingPet}
+        onSaveSuccess={(saved) => {
+          setActivePetState(saved);
+        }}
+      />
+
 
 
       {/* 4. Pricing Plans */}

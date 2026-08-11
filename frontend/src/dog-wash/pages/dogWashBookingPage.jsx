@@ -6,7 +6,9 @@ import { useForm } from 'react-hook-form';
 import apiClient from '../../common/utils/apiClient';
 
 import { PrimaryButton, SecondaryButton, FormInput, FormSelect, DatePicker, Toast } from '../components/dogWashUI';
-import { SERVICES, PACKAGES, OFFERS, MOCK_PETS } from '../services/dogWashApi';
+import { SERVICES, PACKAGES, OFFERS } from '../services/dogWashApi';
+import { getUserPets, getActivePet, setActivePet } from '../utils/petStorage';
+import AddPetModal from '../components/AddPetModal';
 
 const ADD_ONS = [
   { id: "add-deshed", name: "De-Shedding Blowout Rake", price: 10, desc: "High-velocity blowout + undercoat blast" },
@@ -19,10 +21,13 @@ export default function DogWashBookingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  const [pets, setPets] = useState(() => getUserPets());
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
   const [step, setStep] = useState(1);
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm({
     defaultValues: {
-      selectedPet: MOCK_PETS[0].id,
+      selectedPet: getActivePet()?.id || pets[0]?.id || 'pet-max',
       serviceSelection: searchParams.get("service") || SERVICES[0].id,
       packageSelection: searchParams.get("package") || "none",
       bookingDate: new Date().toISOString().split('T')[0],
@@ -33,6 +38,15 @@ export default function DogWashBookingPage() {
       couponCode: searchParams.get("coupon") || "",
     }
   });
+
+  useEffect(() => {
+    const handlePetsChange = () => {
+      const updated = getUserPets();
+      setPets(updated);
+    };
+    window.addEventListener('tslPetsChanged', handlePetsChange);
+    return () => window.removeEventListener('tslPetsChanged', handlePetsChange);
+  }, []);
 
   const [selectedAddons, setSelectedAddons] = useState([]);
   const [discount, setDiscount] = useState(0);
@@ -119,7 +133,7 @@ export default function DogWashBookingPage() {
     const selectedItem = watchedPackage !== "none"
       ? PACKAGES.find(p => p.id === watchedPackage)?.name
       : SERVICES.find(s => s.id === watchedService)?.name;
-    const petObj = MOCK_PETS.find(p => p.id === data.selectedPet) || MOCK_PETS[0];
+    const petObj = pets.find(p => p.id === data.selectedPet) || pets[0] || { name: 'Max', breed: 'Golden Retriever', weight: '25 kg' };
 
     const bookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -250,17 +264,22 @@ export default function DogWashBookingPage() {
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {MOCK_PETS.map((pet) => {
+                  {pets.map((pet) => {
                     const isSelected = watchedPet === pet.id;
                     return (
                       <div
                         key={pet.id}
-                        onClick={() => setValue("selectedPet", pet.id)}
+                        onClick={() => {
+                          setValue("selectedPet", pet.id);
+                          setActivePet(pet);
+                        }}
                         className={`p-4 rounded-20 border cursor-pointer flex items-center gap-4 transition-all shadow-sm ${
-                          isSelected ? 'bg-grooming-light/20 border-grooming-primary' : 'bg-white border-zinc-200 hover:border-zinc-300'
+                          isSelected ? 'bg-grooming-light/20 border-grooming-primary ring-2 ring-grooming-primary/20' : 'bg-white border-zinc-200 hover:border-zinc-300'
                         }`}
                       >
-                        <img src={pet.avatar} alt={pet.name} className="w-12 h-12 rounded-full object-cover border border-zinc-200 flex-shrink-0" />
+                        <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-2xl flex-shrink-0 border border-orange-200">
+                          {pet.icon || '🐕'}
+                        </div>
                         <div>
                           <h4 className="font-extrabold text-sm text-zinc-800">{pet.name}</h4>
                           <span className="text-[10px] text-zinc-500 font-bold block uppercase mt-0.5">{pet.breed} • {pet.weight}</span>
@@ -268,7 +287,25 @@ export default function DogWashBookingPage() {
                       </div>
                     );
                   })}
+
+                  {/* Add New Pet Card */}
+                  <div
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="p-4 rounded-20 border border-dashed border-grooming-primary/50 bg-grooming-light/10 hover:bg-grooming-light/20 cursor-pointer flex items-center justify-center gap-3 transition-all text-grooming-primary font-bold text-sm"
+                  >
+                    <span className="text-lg">➕</span>
+                    <span>Add New Dog</span>
+                  </div>
                 </div>
+
+                <AddPetModal 
+                  isOpen={isAddModalOpen}
+                  onClose={() => setIsAddModalOpen(false)}
+                  onSaveSuccess={(p) => {
+                    setValue("selectedPet", p.id);
+                    setActivePet(p);
+                  }}
+                />
               </motion.div>
             )}
 
@@ -443,7 +480,7 @@ export default function DogWashBookingPage() {
                 <div className="bg-zinc-50 border border-zinc-200 rounded-24 p-5 text-xs md:text-sm space-y-4 shadow-sm font-semibold text-zinc-650">
                   <div className="flex justify-between border-b border-zinc-150 pb-2">
                     <span>Pet Scheduled</span>
-                    <strong className="text-zinc-850">{MOCK_PETS.find(p => p.id === watchedPet)?.name}</strong>
+                    <strong className="text-zinc-850">{(pets.find(p => p.id === watchedPet) || pets[0])?.name}</strong>
                   </div>
                   <div className="flex justify-between border-b border-zinc-150 pb-2">
                     <span>Scheduled Slot</span>

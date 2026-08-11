@@ -3,10 +3,29 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Lock, Mail, User, Phone, LogIn, UserPlus, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+const COUNTRY_CODES = [
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+  { code: '+1', country: 'USA / Canada', flag: '🇺🇸' },
+  { code: '+44', country: 'UK', flag: '🇬🇧' },
+  { code: '+971', country: 'UAE', flag: '🇦🇪' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪' },
+  { code: '+33', country: 'France', flag: '🇫🇷' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+977', country: 'Nepal', flag: '🇳🇵' },
+  { code: '+94', country: 'Sri Lanka', flag: '🇱🇰' },
+  { code: '+880', country: 'Bangladesh', flag: '🇧🇩' },
+];
+
 export default function CustomerAuthModal({ isOpen, onClose, onSuccess, initialMode = 'login', titlePrompt }) {
   const { login, register } = useAuth();
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
   
+  const [countryCode, setCountryCode] = useState('+91');
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -21,7 +40,12 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess, initialM
   if (!isOpen) return null;
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    if (e.target.name === 'mobile') {
+      const sanitized = e.target.value.replace(/\D/g, '').slice(0, 10);
+      setForm({ ...form, mobile: sanitized });
+    } else {
+      setForm({ ...form, [e.target.name]: e.target.value });
+    }
     setError('');
   };
 
@@ -50,7 +74,12 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess, initialM
         }
       } else {
         if (!form.fullName || !form.email || !form.password || !form.mobile) {
-          setError('Please fill in all fields');
+          setError('Please fill in all required fields');
+          setLoading(false);
+          return;
+        }
+        if (form.mobile.length !== 10) {
+          setError('Mobile phone number must be strictly 10 digits');
           setLoading(false);
           return;
         }
@@ -58,7 +87,7 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess, initialM
           fullName: form.fullName,
           email: form.email,
           password: form.password,
-          mobile: form.mobile,
+          mobile: `${countryCode} ${form.mobile}`,
           role: 'customer'
         });
         if (res.success) {
@@ -175,17 +204,48 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess, initialM
 
             {mode === 'register' && (
               <div>
-                <label className="block text-xs font-extrabold text-gray-700 mb-1">Mobile Number</label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                  <input
-                    type="tel"
-                    name="mobile"
-                    value={form.mobile}
-                    onChange={handleChange}
-                    placeholder="+91 98200 12345"
-                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
-                  />
+                <label className="block text-xs font-extrabold text-gray-700 mb-1">
+                  Mobile Number <span className="text-[10px] text-gray-400 font-normal">(10 digits required)</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <select
+                      value={countryCode}
+                      onChange={e => setCountryCode(e.target.value)}
+                      className="h-full pl-2 pr-6 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white appearance-none cursor-pointer"
+                    >
+                      {COUNTRY_CODES.map((item) => (
+                        <option key={item.code + item.country} value={item.code}>
+                          {item.flag} {item.code}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5 text-gray-400">
+                      <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20">
+                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="relative flex-1">
+                    <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      name="mobile"
+                      value={form.mobile}
+                      onChange={handleChange}
+                      placeholder="9820012345"
+                      className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-1 text-[10px]">
+                  <span className={form.mobile.length === 10 ? "text-emerald-600 font-extrabold" : "text-gray-400 font-medium"}>
+                    {form.mobile.length === 10 ? "✓ 10 digits entered" : "Enter 10 digits"}
+                  </span>
+                  <span className="text-gray-400 font-medium">{form.mobile.length}/10</span>
                 </div>
               </div>
             )}

@@ -5,7 +5,12 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "node --test --test-timeout=120000 \"tests/**/*.test.js\"",
+    "test:unit": "node --test tests/plateNormalizer.test.js tests/membershipEntitlement.test.js tests/washStateMachine.test.js tests/parkingAnprAdapter.test.js tests/tunnelWashAdapter.test.js tests/integrationsMiddleware.test.js",
+    "backfill:plates": "node src/utils/backfillPlateNormalization.js",
+    "demo:seed": "node src/utils/seedIntegrationDemo.js",
+    "demo:clean": "node src/utils/seedIntegrationDemo.js --clean"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -17,6 +22,7 @@
     "multer": "^2.2.0"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.0"
   }
 }

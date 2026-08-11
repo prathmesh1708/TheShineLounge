@@ -1,24 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Heart, MapPin, Award, Save, HeartCrack, Plus } from 'lucide-react';
+import { User, Heart, MapPin, Award, Save, HeartCrack, Plus, Trash2, Edit } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 import { FormInput, PrimaryButton, Toast } from '../components/dogWashUI';
-import { MOCK_PETS } from '../services/dogWashApi';
+import { getUserPets, savePet, deletePet } from '../utils/petStorage';
+import AddPetModal from '../components/AddPetModal';
 
 export default function DogWashProfilePage() {
   const [activeTab, setActiveTab] = useState("pets");
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
-  const [pets, setPets] = useState(MOCK_PETS);
-  const [showAddPet, setShowAddPet] = useState(false);
+  const [pets, setPets] = useState(() => getUserPets());
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingPet, setEditingPet] = useState(null);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
-      petName: "",
-      petBreed: "",
-      petAge: "",
-      petWeight: "",
       fullName: "Ramesh Singh",
       email: "ramesh.singh@outlook.com",
       phone: "+91 98260 12345",
@@ -26,34 +24,28 @@ export default function DogWashProfilePage() {
     }
   });
 
+  useEffect(() => {
+    const handlePetsChange = () => setPets(getUserPets());
+    window.addEventListener('tslPetsChanged', handlePetsChange);
+    return () => window.removeEventListener('tslPetsChanged', handlePetsChange);
+  }, []);
+
   const handleUpdateProfile = (data) => {
     setToastMsg("Profile details updated successfully!");
     setToastOpen(true);
   };
 
-  const handleAddPet = (data) => {
-    if (!data.petName || !data.petBreed) return;
-
-    const newPet = {
-      id: `pet-${Date.now()}`,
-      name: data.petName,
-      breed: data.petBreed,
-      age: data.petAge || "1 year",
-      weight: data.petWeight || "10 kg",
-      avatar: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=100" // puppy placeholder
-    };
-
-    setPets(prev => [...prev, newPet]);
-    setShowAddPet(false);
-    reset({ petName: "", petBreed: "", petAge: "", petWeight: "" });
-    setToastMsg(`${data.petName} added to your pet family!`);
-    setToastOpen(true);
+  const handleOpenAdd = (petToEdit = null) => {
+    setEditingPet(petToEdit);
+    setIsAddModalOpen(true);
   };
 
-  const sidebarLinks = [
-    { id: "pets", label: "My Pets", icon: <Heart className="w-4 h-4" /> },
-    { id: "profile", label: "Owner Profile", icon: <User className="w-4 h-4" /> }
-  ];
+  const handleDelete = (petId) => {
+    const updated = deletePet(petId);
+    setPets(updated);
+    setToastMsg("Dog profile deleted");
+    setToastOpen(true);
+  };
 
   return (
     <motion.div

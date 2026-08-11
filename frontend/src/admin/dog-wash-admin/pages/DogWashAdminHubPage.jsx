@@ -1370,7 +1370,7 @@ export default function DogWashAdminHubPage() {
                   <span>Dog Wash Machine & Self-Serve Kiosk Setup</span>
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Configure real-time machine location, operating hours, machine usage instructions, and safety guidelines. Changes instantly reflect on the Dog Wash Customer App.
+                  Configure real-time machine name, operational status, machine usage instructions, and safety guidelines. Changes instantly reflect on the Dog Wash Customer App.
                 </p>
               </div>
 
@@ -1396,27 +1396,7 @@ export default function DogWashAdminHubPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Machine / Kiosk Address Location</label>
-                <input
-                  type="text"
-                  value={machineConfigForm.location || ''}
-                  onChange={(e) => setMachineConfigForm({ ...machineConfigForm, location: e.target.value })}
-                  className="w-full p-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-teal-500 bg-gray-50/40"
-                  placeholder="e.g. Palasia Main Rd, Scheme 54, Indore (Kiosk #04)"
-                />
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Kiosk Operating Hours</label>
-                <input
-                  type="text"
-                  value={machineConfigForm.workingHours || ''}
-                  onChange={(e) => setMachineConfigForm({ ...machineConfigForm, workingHours: e.target.value })}
-                  className="w-full p-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-teal-500 bg-gray-50/40"
-                  placeholder="e.g. 08:00 AM - 10:00 PM IST (Mon - Sun)"
-                />
-              </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Station Operational Status</label>

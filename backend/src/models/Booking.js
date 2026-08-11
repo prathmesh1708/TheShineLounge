@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { normalizePlate } = require('../utils/plateNormalizer');
 
 const bookingSchema = new mongoose.Schema({
   bookingId: {
@@ -42,6 +43,13 @@ const bookingSchema = new mongoose.Schema({
   vehicleNo: {
     type: String,
     default: ''
+  },
+  // Lookup key for ANPR arrivals — vehicleNo is free text and is typed
+  // differently by every customer. Maintained by the pre-save hook below.
+  vehicleNoNormalized: {
+    type: String,
+    default: '',
+    index: true
   },
   vehicleType: {
     type: String,
@@ -119,9 +127,47 @@ const bookingSchema = new mongoose.Schema({
   assignedStaffName: {
     type: String,
     default: ''
+  },
+  // Who last moved this booking along. Automation and staff both write status,
+  // so without this an operator cannot tell a camera's decision from a
+  // colleague's, and a disputed wash is unanswerable.
+  statusSource: {
+    type: String,
+    enum: ['staff', 'admin', 'customer', 'anpr', 'tunnel', 'system'],
+    default: 'staff'
+  },
+  // Set when a booking was created by hardware rather than by a customer.
+  createdVia: {
+    type: String,
+    enum: ['customer', 'staff', 'admin', 'anpr', 'tunnel'],
+    default: 'customer'
+  },
+  // Arrivals the system could not confidently attach to a customer wait here
+  // for a human instead of being guessed at.
+  needsReview: {
+    type: Boolean,
+    default: false
+  },
+  reviewReason: {
+    type: String,
+    default: ''
+  },
+  washSessionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WashSession',
+    default: null
   }
 }, {
   timestamps: true
+});
+
+// A booking is looked up by plate on every vehicle arrival; without this the
+// match is a collection scan on a field that grows with every wash.
+bookingSchema.index({ serviceKey: 1, vehicleNoNormalized: 1, createdAt: -1 });
+
+bookingSchema.pre('save', function () {
+  if (!this.isModified('vehicleNo')) return;
+  this.vehicleNoNormalized = normalizePlate(this.vehicleNo);
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

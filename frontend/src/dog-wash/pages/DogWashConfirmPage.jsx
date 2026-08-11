@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../../common/utils/apiClient';
+import { getActivePet } from '../utils/petStorage';
 
 export default function DogWashConfirmPage() {
   const location = useLocation();
@@ -8,6 +9,7 @@ export default function DogWashConfirmPage() {
 
   // Retrieve booking details from state or fallback defaults
   const stateData = location.state || {};
+  const activePetDefault = getActivePet();
   const service = stateData.service || {
     name: stateData.item || '2 Minutes Wash',
     price: stateData.price || 100,
@@ -17,9 +19,10 @@ export default function DogWashConfirmPage() {
     label: stateData.time || 'Today 4:30 PM'
   };
   const vehicle = stateData.vehicle || {
-    name: 'Max',
-    plate: 'Golden Retriever · 25 kg',
-    icon: '🐕'
+    id: activePetDefault.id,
+    name: activePetDefault.name,
+    plate: `${activePetDefault.breed}${activePetDefault.weight ? ' · ' + activePetDefault.weight : ''}`,
+    icon: activePetDefault.icon || '🐕'
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);

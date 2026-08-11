@@ -5,10 +5,39 @@ import { Scissors } from 'lucide-react';
 import { SALON_STEPS } from '../components/salonAppointmentStepper';
 
 export default function SalonStaffAppointmentsPage() {
-  const { jobs, updateJobStatus } = useStaff();
+  const { jobs, updateJobStatus, currentStaff } = useStaff();
   const [filter, setFilter] = useState('all');
 
-  const salonJobs = jobs.filter(j => j.serviceKey === 'salon');
+  const normalizeName = (name) => {
+    const clean = (name || '').toLowerCase().replace(/[^a-z]/gi, '').trim();
+    if (clean === 'vikash' || clean === 'vikas') return 'vikas';
+    return clean;
+  };
+
+  const salonJobs = jobs.filter(j => {
+    if (j.serviceKey !== 'salon') return false;
+    if (!currentStaff) return true;
+
+    // Managers see all salon jobs
+    const isManager = ['Super Admin', 'Branch Manager', 'Cashier'].includes(currentStaff.role);
+    if (isManager) return true;
+
+    const staffNameNorm = normalizeName(currentStaff.name);
+
+    // Check if customer selected this stylist (stored in vehicleNo as "Stylist: <Name>")
+    const selectedStylist = (j.vehicleNo || '').toLowerCase();
+    if (selectedStylist.includes('stylist:')) {
+      const stylistNameNorm = normalizeName(selectedStylist.split('stylist:')[1]);
+      return stylistNameNorm === staffNameNorm;
+    }
+
+    // Check if explicitly assigned to this staff member
+    if (j.staffName) {
+      return normalizeName(j.staffName) === staffNameNorm || j.staffId === currentStaff.id;
+    }
+
+    return false;
+  });
 
   const filteredJobs = salonJobs.filter(j => {
     if (filter === 'in-progress') return j.stepIndex > 0 && j.stepIndex < SALON_STEPS.length - 1;

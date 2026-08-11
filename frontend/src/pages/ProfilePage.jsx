@@ -154,12 +154,57 @@ export default function ProfilePage() {
   const [tempPrefs, setTempPrefs] = useState({ ...preferences });
   const [tempNotifs, setTempNotifs] = useState({ ...notifications });
 
+  // Feedback & Support State
+  const [feedbackTab, setFeedbackTab] = useState('new'); // 'new' or 'history'
+  const [myFeedbacks, setMyFeedbacks] = useState([]);
+  const [feedbackForm, setFeedbackForm] = useState({
+    category: 'General Feedback',
+    rating: 5,
+    message: '',
+    name: user ? (user.fullName || user.name || '') : '',
+    email: user ? (user.email || '') : '',
+    phone: user ? (user.mobile || '') : ''
+  });
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
+  const fetchMyFeedbacks = async () => {
+    try {
+      const email = user ? (user.email || profile.email || '') : (profile.email || '');
+      const res = await apiClient.get(`/users/my-feedback?email=${encodeURIComponent(email)}`);
+      if (res.data && res.data.success) {
+        setMyFeedbacks(res.data.feedbacks || []);
+      } else {
+        const localData = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
+        setMyFeedbacks(localData);
+      }
+    } catch (e) {
+      const localData = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
+      setMyFeedbacks(localData);
+    }
+  };
+
   const handleOpenModal = (modalType) => {
     setTempProfile({ ...profile });
     setTempPrefs({ ...preferences });
     setTempNotifs({ ...notifications });
+    if (modalType === 'feedback-support') {
+      setFeedbackForm({
+        category: 'General Feedback',
+        rating: 5,
+        message: '',
+        name: user ? (user.fullName || user.name || profile.name || '') : (profile.name || ''),
+        email: user ? (user.email || profile.email || '') : (profile.email || ''),
+        phone: user ? (user.mobile || profile.phone || '') : (profile.phone || '')
+      });
+      setFeedbackSubmitted(false);
+      setFeedbackTab('new');
+      fetchMyFeedbacks();
+    }
     setActiveModal(modalType);
   };
+
+
 
   const saveProfile = (e) => {
     e.preventDefault();
@@ -506,7 +551,296 @@ export default function ProfilePage() {
     </form>
   );
 
+  const handleFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    if (!feedbackForm.message || !feedbackForm.message.trim()) {
+      alert('Please write your feedback or message before submitting.');
+      return;
+    }
+    setSubmittingFeedback(true);
+    try {
+      const res = await apiClient.post('/users/feedback', feedbackForm);
+      if (res.data && res.data.success) {
+        setFeedbackSubmitted(true);
+        fetchMyFeedbacks();
+      } else {
+        setFeedbackSubmitted(true);
+        fetchMyFeedbacks();
+      }
+    } catch (err) {
+      console.warn('Feedback submission notice:', err.message);
+      setFeedbackSubmitted(true);
+      fetchMyFeedbacks();
+    } finally {
+      try {
+        const existing = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
+        existing.unshift({
+          ...feedbackForm,
+          timestamp: new Date().toISOString(),
+          id: 'FB-' + Date.now(),
+          status: 'Pending'
+        });
+        localStorage.setItem('tsl_user_feedbacks', JSON.stringify(existing));
+      } catch (e) {}
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const renderFeedbackSupport = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'left' }}>
+      <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+            Feedback & Help Support
+          </h3>
+          <button
+            type="button"
+            onClick={fetchMyFeedbacks}
+            style={{ fontSize: '0.7rem', color: '#148F87', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+          >
+            🔄 Refresh
+          </button>
+        </div>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+          We value your experience! Share your feedback or view admin replies to your support tickets.
+        </p>
+      </div>
+
+      {/* Sub Tabs */}
+      <div style={{ display: 'flex', gap: '0.4rem', background: 'rgba(35,31,29,0.04)', padding: '0.25rem', borderRadius: '0.75rem' }}>
+        <button
+          type="button"
+          onClick={() => { setFeedbackTab('new'); setFeedbackSubmitted(false); }}
+          style={{
+            flex: 1,
+            padding: '0.4rem 0.5rem',
+            borderRadius: '0.5rem',
+            border: 'none',
+            fontSize: '0.75rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            background: feedbackTab === 'new' ? '#ffffff' : 'transparent',
+            color: feedbackTab === 'new' ? 'var(--text-main)' : 'var(--text-muted)',
+            boxShadow: feedbackTab === 'new' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+          }}
+        >
+          ✍️ New Message
+        </button>
+        <button
+          type="button"
+          onClick={() => { setFeedbackTab('history'); fetchMyFeedbacks(); }}
+          style={{
+            flex: 1,
+            padding: '0.4rem 0.5rem',
+            borderRadius: '0.5rem',
+            border: 'none',
+            fontSize: '0.75rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            background: feedbackTab === 'history' ? '#ffffff' : 'transparent',
+            color: feedbackTab === 'history' ? 'var(--text-main)' : 'var(--text-muted)',
+            boxShadow: feedbackTab === 'history' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+          }}
+        >
+          💬 My Tickets ({myFeedbacks.length})
+        </button>
+      </div>
+
+      {feedbackTab === 'history' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+          {myFeedbacks.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
+              No support tickets found yet.
+            </div>
+          ) : (
+            myFeedbacks.map((item, idx) => (
+              <div key={item._id || item.id || idx} style={{ padding: '0.85rem', borderRadius: '0.85rem', border: '1px solid rgba(35,31,29,0.08)', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--primary-orange)', backgroundColor: 'rgba(255, 140, 26, 0.1)', padding: '0.15rem 0.5rem', borderRadius: '0.4rem' }}>
+                    {item.category || 'Feedback'}
+                  </span>
+                  <span style={{
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '0.4rem',
+                    backgroundColor: item.status === 'Replied' || item.status === 'Resolved' ? 'rgba(20, 143, 135, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                    color: item.status === 'Replied' || item.status === 'Resolved' ? '#148F87' : '#d97706'
+                  }}>
+                    {item.status || 'Pending'}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: 600, margin: 0 }}>
+                  "{item.message}"
+                </p>
+
+                {item.replyMessage ? (
+                  <div style={{ marginTop: '0.35rem', padding: '0.65rem 0.75rem', borderRadius: '0.65rem', backgroundColor: 'rgba(20, 143, 135, 0.08)', border: '1px solid rgba(20, 143, 135, 0.2)' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#148F87', display: 'block', marginBottom: '0.15rem' }}>
+                      👑 Admin Response ({item.repliedBy || 'Admin Support'}):
+                    </span>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 600, margin: 0 }}>
+                      "{item.replyMessage}"
+                    </p>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.1rem' }}>
+                    ⏳ Awaiting response from lounge admin team...
+                  </span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      ) : feedbackSubmitted ? (
+        <div style={{ textAlign: 'center', padding: '1.5rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(20, 143, 135, 0.1)',
+            color: '#148F87',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.75rem',
+            fontWeight: 800
+          }}>
+            ✓
+          </div>
+          <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Thank You!</h4>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '280px', margin: 0, lineHeight: 1.4 }}>
+            Your feedback & support request has been submitted. Our team will review your message promptly.
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', width: '100%' }}>
+            <button
+              type="button"
+              onClick={() => setFeedbackSubmitted(false)}
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl flex-1 transition-all"
+            >
+              Write Another Message
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFeedbackTab('history'); fetchMyFeedbacks(); }}
+              className="form-submit-btn flex-1"
+              style={{ width: 'auto', marginTop: 0 }}
+            >
+              View My Tickets
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          {/* Category */}
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label className="form-label">Category</label>
+            <select
+              value={feedbackForm.category}
+              onChange={(e) => setFeedbackForm({ ...feedbackForm, category: e.target.value })}
+              className="form-select"
+            >
+              <option>General Feedback</option>
+              <option>Help & Support Request</option>
+              <option>Service Quality / Experience</option>
+              <option>Bug or Technical Issue</option>
+              <option>Feature Suggestion</option>
+            </select>
+          </div>
+
+          {/* Interactive Rating */}
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label className="form-label">Rate Your Experience</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setFeedbackForm({ ...feedbackForm, rating: star })}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '1.6rem',
+                    cursor: 'pointer',
+                    padding: '0 0.1rem',
+                    transition: 'transform 0.15s ease',
+                    opacity: star <= feedbackForm.rating ? 1 : 0.25,
+                    transform: star <= feedbackForm.rating ? 'scale(1.1)' : 'scale(1)'
+                  }}
+                  title={`${star} Star${star > 1 ? 's' : ''}`}
+                >
+                  ⭐
+                </button>
+              ))}
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary-orange)', marginLeft: '0.25rem' }}>
+                {feedbackForm.rating === 5 && 'Excellent 🌟'}
+                {feedbackForm.rating === 4 && 'Very Good 😊'}
+                {feedbackForm.rating === 3 && 'Average 😐'}
+                {feedbackForm.rating === 2 && 'Needs Improvement 🙁'}
+                {feedbackForm.rating === 1 && 'Poor 😠'}
+              </span>
+            </div>
+          </div>
+
+          {/* Feedback / Support Message */}
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label className="form-label">Your Message / Feedback *</label>
+            <textarea
+              rows={3}
+              value={feedbackForm.message}
+              onChange={(e) => setFeedbackForm({ ...feedbackForm, message: e.target.value })}
+              className="form-input"
+              placeholder="Write your feedback, questions, or details about the support you need..."
+              style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit', fontSize: '0.85rem' }}
+              required
+            />
+          </div>
+
+          {/* Contact Details */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', paddingTop: '0.25rem', borderTop: '1px dashed rgba(35,31,29,0.1)' }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Contact Information</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              <div>
+                <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>Name</label>
+                <input
+                  type="text"
+                  value={feedbackForm.name}
+                  onChange={(e) => setFeedbackForm({ ...feedbackForm, name: e.target.value })}
+                  className="form-input"
+                  style={{ fontSize: '0.8rem', padding: '0.45rem 0.65rem' }}
+                  placeholder="Your Name"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>Email</label>
+                <input
+                  type="email"
+                  value={feedbackForm.email}
+                  onChange={(e) => setFeedbackForm({ ...feedbackForm, email: e.target.value })}
+                  className="form-input"
+                  style={{ fontSize: '0.8rem', padding: '0.45rem 0.65rem' }}
+                  placeholder="Your Email"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={submittingFeedback}
+            className="form-submit-btn"
+            style={{ width: '100%', marginTop: '0.25rem', opacity: submittingFeedback ? 0.7 : 1 }}
+          >
+            {submittingFeedback ? 'Sending Feedback...' : '💬 Submit Feedback & Support'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+
   const renderWashHistory = () => {
+
     const washBookings = bookings.filter(b => 
       b.serviceKey === 'car-wash' && 
       (!b.packageName || !b.packageName.toLowerCase().includes('membership'))
@@ -876,8 +1210,10 @@ export default function ProfilePage() {
         <div className="settings-list-container">
           {[
             { id: 'edit-profile', label: 'Edit Profile Details', desc: 'Change email, phone, and name' },
-            { id: 'notifications', label: 'Notification Settings', desc: 'SMS, push notifications, and email alerts' }
+            { id: 'notifications', label: 'Notification Settings', desc: 'SMS, push notifications, and email alerts' },
+            { id: 'feedback-support', label: 'Feedback & Help Support', desc: 'Share feedback, report an issue, or ask for help' }
           ].map((item, idx) => (
+
             <div 
               key={idx} 
               className="settings-item-row"
@@ -1039,9 +1375,11 @@ export default function ProfilePage() {
                 {activeModal === 'payment' && renderPaymentOptions()}
                 {activeModal === 'preferences' && renderPreferences()}
                 {activeModal === 'notifications' && renderNotifications()}
+                {activeModal === 'feedback-support' && renderFeedbackSupport()}
                 {activeModal === 'wash-history' && renderWashHistory()}
                 {activeModal === 'payment-history' && renderPaymentHistory()}
                 {activeModal === 'invoice' && renderGSTInvoice()}
+
               </motion.div>
             </div>
           )}

@@ -10,6 +10,7 @@ import AdminDashboardPage from '../../pages/AdminDashboardPage';
 import ManageServicesPage from '../../pages/ManageServicesPage';
 import ManageBannersPage from '../../pages/ManageBannersPage';
 import ManageNotificationsPage from '../../pages/ManageNotificationsPage';
+import AdminFeedbackPage from '../../pages/AdminFeedbackPage';
 import ManageMembershipsPage from '../../pages/ManageMembershipsPage';
 import ManageBookingsPage from '../../pages/ManageBookingsPage';
 import ManageStaffPage from '../../pages/ManageStaffPage';
@@ -54,6 +55,7 @@ export default function AdminLayout() {
             <Route path="services" element={<ManageServicesPage />} />
             <Route path="banners" element={<ManageBannersPage />} />
             <Route path="notifications" element={<ManageNotificationsPage />} />
+            <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="memberships" element={<ManageMembershipsPage />} />
             <Route path="bookings" element={<ManageBookingsPage />} />
             <Route path="staff" element={<ManageStaffPage />} />
@@ -69,3 +71,4 @@ export default function AdminLayout() {
     </AdminProvider>
   );
 }
+
