@@ -47,6 +47,14 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  location: {
+    type: String,
+    default: ''
+  },
+  phone: {
+    type: String,
+    default: ''
+  },
   // Line items for food/beverage orders (cafe & drive-through-cafe)
   items: {
     type: [

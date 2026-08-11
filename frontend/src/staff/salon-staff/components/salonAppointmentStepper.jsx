@@ -4,12 +4,11 @@ import { Scissors, CalendarCheck, UserCheck, Sparkles, Check } from 'lucide-reac
 export const SALON_STEPS = [
   { id: 'pending', label: 'Pending', icon: Scissors },
   { id: 'confirmed', label: 'Confirmed', icon: CalendarCheck },
-  { id: 'seated', label: 'Client Seated', icon: UserCheck },
-  { id: 'grooming', label: 'Grooming WIP', icon: Sparkles },
-  { id: 'completed', label: 'Styling Complete', icon: Check }
+  { id: 'completed', label: 'Completed', icon: Check }
 ];
 
 export default function SalonAppointmentStepper({ currentStepIndex, onStepChange }) {
+  const clampedStepIndex = Math.min(currentStepIndex || 0, SALON_STEPS.length - 1);
   return (
     <div className="py-2">
       <div className="flex items-center justify-between relative">
@@ -18,15 +17,15 @@ export default function SalonAppointmentStepper({ currentStepIndex, onStepChange
             className="h-full transition-all duration-300"
             style={{
               backgroundColor: '#8b5cf6',
-              width: `${(currentStepIndex / (SALON_STEPS.length - 1)) * 100}%`
+              width: `${(clampedStepIndex / (SALON_STEPS.length - 1)) * 100}%`
             }}
           />
         </div>
 
         {SALON_STEPS.map((step, index) => {
           const Icon = step.icon;
-          const isDone = index < currentStepIndex;
-          const isCurrent = index === currentStepIndex;
+          const isDone = index < clampedStepIndex;
+          const isCurrent = index === clampedStepIndex;
 
           return (
             <button

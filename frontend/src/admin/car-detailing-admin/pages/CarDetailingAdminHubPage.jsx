@@ -152,9 +152,12 @@ export default function CarDetailingAdminHubPage() {
   const mappedLocal = localDetailingBookings.map(b => ({
     id: b.id,
     customerName: b.customerName || 'Car Owner',
+    customerEmail: b.customerEmail || b.email || '',
+    phone: b.phone || b.mobile || '',
     vehicle: b.vehicle || b.vehicleNo || 'Vehicle',
     vehicleNo: b.vehicleNo || b.vehicle || 'MP-09-AB-1234',
     vehicleType: b.vehicleType || 'Sedan',
+    location: b.location || b.address || '',
     plan: b.package || b.service || 'Paint Protection Film (PPF)',
     service: b.package || b.service || 'Paint Protection Film (PPF)',
     serviceKey: 'car-detailing',
@@ -171,9 +174,89 @@ export default function CarDetailingAdminHubPage() {
     ...mappedLocal,
     ...contextBookings.filter(cb => !mappedLocal.some(lb => lb.id === cb.id))
   ];
+
+  // Get active logged in user from localStorage if any, for fallback
+  let activeUserEmail = 'mohit1@gmail.com';
+  let activeUserName = 'Mohit singh';
+  let activeUserPhone = '+91 98200 54321';
+  try {
+    const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
+    if (stored) {
+      const u = JSON.parse(stored);
+      if (u.email && u.email !== 'admin@gmail.com') activeUserEmail = u.email;
+      if (u.fullName || u.name) {
+        const parsedName = u.fullName || u.name;
+        if (parsedName !== 'Super Admin') activeUserName = parsedName;
+      }
+      if (u.mobile || u.phone) {
+        const parsedPhone = u.mobile || u.phone;
+        if (parsedPhone !== '+91 00000 00000') activeUserPhone = parsedPhone;
+      }
+    }
+  } catch (e) {}
+
+  const registeredVehiclesMap = {};
+  serviceBookings
+    .filter(b => {
+      const pkg = (b.plan || b.packageName || b.service || '').toLowerCase();
+      if (pkg.includes('wash') && !pkg.includes('detail')) return false;
+      return true;
+    })
+    .forEach((b, idx) => {
+      const rawEmail = (b.customerEmail || b.email || '').toLowerCase().trim();
+      const email = !rawEmail || rawEmail === 'customer@shinelounge.com' || rawEmail === 'admin@gmail.com' ? activeUserEmail : rawEmail;
+
+      const rawName = b.customerName || '';
+      const name = !rawName || rawName === 'Car Owner' || rawName === 'Valued Customer' || rawName === 'Super Admin' ? activeUserName : rawName;
+
+      const rawPhone = b.phone || b.mobile || '';
+      const phone = !rawPhone || rawPhone === '+91 00000 00000' || rawPhone === '+91 98200 54321' ? activeUserPhone : rawPhone;
+
+      const plate = (b.vehicleNo || 'MP-09-AB-1234').toUpperCase();
+      const model = b.vehicleType || b.vehicle || 'Premium Vehicle';
+      const key = `${email || name}_${plate}`.toLowerCase();
+
+      if (!registeredVehiclesMap[key]) {
+        registeredVehiclesMap[key] = {
+          plate: plate,
+          model: model,
+          ownerName: name,
+          ownerEmail: email,
+          ownerPhone: phone,
+          packageName: b.plan || b.packageName || b.service || 'Paint Protection Film (PPF)',
+          address: b.location || b.address || 'Scheme No. 54, Vijay Nagar, Indore',
+          totalBookings: 1,
+          lastServiceDate: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        };
+      } else {
+        registeredVehiclesMap[key].totalBookings += 1;
+        if (b.date && !b.date.includes('July 18')) {
+          registeredVehiclesMap[key].lastServiceDate = b.date;
+        }
+      }
+    });
+
+
+  const registeredVehiclesList = Object.values(registeredVehiclesMap).length > 0
+    ? Object.values(registeredVehiclesMap)
+    : [
+        {
+          plate: 'MP-09-AB-1234',
+          model: 'Tesla Model 3 (Sedan)',
+          ownerName: 'Car Owner',
+          ownerEmail: 'owner@shinelounge.com',
+          ownerPhone: '+91 98200 54321',
+          packageName: 'Paint Protection Film (PPF)',
+          address: 'Scheme No. 54, Vijay Nagar, Indore',
+          totalBookings: 1,
+          lastServiceDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        }
+      ];
+
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
+
 
   // Modals state
   const [editingPriceModal, setEditingPriceModal] = useState(false);
@@ -1026,7 +1109,78 @@ export default function CarDetailingAdminHubPage() {
         </div>
       )}
 
+      {/* TAB 4.5: REGISTERED VEHICLES */}
+      {activeTab === 'vehicles' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                🚗 Registered Detailing Vehicles & Fleet ({registeredVehiclesList.length})
+              </h3>
+              <p className="text-xs text-gray-500">Live list of customer vehicles registered during detailing sessions</p>
+            </div>
+            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+              {registeredVehiclesList.length} Registered Cars
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {registeredVehiclesList.map((v, i) => (
+              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
+                        🚗
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
+                        <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                      {v.totalBookings} {v.totalBookings === 1 ? 'Booking' : 'Bookings'}
+                    </span>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 space-y-1.5 text-xs text-gray-600">
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Registered Owner:</span>
+                      <strong className="text-gray-800">{v.ownerName}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Detailing Treatment:</span>
+                      <span className="text-amber-700 font-bold text-right truncate max-w-[170px]" title={v.packageName}>{v.packageName}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Contact:</span>
+                      <span className="text-gray-700 font-semibold">{v.ownerPhone}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Email:</span>
+                      <span className="text-gray-600 truncate max-w-[185px]">{v.ownerEmail}</span>
+                    </p>
+                    {v.address && (
+                      <div className="flex flex-col gap-0.5 border-t border-gray-50 pt-2 mt-1">
+                        <span className="text-gray-400 text-[10px] uppercase font-bold">Address Detail:</span>
+                        <span className="text-gray-700 font-semibold leading-relaxed break-words">{v.address}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2.5 border-t border-gray-50 flex justify-between items-center text-xs text-gray-500 mt-2">
+                  <span className="text-gray-400">Last Service:</span>
+                  <span className="text-amber-700 font-bold">{v.lastServiceDate}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* TAB 5: STAFF */}
+
       {activeTab === 'staff' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">

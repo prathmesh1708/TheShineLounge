@@ -995,7 +995,9 @@ export default function SalonAdminHubPage() {
               { header: 'Customer & Stylist', accessorKey: 'customerName', cell: (r) => (
                 <div>
                   <p className="font-bold text-gray-900">{r.customerName}</p>
-                  <p className="text-[10px] text-gray-400 font-semibold">{r.vehicleNo || r.phone || 'Salon Client'}</p>
+                  <p className="text-[10px] text-gray-400 font-semibold">
+                    {r.vehicleNo || 'Any Specialist'} {r.phone ? `• ${r.phone}` : ''}
+                  </p>
                 </div>
               )},
               { header: 'Treatment / Service', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStaff } from '../../common/context/StaffContext';
 import SalonStaffCard from '../components/salonStaffCard';
 import { Scissors } from 'lucide-react';
+import { SALON_STEPS } from '../components/salonAppointmentStepper';
 
 export default function SalonStaffAppointmentsPage() {
   const { jobs, updateJobStatus } = useStaff();
@@ -10,8 +11,8 @@ export default function SalonStaffAppointmentsPage() {
   const salonJobs = jobs.filter(j => j.serviceKey === 'salon');
 
   const filteredJobs = salonJobs.filter(j => {
-    if (filter === 'in-progress') return j.stepIndex > 0 && j.stepIndex < 4;
-    if (filter === 'completed') return j.stepIndex >= 4;
+    if (filter === 'in-progress') return j.stepIndex > 0 && j.stepIndex < SALON_STEPS.length - 1;
+    if (filter === 'completed') return j.stepIndex >= SALON_STEPS.length - 1;
     return true;
   });
 

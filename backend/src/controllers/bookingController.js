@@ -36,7 +36,9 @@ const createBooking = async (req, res) => {
       items,
       pickupTime,
       expectedAt,
-      status
+      status,
+      location,
+      phone
     } = req.body;
 
     if (!serviceKey || !serviceName || !packageName || !price || !date || !timeSlot || !customerName) {
@@ -77,6 +79,8 @@ const createBooking = async (req, res) => {
       items: Array.isArray(items) ? items : [],
       pickupTime: pickupTime || '',
       expectedAt: expectedAt ? new Date(expectedAt) : null,
+      location: location || '',
+      phone: phone || '',
       ...(status ? { status } : {}),
       assignedStaffId: assignedStaff ? assignedStaff._id : null,
       assignedStaffName: assignedStaff ? assignedStaff.fullName : ''

@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import apiClient from '../../common/utils/apiClient';
 
 import { PrimaryButton, SecondaryButton, FormInput, FormSelect, Toast } from '../components/carDetailingUI';
-import CarDetailingPaymentGateway from '../components/carDetailingPaymentGateway';
+
 import { SERVICES, PACKAGES, OFFERS, addBooking, getVehicleTypes, saveVehicleType } from '../services/carDetailingApi';
 
 export default function CarDetailingBookingPage() {
@@ -14,8 +14,7 @@ export default function CarDetailingBookingPage() {
   const [searchParams] = useSearchParams();
 
   const [step, setStep] = useState(1);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [formData, setFormData] = useState(null);
+
   const [vehicleTypes, setVehicleTypes] = useState(getVehicleTypes());
 
   useEffect(() => {
@@ -122,7 +121,7 @@ export default function CarDetailingBookingPage() {
   const nextStep = () => setStep(prev => prev + 1);
   const prevStep = () => setStep(prev => prev - 1);
 
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
     const effectiveVehicleType = data.vehicleType === "Other" && data.customVehicleType
       ? data.customVehicleType.trim()
       : data.vehicleType;
@@ -136,11 +135,6 @@ export default function CarDetailingBookingPage() {
       vehicleType: effectiveVehicleType
     };
 
-    setFormData(processedData);
-    setShowPaymentModal(true);
-  };
-
-  const handlePaymentSuccess = async (paymentResult = {}) => {
     const selectedItem = watchedPackage !== "none"
       ? PACKAGES.find(p => p.id === watchedPackage)?.name
       : SERVICES.find(s => s.id === watchedService)?.name;
@@ -148,24 +142,45 @@ export default function CarDetailingBookingPage() {
     const generatedBookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const totalFinal = getFinalTotal();
-    const isDeposit = paymentResult.paymentOption === "deposit";
-    const depositAmount = paymentResult.paidAmount || (isDeposit ? Math.round(totalFinal * 0.25) : totalFinal);
-    const remainingAmount = paymentResult.remainingAmount || (isDeposit ? totalFinal - depositAmount : 0);
-    const paymentStatusText = paymentResult.paymentStatus || (isDeposit ? "Deposit Paid" : "Fully Paid");
+    const depositAmount = 0;
+    const remainingAmount = totalFinal;
+    const paymentStatusText = "Pending";
+
+    let customerName = 'Car Owner';
+    let customerEmail = 'customer@shinelounge.com';
+    let customerPhone = '+91 98200 54321';
+
+    try {
+      const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.fullName) customerName = u.fullName;
+        else if (u.name) customerName = u.name;
+
+        if (u.email) customerEmail = u.email;
+
+        if (u.mobile) customerPhone = u.mobile;
+        else if (u.phone) customerPhone = u.phone;
+      }
+    } catch (e) {
+      console.warn('Error reading user details from localStorage:', e);
+    }
 
     const bookingObject = {
       id: generatedBookingId,
       package: selectedItem || 'Paint Protection Film (PPF)',
       price: totalFinal,
-      paymentType: paymentStatusText,
+      paymentType: "Pay on Detailing",
       depositAmount: depositAmount,
       remainingAmount: remainingAmount,
       paymentStatus: paymentStatusText,
-      customerName: formData?.fullName || 'Car Owner',
-      vehicle: `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`.trim() || 'Vehicle',
-      vehicleNo: formData?.vehicleNumber || 'MP-09-AB-1234',
-      vehicleType: formData?.vehicleType || 'Sedan',
-      location: `${formData?.address || ''}, ${formData?.landmark || ''} (Pin: ${formData?.pincode || ''})`,
+      customerName: customerName,
+      customerEmail: customerEmail,
+      phone: customerPhone,
+      vehicle: `${processedData.vehicleBrand || ''} ${processedData.vehicleModel || ''}`.trim() || 'Vehicle',
+      vehicleNo: processedData.vehicleNumber || 'MP-09-AB-1234',
+      vehicleType: processedData.vehicleType || 'Sedan',
+      location: `${processedData.address || ''}, ${processedData.landmark || ''} (Pin: ${processedData.pincode || ''})`,
     };
 
     // Save into localStorage persistent store
@@ -177,11 +192,16 @@ export default function CarDetailingBookingPage() {
       serviceName: 'Car Detailing',
       packageName: selectedItem || 'Paint Protection Film (PPF)',
       price: totalFinal,
-      customerName: formData?.fullName || 'Car Owner',
-      customerEmail: formData?.email || '',
-      vehicleNo: formData?.vehicleNumber || `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`.trim() || 'MP-09-AB-1234',
-      vehicleType: formData?.vehicleType || 'Car'
+      customerName: customerName,
+      customerEmail: customerEmail,
+      vehicleNo: processedData.vehicleNumber || 'MP-09-AB-1234',
+      vehicleType: `${processedData.vehicleBrand || ''} ${processedData.vehicleModel || ''} (${processedData.vehicleType || 'Sedan'})`.trim(),
+      location: `${processedData.address || ''}, ${processedData.landmark || ''} (Pin: ${processedData.pincode || ''})`,
+      phone: customerPhone,
+      date: new Date().toISOString().split('T')[0],
+      timeSlot: '10:00 AM - 01:00 PM'
     };
+
 
     try {
       await apiClient.post('/bookings', payload);
@@ -189,18 +209,16 @@ export default function CarDetailingBookingPage() {
       console.warn('Error creating car detailing booking in DB:', err.message);
     }
 
-    setShowPaymentModal(false);
-
     navigate('/car-detailing/success', {
       state: {
         bookingId: generatedBookingId,
-        vehicle: `${formData?.vehicleBrand || ''} ${formData?.vehicleModel || ''}`,
+        vehicle: `${processedData.vehicleBrand || ''} ${processedData.vehicleModel || ''}`,
         item: selectedItem,
         price: totalFinal,
         paidAmount: depositAmount,
         remainingAmount: remainingAmount,
         paymentStatus: paymentStatusText,
-        address: `${formData?.address || ''}, ${formData?.landmark || ''} (Pin: ${formData?.pincode || ''})`
+        address: `${processedData.address || ''}, ${processedData.landmark || ''} (Pin: ${processedData.pincode || ''})`
       }
     });
   };
@@ -264,10 +282,10 @@ export default function CarDetailingBookingPage() {
       </div>
 
       {/* Main Multi-step Form Content */}
-      <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex justify-center w-full">
         
-        {/* Left Side Form inputs (7 cols) */}
-        <div className="lg:col-span-7 bg-white border border-zinc-200/85 rounded-24 p-6 md:p-8 space-y-6 shadow-premium min-h-[380px] flex flex-col justify-between">
+        {/* Form inputs container */}
+        <div className="w-full max-w-2xl bg-white border border-zinc-200/85 rounded-24 p-6 md:p-8 space-y-6 shadow-premium min-h-[380px] flex flex-col justify-between">
           
           <AnimatePresence mode="wait">
             
@@ -521,60 +539,9 @@ export default function CarDetailingBookingPage() {
 
         </div>
 
-        {/* Right Side Order Summary panel (5 cols) */}
-        <div className="lg:col-span-5 bg-white border border-zinc-200 rounded-24 p-6 md:p-8 space-y-6 shadow-premium sticky top-24">
-          <h3 className="text-lg font-bold flex items-center gap-2 border-b border-zinc-100 pb-3 text-zinc-800">
-            <span>Price Summary</span>
-          </h3>
-
-          <div className="space-y-4 text-xs md:text-sm text-zinc-600 font-semibold">
-            <div className="flex justify-between">
-              <span>Detailing Base Price</span>
-              <span className="text-zinc-800">₹{getBasePrice()}</span>
-            </div>
-
-            <div className="flex justify-between">
-              <span>GST Tax (18%)</span>
-              <span className="text-zinc-800">₹{getTax()}</span>
-            </div>
-
-            {discount > 0 && (
-              <div className="flex justify-between text-luxury-emerald font-bold">
-                <span>Coupon Discount</span>
-                <span>-₹{discount}</span>
-              </div>
-            )}
-
-            <div className="border-t border-zinc-100 pt-4 flex justify-between items-center text-zinc-800">
-              <span className="text-sm font-bold">Total Amount</span>
-              <span className="text-2xl font-extrabold text-luxury-emerald">₹{getFinalTotal()}</span>
-            </div>
-          </div>
-
-          {/* Secure Guarantee label */}
-          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-20 flex gap-2.5 items-start text-xs text-zinc-500 leading-relaxed font-semibold">
-            <HelpCircle className="w-5 h-5 text-luxury-emerald flex-shrink-0 mt-0.5" />
-            <span>
-              All bookings are secure. Pay online or choose Pay on Detailing (Cash/UPI) post completion. Free cancel up to 24 hours.
-            </span>
-          </div>
-
-        </div>
-
       </form>
 
-      {/* Responsive Payment Gateway Modal */}
-      <CarDetailingPaymentGateway
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        totalAmount={getFinalTotal()}
-        bookingDetails={{
-          item: watchedPackage !== "none"
-            ? PACKAGES.find(p => p.id === watchedPackage)?.name
-            : SERVICES.find(s => s.id === watchedService)?.name
-        }}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
+
 
       {/* Feedback Toast */}
       <Toast

@@ -383,12 +383,16 @@ export default function SalonBookingPage() {
 
     let customerName = 'Salon Client';
     let customerEmail = '';
+    let phone = '';
     try {
       const stored = localStorage.getItem('tsl_user');
       if (stored) {
         const u = JSON.parse(stored);
-        if (u.name) customerName = u.name;
+        if (u.fullName) customerName = u.fullName;
+        else if (u.name) customerName = u.name;
         if (u.email) customerEmail = u.email;
+        if (u.mobile) phone = u.mobile;
+        else if (u.phone) phone = u.phone;
       }
     } catch (e) {}
 
@@ -402,6 +406,7 @@ export default function SalonBookingPage() {
       timeSlot: selectedTime,
       customerName,
       customerEmail,
+      phone,
       vehicleNo: `Stylist: ${selectedStylist?.name || 'Any Specialist'}`,
       vehicleType: 'Salon Client'
     };

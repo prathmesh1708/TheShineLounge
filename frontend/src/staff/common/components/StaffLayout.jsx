@@ -18,9 +18,9 @@ function StaffLayoutInner() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col justify-between items-center font-sans antialiased">
+    <div className="h-screen bg-gray-100 flex flex-col justify-between items-center font-sans antialiased overflow-hidden">
       {/* Mobile Device Viewport Frame */}
-      <div className="w-full max-w-md bg-white min-h-screen flex flex-col shadow-2xl relative border-x border-gray-200">
+      <div className="w-full max-w-md bg-white h-screen flex flex-col shadow-2xl relative border-x border-gray-200 overflow-hidden">
         
         {/* Navy Blue Mobile Top Bar */}
         <StaffHeader />

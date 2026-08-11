@@ -72,11 +72,6 @@ export default function CarDetailingSuccessPage() {
           </div>
         </div>
 
-        {/* Pricing Total */}
-        <div className="border-t border-zinc-100 pt-4 flex justify-between items-center text-zinc-800">
-          <span className="text-xs text-zinc-400 uppercase font-bold">Total paid</span>
-          <span className="text-2xl font-extrabold text-luxury-emerald">₹{booking.price}</span>
-        </div>
 
       </div>
 

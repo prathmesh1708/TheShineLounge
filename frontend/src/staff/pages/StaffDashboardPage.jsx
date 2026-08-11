@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStaff } from '../common/context/StaffContext';
+import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
 import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles } from 'lucide-react';
 import NotificationBell from '../../common/components/NotificationBell';
 
@@ -56,8 +56,15 @@ export default function StaffDashboardPage() {
       return aTime - bTime;
     });
 
+  const isJobCompleted = (job) => {
+    const finalStepIndex = SERVICE_FINAL_STEP_INDEX[job.serviceKey];
+    if (finalStepIndex !== undefined && (job.stepIndex || 0) >= finalStepIndex) return true;
+    const status = job.status?.toLowerCase() || '';
+    return status.includes('completed') || status.includes('delivered');
+  };
+
   const assignedCount = filteredJobs.length;
-  const completedCount = filteredJobs.filter(j => j.status?.toLowerCase().includes('completed') || j.status?.toLowerCase().includes('delivered')).length;
+  const completedCount = filteredJobs.filter(isJobCompleted).length;
   const pendingCount = assignedCount - completedCount;
 
   return (
@@ -193,10 +200,10 @@ export default function StaffDashboardPage() {
           ) : (
             filteredJobs.slice(0, 5).map(job => {
               const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
-              // Services have different stepper lengths — a drive-thru order on
-              // its last step is done, not 3/7ths done.
-              const lastStepIdx = job.serviceKey === 'drive-through-cafe' || job.serviceKey === 'cafe' ? 3 : 7;
-              const progressPercent = Math.min(100, Math.round((stepIdx / lastStepIdx) * 100));
+              // Services have different stepper lengths — a salon or dog-wash
+              // job on its last step is done, not partway through a 7-step flow.
+              const lastStepIdx = SERVICE_FINAL_STEP_INDEX[job.serviceKey] ?? 7;
+              const progressPercent = isJobCompleted(job) ? 100 : Math.min(100, Math.round((stepIdx / lastStepIdx) * 100));
 
               return (
                 <div

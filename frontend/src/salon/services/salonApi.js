@@ -660,7 +660,7 @@ export const getStylistsSync = () => {
 
     if (adminStaff) {
       const parsed = JSON.parse(adminStaff);
-      const filtered = parsed.filter(s => !s.serviceKey || s.serviceKey === 'salon' || (s.department && s.department.toLowerCase().includes('salon')));
+      const filtered = parsed.filter(s => s.serviceKey === 'salon' || (s.department && s.department.toLowerCase().includes('salon')));
       custom.push(...filtered);
     }
     if (salonStaffLocal) {

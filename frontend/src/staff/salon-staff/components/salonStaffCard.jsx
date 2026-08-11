@@ -58,7 +58,7 @@ export default function SalonStaffCard({ job, onUpdateStatus }) {
           </button>
         ) : (
           <span className="text-xs font-extrabold text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
-            ✓ Styling Complete
+            ✓ Completed
           </span>
         )}
       </div>

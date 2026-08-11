@@ -226,29 +226,6 @@ export default function DogWashHomePage() {
         )}
       </div>
 
-      {/* 3. Machine Location & Operating Hours */}
-      <div className="bg-white border border-teal-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📍</span>
-            <div>
-              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Machine Location</h3>
-              <p className="text-xs text-gray-600 font-semibold">{machineConfig?.location || dbService?.location || "Palasia Main Rd, Scheme 54, Indore (Kiosk #04)"}</p>
-            </div>
-          </div>
-          <span className="text-[10px] font-extrabold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">
-            {machineConfig?.status || "Self-Serve Kiosk"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-gray-600 font-medium pt-0.5">
-          <span className="text-base">🕒</span>
-          <div>
-            <span className="font-bold text-gray-800">Operating Hours: </span>
-            <span>{machineConfig?.workingHours || dbService?.workingHours || "08:00 AM - 10:00 PM IST (Mon - Sun)"}</span>
-          </div>
-        </div>
-      </div>
 
       {/* 4. Pricing Plans */}
       <div className="carwash-section-block">

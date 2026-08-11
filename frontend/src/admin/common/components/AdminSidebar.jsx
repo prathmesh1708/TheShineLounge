@@ -85,7 +85,13 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     const iCount = inventory.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
     // Calculate registered vehicles count for car services
-    const carBookings = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
+    let carBookings = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
+    if (key === 'car-detailing') {
+      carBookings = carBookings.filter(b => {
+        const pkg = (b.plan || b.packageName || b.service || '').toLowerCase();
+        return !(pkg.includes('wash') && !pkg.includes('detail'));
+      });
+    }
     const vMap = {};
     carBookings.forEach(b => {
       const plate = (b.vehicleNo || b.vehiclePlate || 'TSL-3000').toUpperCase();

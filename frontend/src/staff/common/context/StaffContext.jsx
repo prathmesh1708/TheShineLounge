@@ -5,6 +5,18 @@ import { useAuth } from '../../../common/context/AuthContext';
 
 const StaffContext = createContext();
 
+// Final stepper index per service — each service's stepper has a different
+// number of steps, so "done" can't be a single hardcoded index (e.g. 7,
+// which only applies to car-detailing's 8-step flow).
+export const SERVICE_FINAL_STEP_INDEX = {
+  'car-detailing': 7,
+  'car-wash': 4,
+  'cafe': 4,
+  'drive-through-cafe': 3,
+  'dog-wash': 4,
+  'salon': 2
+};
+
 const formatStaffUser = (u) => {
   if (!u) {
     return {
@@ -198,7 +210,7 @@ export function StaffProvider({ children }) {
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
             customerName: b.customerName || b.user || 'Customer',
-            phone: b.customerEmail || b.phone || b.mobile || '+91 98200 12345',
+            phone: b.phone || b.mobile || b.customerEmail || '+91 98200 12345',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || b.time || '02:00 PM',
             amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
@@ -448,16 +460,32 @@ export function StaffProvider({ children }) {
       'Delivered'
     ];
 
-    const isCompleted = newStepIndex >= 7 || newStatus?.toLowerCase() === 'delivered' || newStatus?.toLowerCase() === 'completed';
+    const matchesJob = (job) => job.id === jobId || job._id === jobId;
+    const existingJob = jobs.find(matchesJob);
+    if (!existingJob) {
+      console.warn(`Job ${jobId} not found in state.`);
+      return;
+    }
+
+    const jobService = existingJob.serviceKey;
+    const finalStepIndex = SERVICE_FINAL_STEP_INDEX[jobService] ?? 7;
+
+    const isCompleted = newStepIndex >= finalStepIndex || newStatus?.toLowerCase() === 'delivered' || newStatus?.toLowerCase() === 'completed';
     const computedStatus = isCompleted ? 'Completed' : (newStatus || ALL_STEPS[newStepIndex]);
 
-    let updatedTargetJob = null;
+    const updatedPhotos = photoUrl ? [...(existingJob.photos || []), photoUrl] : existingJob.photos;
+    const updatedTargetJob = {
+      ...existingJob,
+      status: computedStatus,
+      stepIndex: newStepIndex,
+      notes: notes || existingJob.notes,
+      photos: updatedPhotos
+    };
 
     // The same job can appear twice — once from the API and once from a local
     // storage mirror whose _id is only the display id — so lock onto the
     // database-backed copy first and never let the mirror overwrite it.
     const isMongoId = (val) => /^[a-f\d]{24}$/i.test(String(val || ''));
-    const matchesJob = (job) => job.id === jobId || job._id === jobId;
     const preferredId =
       jobs.find(job => matchesJob(job) && isMongoId(job._id))?._id || null;
 
@@ -465,16 +493,7 @@ export function StaffProvider({ children }) {
     setJobs(prev => {
       const nextJobs = prev.map(job => {
         if (matchesJob(job)) {
-          const updatedPhotos = photoUrl ? [...(job.photos || []), photoUrl] : job.photos;
-          const uJob = {
-            ...job,
-            status: computedStatus,
-            stepIndex: newStepIndex,
-            notes: notes || job.notes,
-            photos: updatedPhotos
-          };
-          if (!updatedTargetJob || isMongoId(job._id)) updatedTargetJob = uJob;
-          return uJob;
+          return updatedTargetJob;
         }
         return job;
       });
@@ -491,8 +510,7 @@ export function StaffProvider({ children }) {
     // 2. Persist to local storage shine_car_detailing_bookings and build updated timeline for user tracking.
     // Only detailing jobs belong in this mirror — writing other services here
     // re-imports them as phantom detailing jobs on the next poll.
-    const isDetailingJob =
-      !updatedTargetJob || updatedTargetJob.serviceKey === 'car-detailing';
+    const isDetailingJob = updatedTargetJob.serviceKey === 'car-detailing';
     if (isDetailingJob) {
       try {
         const stored = localStorage.getItem('shine_car_detailing_bookings');
@@ -572,6 +590,7 @@ export function StaffProvider({ children }) {
     const newCust = {
       id: `CUST-${Date.now().toString().slice(-3)}`,
       ...customerData,
+      serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
       totalSpent: 0,
       loyaltyPoints: 100,
       joinDate: new Date().toISOString().split('T')[0],
@@ -590,6 +609,40 @@ export function StaffProvider({ children }) {
     return job.serviceKey === currentStaff.serviceKey;
   });
 
+  // Filter Customers strictly relevant to the logged-in staff's serviceKey
+  const getDigits = (str) => (str || '').replace(/[^\d]/g, '');
+  const staffCustomers = customers.filter(c => {
+    if (
+      !currentStaff ||
+      currentStaff.serviceKey === 'global' ||
+      currentStaff.role === 'Super Admin' ||
+      currentStaff.role === 'Branch Manager' ||
+      currentStaff.role === 'Cashier'
+    ) {
+      return true;
+    }
+
+    // 1. Check if the customer matches the active staff's serviceKey
+    if (c.serviceKey === currentStaff.serviceKey) return true;
+
+    // 2. Check if the customer has at least one booking in `staffJobs`
+    const custEmail = (c.email || c.id || '').toLowerCase().trim();
+    const custName = (c.name || c.fullName || '').toLowerCase().trim();
+    const custDigits = getDigits(c.mobile || c.phone);
+
+    return staffJobs.some(b => {
+      const bEmail = (b.customerEmail || '').toLowerCase().trim();
+      const bName = (b.customerName || '').toLowerCase().trim();
+      const bDigits = getDigits(b.phone);
+
+      const emailMatch = custEmail && bEmail === custEmail;
+      const nameMatch = custName && bName === custName;
+      const phoneMatch = custDigits && bDigits && (custDigits.endsWith(bDigits) || bDigits.endsWith(custDigits));
+
+      return emailMatch || nameMatch || phoneMatch;
+    });
+  });
+
   return (
     <StaffContext.Provider
       value={{
@@ -601,7 +654,8 @@ export function StaffProvider({ children }) {
         jobs: staffJobs,
         allJobs: jobs,
         updateJobStatus,
-        customers,
+        customers: staffCustomers,
+        allCustomers: customers,
         addCustomer,
         attendance,
         isCheckedIn,
