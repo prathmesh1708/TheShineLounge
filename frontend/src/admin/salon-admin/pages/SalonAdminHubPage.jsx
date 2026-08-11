@@ -999,8 +999,9 @@ export default function SalonAdminHubPage() {
                 </div>
               )},
               { header: 'Treatment / Service', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },
-              { header: 'Date & Slot', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.date || r.timeSlot || 'Today'}</span> },
+              { header: 'Booking Date & Time', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.timeSlot || r.date || 'Today'}</span> },
               { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+
               { header: 'Status', accessorKey: 'status', cell: (r) => (
                 <select
                   value={r.status || 'Confirmed'}

@@ -17,9 +17,33 @@ import {
   initialNotifications
 } from '../data/adminMockData';
 
+export const formatBookingDateTime = (rawSlot, rawDate) => {
+  if (!rawSlot && !rawDate) return 'N/A';
+  let text = String(rawSlot || '').trim();
+
+  // If text has range with '-', extract start time
+  // Example: "August 10, 2026 | 02:01 PM - 02:31 PM" => "August 10, 2026 | 02:01 PM"
+  // Example: "02:01 PM - 02:31 PM" => "02:01 PM"
+  if (text.includes('-')) {
+    const parts = text.split('-');
+    const firstPart = parts[0].trim();
+    if (firstPart.match(/(AM|PM)/i) || firstPart.includes('|') || firstPart.length > 5) {
+      text = firstPart;
+    }
+  }
+
+  // If date is provided and not already included in text
+  if (rawDate && !text.includes(rawDate) && !text.includes('|') && !text.match(/^[A-Za-z]+\s+\d{1,2}/)) {
+    return `${rawDate} | ${text}`;
+  }
+
+  return text;
+};
+
 const AdminContext = createContext();
 
 export const AdminProvider = ({ children }) => {
+
   // Global State
   const [stats, setStats] = useState(initialDashboardStats);
   const [services, setServices] = useState([]);
@@ -118,7 +142,7 @@ export const AdminProvider = ({ children }) => {
             serviceName: b.serviceName,
             plan: b.packageName,
             date: displayDate,
-            timeSlot: `${displayDate} | ${displayTime}`,
+            timeSlot: formatBookingDateTime(displayTime, displayDate),
             total: b.price,
             status: b.status,
             staffAssigned: b.assignedStaffName || 'Not Assigned',

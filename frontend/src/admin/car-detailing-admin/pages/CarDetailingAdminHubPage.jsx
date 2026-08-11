@@ -995,12 +995,13 @@ export default function CarDetailingAdminHubPage() {
                 </span>
               )},
               { header: 'Treatment / Package', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },
-              { header: 'Booking Date', accessorKey: 'date', cell: (r) => (
+              { header: 'Booking Date & Time', accessorKey: 'timeSlot', cell: (r) => (
                 <span className="text-xs font-bold text-gray-700">
-                  {r.date || (r.timeSlot ? r.timeSlot.split('|')[0].trim() : new Date().toISOString().split('T')[0])}
+                  {r.timeSlot || r.date}
                 </span>
               )},
               { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+
               { header: 'Status', accessorKey: 'status', cell: (r) => (
                 <select
                   value={r.status || 'Confirmed'}

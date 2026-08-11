@@ -66,17 +66,15 @@ export default function ManageBookingsPage() {
       )
     },
     {
-      header: 'Date & Slot',
+      header: 'Booking Date & Time',
       accessorKey: 'date',
       cell: (row) => (
         <div className="text-gray-700 font-medium">
-          <p className="font-bold text-gray-900">{row.date}</p>
-          <p className="text-[10px] text-gray-500 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-500" /> {row.timeSlot}
-          </p>
+          <p className="font-bold text-gray-900">{row.timeSlot || row.date}</p>
         </div>
       )
     },
+
     {
       header: 'Total Amount',
       accessorKey: 'total',
