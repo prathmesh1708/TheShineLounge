@@ -96,26 +96,30 @@ export function StaffProvider({ children }) {
   useEffect(() => {
     const syncStaffUser = () => {
       try {
+        let newStaff = null;
         if (authUser && authUser.role === 'staff') {
-          setCurrentStaff(formatStaffUser(authUser));
-          setIsAuthenticated(true);
-          return;
-        }
-
-        const stored = localStorage.getItem('tsl_user');
-        if (stored) {
-          const u = JSON.parse(stored);
-          if (u && u.role === 'staff') {
-            setCurrentStaff(formatStaffUser(u));
-            setIsAuthenticated(true);
-            return;
+          newStaff = formatStaffUser(authUser);
+        } else {
+          const stored = localStorage.getItem('tsl_user');
+          if (stored) {
+            const u = JSON.parse(stored);
+            if (u && u.role === 'staff') {
+              newStaff = formatStaffUser(u);
+            }
           }
         }
+        if (!newStaff) newStaff = formatStaffUser(null);
+
+        setCurrentStaff(prev => {
+          if (prev && JSON.stringify(prev) === JSON.stringify(newStaff)) {
+            return prev;
+          }
+          return newStaff;
+        });
+        setIsAuthenticated(true);
       } catch (err) {
         console.warn('Sync staff error:', err);
       }
-      setCurrentStaff(formatStaffUser(null));
-      setIsAuthenticated(true);
     };
 
     syncStaffUser();
@@ -288,7 +292,37 @@ export function StaffProvider({ children }) {
       ...localDetailingJobs.filter(notAlreadyLive),
       ...localDogJobs.filter(notAlreadyLive)
     ];
-    const finalJobsList = combined.length > 0 ? combined : mockAssignedJobs;
+    const baseJobsList = combined.length > 0 ? combined : mockAssignedJobs;
+
+    // Merge any locally synced job updates (stepIndex, status, notes, photos)
+    let syncJobsMap = {};
+    try {
+      const syncStored = localStorage.getItem('tsl_staff_jobs_sync');
+      if (syncStored) {
+        const syncArr = JSON.parse(syncStored);
+        if (Array.isArray(syncArr)) {
+          syncArr.forEach(j => {
+            if (j.id) syncJobsMap[j.id] = j;
+            if (j._id) syncJobsMap[j._id] = j;
+          });
+        }
+      }
+    } catch (e) {}
+
+    const finalJobsList = baseJobsList.map(j => {
+      const synced = syncJobsMap[j.id] || syncJobsMap[j._id];
+      if (synced && synced.stepIndex !== undefined) {
+        return {
+          ...j,
+          stepIndex: synced.stepIndex,
+          status: synced.status || j.status,
+          notes: synced.notes || j.notes,
+          photos: synced.photos || j.photos
+        };
+      }
+      return j;
+    });
+
     setJobs(finalJobsList);
   };
 

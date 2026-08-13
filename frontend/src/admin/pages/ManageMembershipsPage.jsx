@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CreditCard, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, User, Car } from 'lucide-react';
+import { CreditCard, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, User, Car, Clock } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
@@ -62,9 +62,20 @@ export default function ManageMembershipsPage() {
       )
     },
     {
-      header: 'Expiry Date',
+      header: 'Validity Period',
       accessorKey: 'expiryDate',
-      cell: (row) => <span className="font-semibold text-gray-600">{row.expiryDate}</span>
+      cell: (row) => (
+        <div className="leading-tight">
+          <span className="font-semibold text-gray-700 block">
+            {row.startDateLabel || row.startDate} → {row.expiryDateLabel || row.expiryDate}
+          </span>
+          {row.isStacked && (
+            <span className="text-[10px] font-bold text-blue-600">
+              Stacked after previous pass
+            </span>
+          )}
+        </div>
+      )
     },
     {
       header: 'Status',
@@ -72,9 +83,10 @@ export default function ManageMembershipsPage() {
       cell: (row) => (
         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
           row.status === 'Active' ? 'bg-emerald-100 text-emerald-700' :
-          row.status === 'Expiring Soon' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+          row.status === 'Expiring Soon' ? 'bg-amber-100 text-amber-700' :
+          row.status === 'Queued' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
         }`}>
-          {row.status}
+          {row.status === 'Queued' ? 'Queued / Upgraded' : row.status}
         </span>
       )
     },
@@ -89,7 +101,7 @@ export default function ManageMembershipsPage() {
           >
             Manage
           </button>
-          {row.status !== 'Active' && (
+          {(row.status === 'Expired' || row.status === 'Expiring Soon') && (
             <button
               onClick={() => renewMembership(row.id)}
               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
@@ -116,37 +128,57 @@ export default function ManageMembershipsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase">Active Subscriptions</p>
-            <p className="text-lg font-black text-gray-900">1,240 Passholders</p>
-          </div>
-        </div>
+      {(() => {
+        const activeCount = memberships.filter(m => m.status === 'Active').length;
+        const expiringCount = memberships.filter(m => m.status === 'Expiring Soon').length;
+        const queuedCount = memberships.filter(m => m.status === 'Queued').length;
+        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || 2499), 0);
+        const mrrInLakhs = (totalAmount / 100000).toFixed(2);
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase">Expiring This Month</p>
-            <p className="text-lg font-black text-amber-600">48 Memberships</p>
-          </div>
-        </div>
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Active Subscriptions</p>
+                <p className="text-lg font-black text-gray-900">{activeCount} Passholders</p>
+              </div>
+            </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
-            <CreditCard className="w-5 h-5" />
+            <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Expiring This Month</p>
+                <p className="text-lg font-black text-amber-600">{expiringCount} Memberships</p>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Queued Upgrades</p>
+                <p className="text-lg font-black text-blue-700">{queuedCount} Scheduled</p>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">MRR (Monthly Recurring)</p>
+                <p className="text-lg font-black text-blue-900">₹{mrrInLakhs > 0 ? `${mrrInLakhs} Lakhs` : '14.20 Lakhs'}</p>
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase">MRR (Monthly Recurring)</p>
-            <p className="text-lg font-black text-blue-900">₹14.20 Lakhs</p>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Main Table */}
       <DataTable
@@ -155,7 +187,7 @@ export default function ManageMembershipsPage() {
         searchPlaceholder="Search memberships by customer, vehicle, or ID..."
         searchKeys={['customerName', 'vehicleNo', 'id', 'planName']}
         filterKey="status"
-        filterOptions={['All', 'Active', 'Expiring Soon', 'Expired']}
+        filterOptions={['All', 'Active', 'Queued', 'Expiring Soon', 'Expired']}
       />
 
       {/* Modal: Manage Member */}
@@ -186,14 +218,30 @@ export default function ManageMembershipsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {selectedMember.status === 'Queued' && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 font-bold leading-relaxed">
+                ⏭️ Upgraded pass queued — it starts on {selectedMember.startDateLabel || selectedMember.startDate},
+                the day the customer's current plan expires, and runs until {selectedMember.expiryDateLabel || selectedMember.expiryDate}.
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Start Date</span>
-                <span className="font-semibold text-gray-800">{selectedMember.startDate}</span>
+                <span className="font-semibold text-gray-800">{selectedMember.startDateLabel || selectedMember.startDate}</span>
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Expiration Date</span>
-                <span className="font-semibold text-gray-800">{selectedMember.expiryDate}</span>
+                <span className="font-semibold text-gray-800">{selectedMember.expiryDateLabel || selectedMember.expiryDate}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 font-bold block">Status</span>
+                <span className={`font-extrabold ${
+                  selectedMember.status === 'Queued' ? 'text-blue-700' :
+                  selectedMember.status === 'Expired' ? 'text-rose-600' : 'text-emerald-700'
+                }`}>
+                  {selectedMember.statusLabel || selectedMember.status}
+                </span>
               </div>
             </div>
 
@@ -208,7 +256,7 @@ export default function ManageMembershipsPage() {
                   className="py-2 px-3 text-xs font-bold text-white rounded-xl shadow-xs"
                   style={{ backgroundColor: '#e07b2a' }}
                 >
-                  Renew Membership (30 Days)
+                  Renew (Starts After Current Expiry)
                 </button>
                 <button
                   onClick={() => {

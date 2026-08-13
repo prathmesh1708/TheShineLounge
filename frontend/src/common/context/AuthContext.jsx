@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import authService from '../services/authService';
+import {
+  purgeLegacyGlobalKeys,
+  clearScopedData,
+  normalizeEmail
+} from '../utils/userScopedStorage';
 
 const AuthContext = createContext(null);
 
@@ -9,6 +14,11 @@ const AuthContext = createContext(null);
 const isStaffOrAdminPath = () =>
   window.location.pathname.startsWith('/admin') ||
   window.location.pathname.startsWith('/staff');
+
+// Bookings, passes and vehicles used to sit under global keys, so they carried
+// over to whoever signed in next. They are per-account now; drop the old copies
+// once so no account inherits the previous one's data (or the demo seeds).
+purgeLegacyGlobalKeys();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -138,6 +148,11 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (registerData) => {
     const data = await authService.register(registerData);
     if (data.success) {
+      // A brand new account starts empty, even if this browser previously held
+      // data for the same address (re-registration after a wipe, shared device).
+      clearScopedData(normalizeEmail(data.user?.email));
+      purgeLegacyGlobalKeys();
+
       localStorage.setItem('tsl_token', data.token);
       localStorage.setItem('tsl_user', JSON.stringify(data.user));
       localStorage.setItem('tsl_customer_token', data.token);
@@ -149,8 +164,23 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authService.logout();
+    try {
+      await authService.logout();
+    } catch (e) {}
+
+    localStorage.removeItem('tsl_token');
+    localStorage.removeItem('tsl_user');
+    localStorage.removeItem('tsl_customer_token');
+    localStorage.removeItem('tsl_customer_user');
+    localStorage.removeItem('tsl_admin_token');
+    localStorage.removeItem('tsl_admin_user');
+
+    clearScopedData('');
+    purgeLegacyGlobalKeys();
     clearAuth();
+
+    setUser(null);
+    setToken(null);
   }, []);
 
   const updateUser = useCallback((updatedUser) => {

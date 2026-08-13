@@ -2,6 +2,17 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../../common/utils/apiClient';
 import { cacheService } from '../../common/utils/serviceCache';
+import {
+  isMembershipPackage,
+  scheduleNewMembership,
+  buildMembershipSchedule
+} from '../../common/utils/membershipUtils';
+import {
+  readScoped,
+  writeScoped,
+  currentUserEmail,
+  normalizeEmail
+} from '../../common/utils/userScopedStorage';
 
 export default function CarWashConfirmPage() {
   const location = useLocation();
@@ -15,6 +26,7 @@ export default function CarWashConfirmPage() {
   };
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [scheduledPass, setScheduledPass] = useState(null);
   const [dbService, setDbService] = useState(null);
 
   React.useEffect(() => {
@@ -40,16 +52,9 @@ export default function CarWashConfirmPage() {
   let numCars = 1;
   const isMembership = (service.name || '').toLowerCase().includes('membership') || (service.name || '').toLowerCase().includes('pass');
   
-  try {
-    const saved = localStorage.getItem('tsl_saved_vehicles');
-    if (saved) {
-      const list = JSON.parse(saved);
-      if (Array.isArray(list) && list.length > 0) {
-        numCars = list.length;
-      }
-    }
-  } catch (e) {
-    console.warn('Could not parse saved vehicles:', e);
+  const savedVehicles = readScoped('tsl_saved_vehicles', currentUserEmail(), []);
+  if (Array.isArray(savedVehicles) && savedVehicles.length > 0) {
+    numCars = savedVehicles.length;
   }
 
   // Price calculations
@@ -84,11 +89,11 @@ export default function CarWashConfirmPage() {
 
   const handleConfirm = async () => {
     try {
-      // Get customer info from localStorage
+      // Get customer info from localStorage / AuthContext
       let customerName = 'Valued Customer';
       let customerEmail = '';
       try {
-        const stored = localStorage.getItem('tsl_user') || localStorage.getItem('tsl_customer_user');
+        const stored = localStorage.getItem('tsl_user') || localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_admin_user');
         if (stored) {
           const u = JSON.parse(stored);
           customerName = u.fullName || u.name || customerName;
@@ -96,6 +101,9 @@ export default function CarWashConfirmPage() {
         }
       } catch (e) {
         console.warn('Error reading customer from localStorage:', e);
+      }
+      if (!customerEmail) {
+        customerEmail = 'customer@theshinelounge.com';
       }
 
       // Parse date and timeslot dynamically from system clock
@@ -128,10 +136,76 @@ export default function CarWashConfirmPage() {
         customerName,
         customerEmail,
         vehicleNo: vehicle?.plate || 'MP09WC4444',
-        vehicleType: vehicle?.name || 'Hyundai Elite i20'
+        vehicleType: vehicle?.name || 'Hyundai Elite i20',
+        purchasedAt: new Date().toISOString()
       };
 
-      await apiClient.post('/bookings', payload);
+      // A pass bought while another one is still running is queued behind it
+      // instead of overwriting it, so no paid days are lost on an upgrade.
+      const scopeEmail = normalizeEmail(customerEmail);
+      let localBookings = readScoped('tsl_user_bookings', scopeEmail, []);
+      if (!Array.isArray(localBookings)) localBookings = [];
+
+      if (isMembershipPackage(payload.packageName)) {
+        let priorPasses = localBookings.filter(b => isMembershipPackage(b.packageName || b.plan));
+
+        // localStorage can be cleared between purchases; the server still knows.
+        try {
+          const res = await apiClient.get('/bookings');
+          const serverBookings = (res.data?.bookings || []).filter(
+            b => (b.customerEmail || '').toLowerCase().trim() === customerEmail
+              && isMembershipPackage(b.packageName)
+          );
+          const knownIds = new Set(priorPasses.map(b => b.bookingId));
+          serverBookings.forEach(b => {
+            if (!knownIds.has(b.bookingId)) priorPasses.push(b);
+          });
+        } catch (err) {
+          console.warn('Could not load prior passes from server, stacking on local history only');
+        }
+
+        const scheduled = scheduleNewMembership(priorPasses, payload, { catalog: dbService?.memberships });
+        setScheduledPass(scheduled);
+        if (scheduled) {
+          payload.membershipStartDate = scheduled.startISO;
+          payload.membershipExpiryDate = scheduled.expiryISO;
+          payload.membershipStartLabel = scheduled.startLabel;
+          payload.membershipExpiryLabel = scheduled.expiryLabel;
+          payload.membershipStatus = scheduled.status;
+        }
+      }
+
+      try {
+        // membership* fields are derived client-side and are not part of the
+        // booking schema, so they stay out of the request body.
+        const { membershipStartDate, membershipExpiryDate, membershipStartLabel,
+          membershipExpiryLabel, membershipStatus, ...bookingPayload } = payload;
+        await apiClient.post('/bookings', bookingPayload);
+      } catch (err) {
+        console.warn('Backend POST /bookings failed, preserving locally:', err.message);
+      }
+
+      // Save under this customer's own scope so Profile & Bookings update
+      // instantly without leaking into the next account on this browser.
+      localBookings.unshift(payload);
+      writeScoped('tsl_user_bookings', scopeEmail, localBookings);
+
+      if (isMembershipPackage(payload.packageName)) {
+        const passes = localBookings.filter(b => isMembershipPackage(b.packageName || b.plan));
+        writeScoped('tsl_membership_passes', scopeEmail, passes);
+
+        // Legacy single-pass key: keep it pointing at whatever is running now,
+        // falling back to the newest purchase when everything is still queued.
+        const schedule = buildMembershipSchedule(passes, { catalog: dbService?.memberships });
+        const current = schedule.find(r => r.isActive) || schedule[schedule.length - 1];
+        writeScoped('tsl_active_membership', scopeEmail, current ? current.booking : payload);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('tsl_booking_created', { detail: payload }));
+      }
+
       setBookingConfirmed(true);
       setTimeout(() => {
         navigate('/bookings');
@@ -161,9 +235,17 @@ export default function CarWashConfirmPage() {
         <div className="confirm-success-card">
           <div className="success-icon-badge">✨</div>
           <h2 className="success-title">Booking Confirmed!</h2>
-          <p className="success-desc">
-            Your wash session has been scheduled successfully. Redirecting you to bookings...
-          </p>
+          {scheduledPass?.isQueued ? (
+            <p className="success-desc">
+              Your current pass keeps running until {scheduledPass.startLabel}. The upgraded{' '}
+              <strong>{scheduledPass.packageName}</strong> is queued and starts{' '}
+              {scheduledPass.startLabel}, valid until {scheduledPass.expiryLabel}. Redirecting you to bookings...
+            </p>
+          ) : (
+            <p className="success-desc">
+              Your wash session has been scheduled successfully. Redirecting you to bookings...
+            </p>
+          )}
         </div>
       ) : (
         <div className="confirm-body-stack">
