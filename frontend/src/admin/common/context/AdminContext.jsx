@@ -266,22 +266,15 @@ export const AdminProvider = ({ children }) => {
             _id: b._id,
             id: b.bookingId,
             bookingId: b.bookingId,
-            customerName: b.customerName,
-<<<<<<< HEAD
             customerEmail: b.customerEmail || '',
             vehicleNo: b.vehicleNo || '',
             vehicleType: b.vehicleType || '',
             location: b.location || '',
             phone: b.phone || '',
-=======
-            customerEmail: b.customerEmail,
->>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
             serviceKey: b.serviceKey,
             serviceName: b.serviceName,
             plan: b.packageName,
             packageName: b.packageName,
-            vehicleNo: b.vehicleNo,
-            vehicleType: b.vehicleType,
             // Ordering key for two passes bought on the same day (buy, upgrade).
             createdAt: b.createdAt,
             date: displayDate,
@@ -297,13 +290,9 @@ export const AdminProvider = ({ children }) => {
             bookedAt: b.bookedAt || b.createdAt
           };
         });
-<<<<<<< HEAD
-=======
-        setBookings(mapped);
         setMemberships(deriveMembershipsFromBookings(mapped));
       } else {
         setMemberships(deriveMembershipsFromBookings([]));
->>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
       }
 
       // Merge client-side salon bookings from localStorage if available
@@ -434,24 +423,18 @@ export const AdminProvider = ({ children }) => {
 
     // Poll for live booking updates from staff every 5 seconds
     const interval = setInterval(fetchBookingsList, 5000);
-<<<<<<< HEAD
-    window.addEventListener('salonDataChanged', fetchBookingsList);
-    window.addEventListener('bookingAdded', fetchBookingsList);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('salonDataChanged', fetchBookingsList);
-      window.removeEventListener('bookingAdded', fetchBookingsList);
-=======
-
     const handleLiveBooking = () => fetchBookingsList();
     window.addEventListener('storage', handleLiveBooking);
     window.addEventListener('tsl_booking_created', handleLiveBooking);
+    window.addEventListener('salonDataChanged', handleLiveBooking);
+    window.addEventListener('bookingAdded', handleLiveBooking);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('storage', handleLiveBooking);
       window.removeEventListener('tsl_booking_created', handleLiveBooking);
->>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
+      window.removeEventListener('salonDataChanged', handleLiveBooking);
+      window.removeEventListener('bookingAdded', handleLiveBooking);
     };
   }, []);
 
