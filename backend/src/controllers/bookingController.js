@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
+const { sendNotificationToUser } = require('../common/services/pushNotificationHelper');
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
 // for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
@@ -222,6 +223,20 @@ const updateBooking = async (req, res) => {
         { _id: booking.assignedStaffId, fullName: booking.assignedStaffName },
         booking
       );
+    }
+
+    // Dispatch FCM Push Notification to Customer if user account is attached
+    if (status !== undefined && booking.user) {
+      sendNotificationToUser(booking.user, {
+        title: `Booking Update: ${booking.bookingId}`,
+        body: `Your ${booking.serviceName} booking status is now "${booking.status}".`,
+        data: {
+          type: 'booking_update',
+          bookingId: booking.bookingId,
+          status: booking.status,
+          link: '/bookings'
+        }
+      }).catch(err => console.warn('FCM Push notification warning:', err.message));
     }
 
     res.status(200).json({

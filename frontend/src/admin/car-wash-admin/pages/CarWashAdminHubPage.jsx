@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 import {
   IndianRupee,
   TrendingUp,
@@ -556,19 +557,10 @@ export default function CarWashAdminHubPage() {
     }
   };
 
-  // Upload Handlers — upload to server via /api/upload, get back a short URL path
-  const uploadFileToServer = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:5005/api/upload', {
-      method: 'POST',
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      body: formData
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.message || 'Upload failed');
-    return data.url; // e.g. "/uploads/hero-video-1722856789.mp4"
+  // Upload Handlers — upload to Cloudinary via backend service
+  const uploadFileToServer = async (file, folder = 'shine-lounge/car-wash') => {
+    const res = await uploadToCloudinary(file, folder);
+    return res.url;
   };
 
   const handleHeroVideoUpload = async (e) => {

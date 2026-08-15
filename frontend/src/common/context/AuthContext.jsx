@@ -5,6 +5,7 @@ import {
   clearScopedData,
   normalizeEmail
 } from '../utils/userScopedStorage';
+import { registerFCMToken, removeFCMToken } from '../services/pushNotificationService';
 
 const AuthContext = createContext(null);
 
@@ -141,6 +142,9 @@ export function AuthProvider({ children }) {
 
       setToken(data.token);
       setUser(data.user);
+
+      // Auto-register FCM push notification token on login
+      registerFCMToken(true).catch(e => console.warn('FCM login registration:', e.message));
     }
     return data;
   }, []);
@@ -159,11 +163,17 @@ export function AuthProvider({ children }) {
       localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));
       setToken(data.token);
       setUser(data.user);
+
+      // Auto-register FCM push notification token on registration
+      registerFCMToken(true).catch(e => console.warn('FCM register registration:', e.message));
     }
     return data;
   }, []);
 
   const logout = useCallback(async () => {
+    // Remove FCM push token on logout
+    removeFCMToken().catch(e => console.warn('FCM logout removal:', e.message));
+
     try {
       await authService.logout();
     } catch (e) {}

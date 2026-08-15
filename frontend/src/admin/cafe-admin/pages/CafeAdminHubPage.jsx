@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 import {
   IndianRupee,
   TrendingUp,
@@ -123,33 +124,31 @@ export default function CafeAdminHubPage() {
     image: ''
   });
 
-  const handleDishPhotoChange = (e) => {
+  const handleDishPhotoChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        return;
+      try {
+        if (showToast) showToast('Uploading dish photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/cafe');
+        setPlanForm(prev => ({ ...prev, image: res.url }));
+        if (showToast) showToast('Dish photo uploaded successfully!');
+      } catch (err) {
+        alert('Photo upload failed: ' + err.message);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPlanForm(prev => ({ ...prev, image: reader.result }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 
-  const handleEditDishPhotoChange = (e) => {
+  const handleEditDishPhotoChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        return;
+      try {
+        if (showToast) showToast('Uploading dish photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/cafe');
+        setEditPlanForm(prev => ({ ...prev, image: res.url }));
+        if (showToast) showToast('Dish photo uploaded successfully!');
+      } catch (err) {
+        alert('Photo upload failed: ' + err.message);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditPlanForm(prev => ({ ...prev, image: reader.result }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -404,33 +403,31 @@ export default function CafeAdminHubPage() {
     setStaffForm(prev => ({ ...prev, password: pwd }));
   };
 
-  const handleStaffPhotoChange = (e) => {
+  const handleStaffPhotoChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        return;
+      try {
+        if (showToast) showToast('Uploading staff photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/staff');
+        setStaffForm(prev => ({ ...prev, photo: res.url }));
+        if (showToast) showToast('Staff photo uploaded successfully!');
+      } catch (err) {
+        alert('Photo upload failed: ' + err.message);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setStaffForm(prev => ({ ...prev, photo: reader.result }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 
-  const handleEditStaffPhotoChange = (e) => {
+  const handleEditStaffPhotoChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        return;
+      try {
+        if (showToast) showToast('Uploading staff photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/staff');
+        setEditStaffForm(prev => ({ ...prev, photo: res.url }));
+        if (showToast) showToast('Staff photo uploaded successfully!');
+      } catch (err) {
+        alert('Photo upload failed: ' + err.message);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 

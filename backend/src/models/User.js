@@ -115,6 +115,15 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    // FCM Push Notification Tokens
+    fcmTokens: {
+      type: [String],
+      default: []
+    },
+    fcmTokenMobile: {
+      type: [String],
+      default: []
+    },
     vehicles: [
       {
         plateNumber: { type: String, default: '' },

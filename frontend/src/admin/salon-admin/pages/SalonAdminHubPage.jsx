@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 import {
   IndianRupee,
   TrendingUp,
@@ -308,23 +309,21 @@ export default function SalonAdminHubPage() {
     setStaffForm(prev => ({ ...prev, password: pwd }));
   };
 
-  const handleStaffPhotoUpload = (e, isEdit = false) => {
+  const handleStaffPhotoUpload = async (e, isEdit = false) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        if (showToast) showToast('Image size should be less than 5MB', 'error');
-        else alert('Image size should be less than 5MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
+      try {
+        if (showToast) showToast('Uploading staff photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/staff');
         if (isEdit) {
-          setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+          setEditStaffForm(prev => ({ ...prev, photo: res.url }));
         } else {
-          setStaffForm(prev => ({ ...prev, photo: reader.result }));
+          setStaffForm(prev => ({ ...prev, photo: res.url }));
         }
-      };
-      reader.readAsDataURL(file);
+        if (showToast) showToast('Staff photo uploaded successfully!');
+      } catch (err) {
+        if (showToast) showToast('Photo upload failed: ' + err.message, 'error');
+      }
     }
   };
 
@@ -648,20 +647,17 @@ export default function SalonAdminHubPage() {
 
 
 
-  // Photo upload handler
-  const handleImageFileChange = (e) => {
+  const handleImageFileChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('Image size should be less than 5MB', 'error');
-        return;
+      try {
+        if (showToast) showToast('Uploading salon photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/salon');
+        setServiceForm(prev => ({ ...prev, image: res.url }));
+        if (showToast) showToast('Salon service photo uploaded to Cloudinary successfully!');
+      } catch (err) {
+        if (showToast) showToast('Photo upload failed: ' + err.message, 'error');
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setServiceForm(prev => ({ ...prev, image: reader.result }));
-        showToast('Salon service photo loaded successfully!');
-      };
-      reader.readAsDataURL(file);
     }
   };
 

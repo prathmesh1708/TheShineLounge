@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecords, mockStaffNotifications } from '../data/staffMockData';
 import apiClient from '../../../common/utils/apiClient';
 import { useAuth } from '../../../common/context/AuthContext';
+import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 
 const StaffContext = createContext();
 
@@ -669,11 +670,20 @@ export function StaffProvider({ children }) {
         || updatedTargetJob?.id
         || jobId;
       if (targetId) {
+        let uploadedPhotoUrl = photoUrl;
+        if (photoUrl && photoUrl.startsWith('data:')) {
+          try {
+            const uploaded = await uploadToCloudinary(photoUrl, 'shine-lounge/bookings/inspection');
+            uploadedPhotoUrl = uploaded.url;
+          } catch (e) {
+            console.warn('Cloudinary photo upload fallback:', e);
+          }
+        }
         await apiClient.put(`/bookings/${targetId}`, {
           status: computedStatus,
           stepIndex: newStepIndex,
-          notes: notes || updatedTargetJob?.notes,
-          photoUrl
+          notes: notes || '',
+          photoUrl: uploadedPhotoUrl || undefined
         });
       }
     } catch (err) {

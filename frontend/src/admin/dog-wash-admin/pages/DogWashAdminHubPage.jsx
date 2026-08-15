@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 import {
   IndianRupee,
   TrendingUp,
@@ -225,7 +226,7 @@ export default function DogWashAdminHubPage() {
     }
   }, [dbService]);
 
-  const handleVideoFileChange = (e) => {
+  const handleVideoFileChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
 
@@ -241,18 +242,16 @@ export default function DogWashAdminHubPage() {
       type: file.type
     });
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target.result;
-      setHeroVideoUrl(dataUrl);
+    try {
+      if (showToast) showToast(`⏳ Streaming video "${file.name}" to Cloudinary CDN...`);
+      const res = await uploadToCloudinary(file, 'shine-lounge/dog-wash/videos');
+      setHeroVideoUrl(res.url);
+      if (showToast) showToast(`🎥 Video uploaded to Cloudinary! Click "Save & Publish" to activate.`);
+    } catch (err) {
+      alert('Video upload to Cloudinary failed: ' + err.message);
+    } finally {
       setVideoUploadProgress(false);
-      if (showToast) showToast(`Video "${file.name}" selected! Click "Save & Publish" to activate.`);
-    };
-    reader.onerror = () => {
-      setVideoUploadProgress(false);
-      alert('Error reading video file.');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveHeroVideo = async (urlToSave) => {
@@ -394,23 +393,21 @@ export default function DogWashAdminHubPage() {
     setStaffForm(prev => ({ ...prev, password: pwd }));
   };
 
-  const handleStaffPhotoUpload = (e, isEdit = false) => {
+  const handleStaffPhotoUpload = async (e, isEdit = false) => {
     const file = e.target.files && e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        if (showToast) showToast('Image size should be less than 5MB', 'error');
-        else alert('Image size should be less than 5MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
+      try {
+        if (showToast) showToast('Uploading photo to Cloudinary...');
+        const res = await uploadToCloudinary(file, 'shine-lounge/staff');
         if (isEdit) {
-          setEditStaffForm(prev => ({ ...prev, photo: reader.result }));
+          setEditStaffForm(prev => ({ ...prev, photo: res.url }));
         } else {
-          setStaffForm(prev => ({ ...prev, photo: reader.result }));
+          setStaffForm(prev => ({ ...prev, photo: res.url }));
         }
-      };
-      reader.readAsDataURL(file);
+        if (showToast) showToast('Staff photo uploaded successfully!');
+      } catch (err) {
+        if (showToast) showToast('Photo upload failed: ' + err.message, 'error');
+      }
     }
   };
 

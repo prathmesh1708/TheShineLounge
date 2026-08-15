@@ -108,6 +108,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
 
 // Serve uploaded files as static assets

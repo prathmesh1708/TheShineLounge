@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ThemeProvider } from './common/context/ThemeContext';
 import { AuthProvider } from './common/context/AuthContext';
 import { AdminRoute, StaffRoute } from './common/components/ProtectedRoute';
+import { initializePushNotifications, setupForegroundNotificationHandler } from './common/services/pushNotificationService';
 
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
@@ -69,6 +70,13 @@ function MainAppContent() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isStaffRoute = location.pathname.startsWith('/staff');
+
+  React.useEffect(() => {
+    initializePushNotifications();
+    setupForegroundNotificationHandler((payload) => {
+      console.log('Foreground FCM notification received:', payload);
+    });
+  }, []);
 
   if (isAdminRoute) {
     const isAdminLogin = location.pathname === '/admin/login';

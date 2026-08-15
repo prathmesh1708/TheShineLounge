@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const { sendNotificationToUser, sendNotificationToAll, sendNotificationToRole } = require('../common/services/pushNotificationHelper');
 
 // @desc    Create / Broadcast new notification
 // @route   POST /api/notifications/admin
@@ -36,6 +37,25 @@ const createNotification = async (req, res) => {
       priority,
       actionUrl
     });
+
+    // Dispatch FCM Push Notifications based on recipient target
+    const payload = {
+      title: title,
+      body: message,
+      data: {
+        category,
+        serviceKey,
+        link: actionUrl || '/'
+      }
+    };
+
+    if (recipientType === 'single_user' && targetUserId) {
+      sendNotificationToUser(targetUserId, payload).catch(err => console.warn('Push error:', err.message));
+    } else if (recipientType === 'staff_only') {
+      sendNotificationToRole('staff', payload).catch(err => console.warn('Push error:', err.message));
+    } else {
+      sendNotificationToAll(payload).catch(err => console.warn('Push error:', err.message));
+    }
 
     res.status(201).json({
       success: true,
