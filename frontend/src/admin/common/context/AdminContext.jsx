@@ -276,7 +276,6 @@ export const AdminProvider = ({ children }) => {
             plan: b.packageName,
             packageName: b.packageName,
             // Ordering key for two passes bought on the same day (buy, upgrade).
-            createdAt: b.createdAt,
             date: displayDate,
             timeSlot: formatBookingDateTime(displayTime, displayDate),
             total: b.price,
