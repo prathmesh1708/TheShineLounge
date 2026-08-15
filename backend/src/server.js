@@ -43,6 +43,8 @@ connectDB();
 const allowedOrigins = [
   'https://the-shine-lounge.vercel.app',
   'https://theshinelounge.vercel.app',
+  'https://app.theshinelounge.in',
+  'http://app.theshinelounge.in',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
