@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import apiClient from '../common/utils/apiClient';
+import { useAuth } from '../common/context/AuthContext';
+import { readScoped, normalizeEmail } from '../common/utils/userScopedStorage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -19,6 +21,8 @@ const itemVariants = {
 
 export default function BookingsPage() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+  const userEmail = normalizeEmail(user?.email);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedBookingId, setExpandedBookingId] = useState(null);
@@ -65,92 +69,91 @@ export default function BookingsPage() {
     );
   };
 
-  // Dynamic Active Bookings Fallback List
-  const mockBookings = [
-    {
-      id: 'B-2026-9028',
-      service: 'Car Wash',
-      package: 'Monthly Membership (₹2949)',
-      date: getTodayFormattedDate(),
-      time: getLiveFormattedTimeSlot(),
-      status: 'Confirmed',
-      statusColor: '#2E7D32',
-      statusBg: 'rgba(46, 125, 50, 0.08)',
-      serviceKey: 'car-wash',
-      stepIndex: 1,
-      notes: 'Vehicle received at lobby. Initial inspection complete.',
-      photos: [],
-      staffAssigned: 'Rohan Deshmukh'
-    },
-    {
-      id: 'B-2026-4412',
-      service: 'Men\'s Salon',
-      package: 'Haircut & Styling (₹35.00)',
-      date: getTodayFormattedDate(),
-      time: getLiveFormattedTimeSlot(),
-      status: 'Pending',
-      statusColor: '#C17F19',
-      statusBg: 'rgba(193, 127, 25, 0.08)',
-      serviceKey: 'salon',
-      stepIndex: 0,
-      notes: '',
-      photos: [],
-      staffAssigned: ''
-    }
-  ];
-
   useEffect(() => {
     const fetchMyBookings = async () => {
+      // Only this customer's bookings. The endpoint returns the whole table,
+      // so an unfiltered render showed every other customer's history.
+      const isMine = (b) => {
+        const owner = normalizeEmail(b.customerEmail);
+        if (!userEmail) return false;
+        return owner === userEmail;
+      };
+
+      let combinedRawBookings = [];
       try {
-        // The API already scopes bookings to the signed-in customer. Filtering
-        // again here on a localStorage identity is what used to blank the page
-        // when a staff or admin login had overwritten the shared `tsl_user` key.
         const res = await apiClient.get('/bookings');
         if (res.data && Array.isArray(res.data.bookings)) {
-          const userBookings = res.data.bookings;
-
-          const mapped = userBookings.map(b => {
-            const rawDate = b.date || '';
-            const isLegacyStaticDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
-            const displayDate = isLegacyStaticDate ? getTodayFormattedDate() : rawDate;
-
-            const rawTime = b.timeSlot || '';
-            const isLegacyStaticTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
-            const displayTime = isLegacyStaticTime ? getLiveFormattedTimeSlot() : rawTime;
-
-            return {
-              id: b.bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-              service: b.serviceName || 'Car Wash',
-              package: `${b.packageName} (₹${b.price})`,
-              date: displayDate,
-              time: displayTime,
-              status: b.status || 'Confirmed',
-              statusColor: (b.status === 'Completed' || b.status === 'Delivered') ? '#2E7D32' : b.status === 'In Progress' ? '#1E4A7E' : '#C17F19',
-              statusBg: (b.status === 'Completed' || b.status === 'Delivered') ? 'rgba(46, 125, 50, 0.08)' : b.status === 'In Progress' ? 'rgba(30, 74, 126, 0.08)' : 'rgba(193, 127, 25, 0.08)',
-              serviceKey: b.serviceKey,
-              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-              notes: b.notes || '',
-              photos: b.photos || [],
-              staffAssigned: b.assignedStaffName || ''
-            };
-          });
-
-          setBookings(mapped);
-        } else {
-          setBookings(mockBookings);
+          combinedRawBookings = res.data.bookings.filter(isMine);
         }
       } catch (err) {
-        console.warn('Could not load active bookings, using fallback:', err.message);
-        setBookings(mockBookings);
-      } finally {
-        setLoading(false);
+        console.warn('Could not load active bookings from backend:', err.message);
       }
+
+      // Merge bookings created in this browser, from this customer's own scope.
+      try {
+        const localBookings = readScoped('tsl_user_bookings', userEmail, []);
+        if (Array.isArray(localBookings) && localBookings.length > 0) {
+          const apiIds = new Set(combinedRawBookings.map(b => b.bookingId || b.id || b._id));
+          localBookings.filter(isMine).forEach(lb => {
+            if (!apiIds.has(lb.bookingId) && !apiIds.has(lb.id)) {
+              combinedRawBookings.unshift(lb);
+            }
+          });
+        }
+      } catch (e) {}
+
+      const mapped = combinedRawBookings.map(b => {
+        const rawDate = b.date || '';
+        const isLegacyStaticDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
+        const displayDate = isLegacyStaticDate ? getTodayFormattedDate() : rawDate;
+
+        const rawTime = b.timeSlot || b.time || '';
+        const isLegacyStaticTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
+        const displayTime = isLegacyStaticTime ? getLiveFormattedTimeSlot() : rawTime;
+
+        const pkgName = b.packageName || b.package || b.service || 'Service Order';
+        const priceVal = b.price !== undefined ? b.price : (b.amount || 699);
+
+        return {
+          id: b.bookingId || b.id || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          service: b.serviceName || b.service || 'Car Wash',
+          package: pkgName.includes('₹') ? pkgName : `${pkgName} (₹${priceVal})`,
+          date: displayDate,
+          time: displayTime,
+          status: b.status || 'Confirmed',
+          statusColor: (b.status === 'Completed' || b.status === 'Delivered') ? '#2E7D32' : b.status === 'In Progress' ? '#1E4A7E' : '#C17F19',
+          statusBg: (b.status === 'Completed' || b.status === 'Delivered') ? 'rgba(46, 125, 50, 0.08)' : b.status === 'In Progress' ? 'rgba(30, 74, 126, 0.08)' : 'rgba(193, 127, 25, 0.08)',
+          serviceKey: b.serviceKey || 'car-wash',
+          stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+          notes: b.notes || '',
+          photos: b.photos || [],
+          staffAssigned: b.assignedStaffName || ''
+        };
+      });
+
+      setBookings(mapped);
+      setLoading(false);
     };
+
+    if (!userEmail) {
+      setBookings([]);
+      setLoading(false);
+      return undefined;
+    }
 
     fetchMyBookings();
     const interval = setInterval(fetchMyBookings, 5000);
-    return () => clearInterval(interval);
-  }, []);
+
+    const handleUpdate = () => fetchMyBookings();
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('tsl_booking_created', handleUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('tsl_booking_created', handleUpdate);
+    };
+  }, [userEmail]);
 
   return (
     <div className="bookings-page-container app-mobile-dashboard" style={{ marginTop: '-0.75rem' }}>
@@ -162,11 +165,23 @@ export default function BookingsPage() {
         animate="show"
       >
         {!loading && bookings.length === 0 && (
-          <div className="section-card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.4rem' }}>No bookings yet</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Bookings you make will appear here with live progress tracking.
+          <div className="section-card" style={{ padding: '2.5rem 1.75rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.25rem', marginBottom: '0.75rem' }}>🧼</div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '0.4rem' }}>
+              {isAuthenticated ? 'No Active Bookings Yet' : 'Sign in to see your bookings'}
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+              {isAuthenticated
+                ? 'Book a Premium Wash or Detail — your orders will appear here with live progress tracking.'
+                : 'Your bookings are tied to your account, so nothing is shown while you are browsing as a guest.'}
             </p>
+            <button
+              className="form-submit-btn"
+              style={{ padding: '0.75rem 1.75rem', display: 'inline-flex' }}
+              onClick={() => navigate(isAuthenticated ? '/car-wash' : '/login')}
+            >
+              {isAuthenticated ? 'Book Service' : 'Sign In'}
+            </button>
           </div>
         )}
 

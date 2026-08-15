@@ -27,6 +27,11 @@ import {
   Search
 } from 'lucide-react';
 import {
+  buildMembershipSchedule,
+  formatShortDate
+} from '../../../common/utils/membershipUtils';
+import { readAllScoped } from '../../../common/utils/userScopedStorage';
+import {
   ResponsiveContainer,
   LineChart,
   Line,
@@ -321,6 +326,67 @@ export default function CarWashAdminHubPage() {
     setSubscriberModal(true);
   };
 
+  // Every purchased pass laid out on its real period: a pass bought while an
+  // earlier one is still running is queued to start the day that one expires,
+  // so no two passes on the same car ever claim the same dates.
+  const subscriberSchedule = React.useMemo(
+    () => buildMembershipSchedule(membershipSubscribers, { catalog: dbService?.memberships }),
+    [membershipSubscribers, dbService]
+  );
+
+  const subscribersForPlan = (plan) => {
+    const planName = (plan?.name || '').toLowerCase();
+    return subscriberSchedule.filter(record => {
+      const passName = record.packageName.toLowerCase();
+      const yearlyPass = passName.includes('yearly') || passName.includes('annual');
+      if (planName.includes('monthly')) {
+        if (yearlyPass) return false;
+        return passName.includes('monthly') || passName.includes('membership') || passName.includes('pass');
+      }
+      if (planName.includes('yearly')) return yearlyPass;
+      return passName.includes(planName) || planName.includes(passName);
+    });
+  };
+
+  // Passes bought in this browser that the API has not returned (yet).
+  const mergeLocalPasses = (list) => {
+    const merged = [...list];
+    const knownIds = new Set(merged.map(s => s.bookingId || s.id).filter(Boolean));
+
+    const addPass = (pass) => {
+      if (!pass || !pass.packageName) return;
+      const passId = pass.bookingId || pass.id;
+      if (passId && knownIds.has(passId)) return;
+      if (passId) knownIds.add(passId);
+      merged.push({
+        _id: passId,
+        id: passId,
+        bookingId: passId,
+        customerName: pass.customerName || 'Valued Passholder',
+        customerEmail: (pass.customerEmail || '').toLowerCase().trim(),
+        mobile: pass.mobile || pass.phone || '',
+        phone: pass.phone || pass.mobile || '',
+        packageName: pass.packageName,
+        serviceKey: pass.serviceKey || 'car-wash',
+        serviceName: pass.serviceName || 'Car Wash',
+        vehicleNo: pass.vehicleNo || '',
+        vehicleType: pass.vehicleType || '',
+        price: pass.price,
+        date: pass.date,
+        purchasedAt: pass.purchasedAt,
+        status: 'Active'
+      });
+    };
+
+    // Local passes are stored per customer, so sweep every scope in this browser.
+    readAllScoped('tsl_membership_passes').forEach(({ value }) => {
+      if (Array.isArray(value)) value.forEach(addPass);
+    });
+    readAllScoped('tsl_active_membership').forEach(({ value }) => addPass(value));
+
+    return merged;
+  };
+
   const fetchMembershipSubscribers = async () => {
     try {
       const res = await apiClient.get('/bookings');
@@ -339,23 +405,29 @@ export default function CarWashAdminHubPage() {
           return {
             _id: b._id,
             id: b.bookingId,
+            bookingId: b.bookingId,
             customerName: b.customerName || 'prabhat',
             customerEmail: (b.customerEmail || 'prabhat@gmail.com').toLowerCase().trim(),
             mobile: userMobile,
             phone: userMobile,
             packageName: b.packageName,
+            serviceKey: b.serviceKey || 'car-wash',
+            serviceName: b.serviceName || 'Car Wash',
             vehicleNo: b.vehicleNo || 'MP09WC4444',
             vehicleType: b.vehicleType || 'Hyundai Elite i20',
             price: b.price,
-            startDate: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+            // Purchase date — the pass period itself is derived from it, since a
+            // pass bought during a running one starts when that one expires.
+            date: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+            createdAt: b.createdAt,
             status: b.status || 'Active'
           };
         });
 
         if (mappedSubs.length > 0) {
-          setMembershipSubscribers(mappedSubs);
+          setMembershipSubscribers(mergeLocalPasses(mappedSubs));
         } else {
-          setMembershipSubscribers([
+          setMembershipSubscribers(mergeLocalPasses([
             {
               _id: 'sub-1',
               id: 'B-2026-9028',
@@ -367,15 +439,15 @@ export default function CarWashAdminHubPage() {
               vehicleNo: 'MP09WC4444',
               vehicleType: 'Hyundai Elite i20',
               price: 2499,
-              startDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+              date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
               status: 'Active'
             }
-          ]);
+          ]));
         }
       }
     } catch (err) {
       console.warn('Could not fetch membership subscribers:', err.message);
-      setMembershipSubscribers([
+      setMembershipSubscribers(mergeLocalPasses([
         {
           _id: 'sub-1',
           id: 'B-2026-9028',
@@ -387,10 +459,10 @@ export default function CarWashAdminHubPage() {
           vehicleNo: 'MP09WC4444',
           vehicleType: 'Hyundai Elite i20',
           price: 2499,
-          startDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
           status: 'Active'
         }
-      ]);
+      ]));
     }
   };
 
@@ -1352,13 +1424,9 @@ export default function CarWashAdminHubPage() {
 
             {/* Membership Cards */}
             {activeMemberships.map((m) => {
-              const subCount = membershipSubscribers.filter(s => {
-                const pName = (s.packageName || '').toLowerCase();
-                const mName = (m.name || '').toLowerCase();
-                if (mName.includes('monthly')) return pName.includes('monthly') || pName.includes('membership') || pName.includes('pass');
-                if (mName.includes('yearly')) return pName.includes('yearly');
-                return pName.includes(mName) || mName.includes(pName);
-              }).length;
+              const planSubs = subscribersForPlan(m);
+              const subCount = planSubs.filter(s => s.isActive).length;
+              const queuedCount = planSubs.filter(s => s.isQueued).length;
               return (
                 <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
                   <div className="space-y-2">
@@ -1386,6 +1454,20 @@ export default function CarWashAdminHubPage() {
                           <Users className="w-3 h-3 text-emerald-600" />
                           {subCount} Active {subCount === 1 ? 'Subscriber' : 'Subscribers'}
                         </button>
+                        {queuedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSubscriberModal(m);
+                            }}
+                            title="Upgrades already paid for that start when the current pass expires"
+                            className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:scale-105 active:scale-95 px-2 py-0.5 rounded-md border border-blue-200 cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
+                          >
+                            <Clock className="w-3 h-3 text-blue-600" />
+                            {queuedCount} Queued
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-gray-500 font-semibold">
@@ -1987,7 +2069,7 @@ export default function CarWashAdminHubPage() {
       <AdminModal
         isOpen={subscriberModal}
         onClose={() => setSubscriberModal(false)}
-        title={`Active Subscribers – ${selectedMembershipForSubscribers?.name || 'Membership Pass'}`}
+        title={`Subscribers – ${selectedMembershipForSubscribers?.name || 'Membership Pass'}`}
       >
         <div className="space-y-4 text-xs p-1">
           {/* Header Card Summary */}
@@ -2004,11 +2086,13 @@ export default function CarWashAdminHubPage() {
                 </div>
                 <h4 className="text-lg font-black">{selectedMembershipForSubscribers.name}</h4>
                 <p className="text-[11px] text-amber-100 opacity-90">
-                  Total Active Memberships Purchased: <strong className="text-white font-extrabold">{
-                    membershipSubscribers.filter(s =>
-                      (s.packageName || '').toLowerCase().includes((selectedMembershipForSubscribers.name || '').toLowerCase())
-                    ).length
-                  } Users</strong>
+                  Active Now: <strong className="text-white font-extrabold">
+                    {subscribersForPlan(selectedMembershipForSubscribers).filter(s => s.isActive).length} Users
+                  </strong>
+                  {' • '}
+                  Queued Upgrades: <strong className="text-white font-extrabold">
+                    {subscribersForPlan(selectedMembershipForSubscribers).filter(s => s.isQueued).length}
+                  </strong>
                 </p>
               </div>
               <div className="text-left sm:text-right">
@@ -2039,12 +2123,11 @@ export default function CarWashAdminHubPage() {
             )}
           </div>
 
-          {/* Subscribers Cards List */}
+          {/* Subscribers Cards List — split so a queued upgrade is never counted
+              as a running pass, and each row shows its own date range */}
           {(() => {
             const rawSubs = selectedMembershipForSubscribers
-              ? membershipSubscribers.filter(s =>
-                  (s.packageName || '').toLowerCase().includes((selectedMembershipForSubscribers.name || '').toLowerCase())
-                )
+              ? subscribersForPlan(selectedMembershipForSubscribers)
               : [];
 
             const filteredSubs = rawSubs.filter(s => {
@@ -2053,7 +2136,7 @@ export default function CarWashAdminHubPage() {
               return (
                 (s.customerName || '').toLowerCase().includes(q) ||
                 (s.customerEmail || '').toLowerCase().includes(q) ||
-                (s.phone || s.mobile || '').toLowerCase().includes(q) ||
+                (s.phone || '').toLowerCase().includes(q) ||
                 (s.vehicleNo || '').toLowerCase().includes(q) ||
                 (s.vehicleType || '').toLowerCase().includes(q) ||
                 (s.bookingId || '').toLowerCase().includes(q)
@@ -2080,79 +2163,112 @@ export default function CarWashAdminHubPage() {
               );
             }
 
-            return (
-              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                {filteredSubs.map((sub, idx) => {
-                  const startDate = sub.date ? new Date(sub.date) : new Date();
-                  const durationDays = selectedMembershipForSubscribers?.duration || 30;
-                  const expiryDate = new Date(startDate);
-                  expiryDate.setDate(startDate.getDate() + durationDays);
-                  const options = { month: 'short', day: 'numeric', year: 'numeric' };
-
-                  return (
-                    <div
-                      key={sub._id || sub.bookingId || idx}
-                      className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs space-y-3 hover:border-amber-300 transition-all"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20 font-black flex items-center justify-center text-sm flex-shrink-0">
-                            {(sub.customerName || 'U').charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Vally Guest'}</h5>
-                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
-                                Active Subscription
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
-                              <span className="flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || 'customer@shinelounge.com'}
-                              </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1 font-semibold text-gray-700">
-                                <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || sub.mobile || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321'}
-                              </span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <span className="text-sm font-black text-amber-600 block">₹{sub.price?.toLocaleString()}</span>
-                          <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || 'B-9028'}</span>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                        <div className="p-2 bg-gray-50 rounded-xl">
-                          <span className="text-gray-400 font-semibold block text-[9px]">VEHICLE INFO</span>
-                          <span className="font-bold text-gray-800 truncate block">
-                            🚗 {sub.vehicleType || 'Tesla Model 3'}
-                          </span>
-                          <span className="text-[10px] text-amber-700 font-black block">
-                            {sub.vehicleNo || 'MH-01-AB-1234'}
-                          </span>
-                        </div>
-
-                        <div className="p-2 bg-gray-50 rounded-xl">
-                          <span className="text-gray-400 font-semibold block text-[9px]">START DATE</span>
-                          <span className="font-bold text-gray-800 flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-gray-400" />
-                            {startDate.toLocaleDateString('en-US', options)}
-                          </span>
-                        </div>
-
-                        <div className="p-2 bg-emerald-50/60 rounded-xl border border-emerald-100 col-span-2 sm:col-span-1">
-                          <span className="text-emerald-700 font-semibold block text-[9px]">VALID UNTIL</span>
-                          <span className="font-extrabold text-emerald-800 flex items-center gap-1">
-                            📅 {expiryDate.toLocaleDateString('en-US', options)}
-                          </span>
-                        </div>
-                      </div>
+            const renderSubscriberCard = (sub, idx) => (
+              <div
+                key={sub.bookingId || `${sub.chainKey}-${sub.startISO}-${idx}`}
+                className={`bg-white border rounded-2xl p-4 shadow-2xs space-y-3 transition-all ${
+                  sub.isQueued ? 'border-blue-200 hover:border-blue-300' : 'border-gray-200 hover:border-amber-300'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full font-black flex items-center justify-center text-sm shrink-0 border ${
+                      sub.isQueued
+                        ? 'bg-blue-500/10 text-blue-700 border-blue-500/20'
+                        : 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                    }`}>
+                      {(sub.customerName || 'U').charAt(0).toUpperCase()}
                     </div>
-                  );
-                })}
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Vally Guest'}</h5>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
+                          sub.isQueued ? 'bg-blue-100 text-blue-800' :
+                          sub.isExpired ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {sub.isQueued ? 'Queued Upgrade' : sub.isExpired ? 'Expired' : 'Active Subscription'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || 'customer@shinelounge.com'}
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1 font-semibold text-gray-700">
+                          <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-sm font-black text-amber-600 block">₹{Number(sub.price || 0).toLocaleString()}</span>
+                    <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || 'B-9028'}</span>
+                  </div>
+                </div>
+
+                {sub.isStacked && (
+                  <p className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                    Stacked upgrade — starts the day this customer's previous pass expires.
+                  </p>
+                )}
+
+                <div className="pt-2 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="p-2 bg-gray-50 rounded-xl">
+                    <span className="text-gray-400 font-semibold block text-[9px]">VEHICLE INFO</span>
+                    <span className="font-bold text-gray-800 truncate block">
+                      🚗 {sub.vehicleType || 'Tesla Model 3'}
+                    </span>
+                    <span className="text-[10px] text-amber-700 font-black block">
+                      {sub.vehicleNo || 'MH-01-AB-1234'}
+                    </span>
+                  </div>
+
+                  <div className="p-2 bg-gray-50 rounded-xl">
+                    <span className="text-gray-400 font-semibold block text-[9px]">
+                      {sub.isQueued ? 'STARTS ON' : 'START DATE'}
+                    </span>
+                    <span className="font-bold text-gray-800 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-gray-400" />
+                      {formatShortDate(sub.startDate)}
+                    </span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border col-span-2 sm:col-span-1 ${
+                    sub.isQueued ? 'bg-blue-50/60 border-blue-100' : 'bg-emerald-50/60 border-emerald-100'
+                  }`}>
+                    <span className={`font-semibold block text-[9px] ${sub.isQueued ? 'text-blue-700' : 'text-emerald-700'}`}>
+                      VALID UNTIL
+                    </span>
+                    <span className={`font-extrabold flex items-center gap-1 ${sub.isQueued ? 'text-blue-800' : 'text-emerald-800'}`}>
+                      📅 {formatShortDate(sub.expiryDate)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+
+            const activeNow = filteredSubs.filter(s => s.isActive);
+            const upcoming = filteredSubs.filter(s => s.isQueued);
+            const lapsed = filteredSubs.filter(s => s.isExpired);
+
+            const section = (label, tone, rows) => rows.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${tone}`}>
+                    {label}
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-400">{rows.length}</span>
+                </div>
+                {rows.map(renderSubscriberCard)}
+              </div>
+            );
+
+            return (
+              <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+                {section('Active Now', 'bg-emerald-100 text-emerald-800', activeNow)}
+                {section('Upcoming / Queued Upgrades', 'bg-blue-100 text-blue-800', upcoming)}
+                {section('Expired', 'bg-rose-100 text-rose-800', lapsed)}
               </div>
             );
           })()}

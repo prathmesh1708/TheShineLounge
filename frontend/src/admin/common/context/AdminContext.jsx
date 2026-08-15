@@ -16,6 +16,16 @@ import {
   initialCoupons,
   initialNotifications
 } from '../data/adminMockData';
+import {
+  isMembershipPackage,
+  buildMembershipSchedule,
+  parseFlexibleDate,
+  addPassDuration,
+  startOfDay,
+  formatLongDate,
+  toISODateString
+} from '../../../common/utils/membershipUtils';
+import { readAllScoped } from '../../../common/utils/userScopedStorage';
 
 export const formatBookingDateTime = (rawSlot, rawDate) => {
   if (!rawSlot && !rawDate) return 'N/A';
@@ -120,6 +130,118 @@ export const AdminProvider = ({ children }) => {
     }, 3500);
   };
 
+  /**
+   * Turns membership purchases into subscription rows. Passes bought while an
+   * earlier one is still running are queued behind it rather than replacing it,
+   * so a customer who upgrades shows two rows on back-to-back date ranges.
+   */
+  const deriveMembershipsFromBookings = (allBookings) => {
+    const bookingList = allBookings || [];
+    const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
+
+    // Purchases made offline (or before the API call landed) live in localStorage.
+    const knownIds = new Set(membershipBookings.map(b => b.bookingId || b.id).filter(Boolean));
+    const localPasses = [];
+    const addLocalPass = (pass) => {
+      if (!pass || !pass.packageName) return;
+      const passId = pass.bookingId || pass.id;
+      if (passId && knownIds.has(passId)) return;
+      if (passId) knownIds.add(passId);
+      localPasses.push({
+        id: passId,
+        bookingId: passId,
+        customerName: pass.customerName || 'Valued Passholder',
+        customerEmail: pass.customerEmail || '',
+        phone: pass.phone || pass.mobile || '',
+        vehicleNo: pass.vehicleNo || '',
+        vehicleType: pass.vehicleType || '',
+        serviceKey: pass.serviceKey || 'car-wash',
+        serviceName: pass.serviceName || 'Car Wash',
+        plan: pass.packageName,
+        packageName: pass.packageName,
+        price: pass.price,
+        total: pass.price,
+        date: pass.date,
+        purchasedAt: pass.purchasedAt
+      });
+    };
+
+    // Local passes are stored per customer, so sweep every scope in this browser.
+    readAllScoped('tsl_membership_passes').forEach(({ value }) => {
+      if (Array.isArray(value)) value.forEach(addLocalPass);
+    });
+    readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
+
+    // Plan durations and wash allowances configured by the admin.
+    let catalog = null;
+    try {
+      const cachedService = JSON.parse(localStorage.getItem('tsl_car_wash_service') || 'null');
+      catalog = cachedService?.memberships || null;
+    } catch (e) {}
+
+    const schedule = buildMembershipSchedule([...membershipBookings, ...localPasses], { catalog });
+
+    const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const soonCutoff = new Date();
+    soonCutoff.setDate(soonCutoff.getDate() + 7);
+
+    const derived = schedule.map((record, idx) => {
+      const isUnlimited = record.packageName.toLowerCase().includes('unlimited');
+      const maxWashes = typeof record.visitLimit === 'number'
+        ? record.visitLimit
+        : (isUnlimited ? 30 : (record.isYearly ? 48 : 4));
+
+      // Washes taken inside this pass's own window, so a queued pass shows 0.
+      const washesUsed = record.isQueued ? 0 : bookingList.filter(b => {
+        const name = b.plan || b.packageName;
+        if (isMembershipPackage(name)) return false;
+        if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
+        const passPlate = normalizePlate(record.vehicleNo);
+        const washPlate = normalizePlate(b.vehicleNo);
+        if (passPlate && washPlate && passPlate !== washPlate) return false;
+        if (record.customerEmail && b.customerEmail
+          && b.customerEmail.toLowerCase().trim() !== record.customerEmail) return false;
+        const washedOn = parseFlexibleDate(b.date);
+        if (!washedOn) return false;
+        return washedOn >= record.startDate && washedOn < record.expiryDate;
+      }).length;
+
+      let status = record.status;
+      if (record.isActive && record.expiryDate <= soonCutoff) status = 'Expiring Soon';
+
+      const rawId = record.bookingId || '';
+      return {
+        id: rawId
+          ? (rawId.startsWith('MEM-') ? rawId : `MEM-${rawId.replace('B-2026-', '')}`)
+          : `MEM-${1005 + idx}`,
+        customerName: record.customerName,
+        phone: record.phone || record.customerEmail || '+91 98200 99887',
+        email: record.customerEmail,
+        vehicleNo: record.vehicleNo || 'MH01AB1234',
+        vehicleModel: record.vehicleType || 'Car',
+        planName: record.packageName,
+        serviceKey: record.serviceKey,
+        washesUsed,
+        maxWashes,
+        startDate: record.startISO,
+        expiryDate: record.expiryISO,
+        startDateLabel: record.startLabel,
+        expiryDateLabel: record.expiryLabel,
+        status,
+        statusLabel: record.statusLabel,
+        isQueued: record.isQueued,
+        isStacked: record.isStacked,
+        amount: record.price || 2499
+      };
+    });
+
+    // Newest purchases first, then the seeded demo records.
+    derived.reverse();
+    const derivedIds = new Set(derived.map(d => d.id));
+    const uniqueMocks = initialMemberships.filter(m => !derivedIds.has(m.id));
+    return [...derived, ...uniqueMocks];
+  };
+
   const fetchBookingsList = async () => {
     try {
       let mapped = [];
@@ -143,15 +265,25 @@ export const AdminProvider = ({ children }) => {
           return {
             _id: b._id,
             id: b.bookingId,
+            bookingId: b.bookingId,
             customerName: b.customerName,
+<<<<<<< HEAD
             customerEmail: b.customerEmail || '',
             vehicleNo: b.vehicleNo || '',
             vehicleType: b.vehicleType || '',
             location: b.location || '',
             phone: b.phone || '',
+=======
+            customerEmail: b.customerEmail,
+>>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
             serviceKey: b.serviceKey,
             serviceName: b.serviceName,
             plan: b.packageName,
+            packageName: b.packageName,
+            vehicleNo: b.vehicleNo,
+            vehicleType: b.vehicleType,
+            // Ordering key for two passes bought on the same day (buy, upgrade).
+            createdAt: b.createdAt,
             date: displayDate,
             timeSlot: formatBookingDateTime(displayTime, displayDate),
             total: b.price,
@@ -165,6 +297,13 @@ export const AdminProvider = ({ children }) => {
             bookedAt: b.bookedAt || b.createdAt
           };
         });
+<<<<<<< HEAD
+=======
+        setBookings(mapped);
+        setMemberships(deriveMembershipsFromBookings(mapped));
+      } else {
+        setMemberships(deriveMembershipsFromBookings([]));
+>>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
       }
 
       // Merge client-side salon bookings from localStorage if available
@@ -215,6 +354,7 @@ export const AdminProvider = ({ children }) => {
       setBookings(combinedBookings.length > 0 ? combinedBookings : initialBookings);
     } catch (err) {
       console.warn('Could not fetch bookings list:', err.message);
+      setMemberships(deriveMembershipsFromBookings([]));
     }
   };
 
@@ -255,10 +395,6 @@ export const AdminProvider = ({ children }) => {
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
           email: c.email,
-          // No invented vehicles or memberships. ANPR arrivals are matched
-          // against this data and washes are deducted from it, so a placeholder
-          // here becomes a real car checked in against a plan nobody bought.
-          // Blank means blank; the UI shows a dash.
           phone: c.phone || c.mobile || '',
           mobile: c.mobile || c.phone || '',
           city: c.city || '',
@@ -298,12 +434,24 @@ export const AdminProvider = ({ children }) => {
 
     // Poll for live booking updates from staff every 5 seconds
     const interval = setInterval(fetchBookingsList, 5000);
+<<<<<<< HEAD
     window.addEventListener('salonDataChanged', fetchBookingsList);
     window.addEventListener('bookingAdded', fetchBookingsList);
     return () => {
       clearInterval(interval);
       window.removeEventListener('salonDataChanged', fetchBookingsList);
       window.removeEventListener('bookingAdded', fetchBookingsList);
+=======
+
+    const handleLiveBooking = () => fetchBookingsList();
+    window.addEventListener('storage', handleLiveBooking);
+    window.addEventListener('tsl_booking_created', handleLiveBooking);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleLiveBooking);
+      window.removeEventListener('tsl_booking_created', handleLiveBooking);
+>>>>>>> 6f0c5add4fedcc086aa82982724033f53b1c3102
     };
   }, []);
 
@@ -528,19 +676,36 @@ export const AdminProvider = ({ children }) => {
   };
 
   const renewMembership = (id) => {
+    let renewedFrom = null;
+    let renewedTo = null;
+
     setMemberships(prev => prev.map(m => {
-      if (m.id === id) {
-        return {
-          ...m,
-          status: 'Active',
-          washesUsed: 0,
-          startDate: new Date().toISOString().split('T')[0],
-          expiryDate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]
-        };
-      }
-      return m;
+      if (m.id !== id) return m;
+
+      // Renewing a pass that is still running extends it from its expiry date,
+      // so the customer keeps the days already paid for.
+      const now = new Date();
+      const currentExpiry = parseFlexibleDate(m.expiryDate);
+      const start = currentExpiry && currentExpiry > now ? currentExpiry : startOfDay(now);
+      const expiry = addPassDuration(start, m.planName);
+
+      renewedFrom = formatLongDate(start);
+      renewedTo = formatLongDate(expiry);
+
+      return {
+        ...m,
+        status: start > now ? 'Queued' : 'Active',
+        statusLabel: start > now ? 'Upgraded (Scheduled)' : 'Active',
+        isQueued: start > now,
+        washesUsed: 0,
+        startDate: toISODateString(start),
+        expiryDate: toISODateString(expiry),
+        startDateLabel: renewedFrom,
+        expiryDateLabel: renewedTo
+      };
     }));
-    showToast('Membership renewed for 30 days!');
+
+    showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
   };
 
   // 5. Bookings

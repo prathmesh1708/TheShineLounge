@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { carwashMockData } from '../data/carwashMockData';
 import serviceApi from '../../common/services/serviceApi';
 import { cacheService } from '../../common/utils/serviceCache';
+import { useAuth } from '../../common/context/AuthContext';
+import { readScoped, writeScoped, normalizeEmail } from '../../common/utils/userScopedStorage';
 
 const DEFAULT_VEHICLES = [
   { id: 'v1', brand: 'Hyundai', name: 'Hyundai Elite i20', year: '2023', plate: 'MP09WC4444', icon: '🏎️' },
@@ -13,38 +15,44 @@ const DEFAULT_VEHICLES = [
 
 export default function CarWashPage() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+  const userEmail = normalizeEmail(user?.email);
 
-  // Saved vehicles state & persistence
-  const [vehicles, setVehicles] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_saved_vehicles');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.warn('Failed to load saved vehicles');
-    }
-    return DEFAULT_VEHICLES;
-  });
+  // Saved vehicles are per account. A signed-in customer starts with an empty
+  // garage and registers their own car; the demo fleet is only for guests.
+  const loadVehicles = (email, signedIn) => {
+    const saved = readScoped('tsl_saved_vehicles', email, null);
+    if (Array.isArray(saved)) return saved;
+    return signedIn ? [] : DEFAULT_VEHICLES;
+  };
 
-  const [selectedVehicleId, setSelectedVehicleId] = useState(() => {
-    const savedId = localStorage.getItem('tsl_selected_vehicle_id');
-    return savedId || 'v1';
-  });
+  const [vehicles, setVehicles] = useState(() => loadVehicles(userEmail, isAuthenticated));
+  const [selectedVehicleId, setSelectedVehicleId] = useState(
+    () => readScoped('tsl_selected_vehicle_id', userEmail, null) || ''
+  );
+
+  // Switching accounts (or signing in from guest) swaps the whole garage.
+  const loadedScopeRef = useRef(`${userEmail}|${isAuthenticated}`);
+  useEffect(() => {
+    const scope = `${userEmail}|${isAuthenticated}`;
+    if (loadedScopeRef.current === scope) return;
+    loadedScopeRef.current = scope;
+    const next = loadVehicles(userEmail, isAuthenticated);
+    setVehicles(next);
+    setSelectedVehicleId(readScoped('tsl_selected_vehicle_id', userEmail, null) || next[0]?.id || '');
+  }, [userEmail, isAuthenticated]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('tsl_saved_vehicles', JSON.stringify(vehicles));
-    } catch (e) {}
-  }, [vehicles]);
+    writeScoped('tsl_saved_vehicles', userEmail, vehicles);
+  }, [vehicles, userEmail]);
 
   useEffect(() => {
     if (selectedVehicleId) {
-      try {
-        localStorage.setItem('tsl_selected_vehicle_id', selectedVehicleId);
-      } catch (e) {}
+      writeScoped('tsl_selected_vehicle_id', userEmail, selectedVehicleId);
     }
-  }, [selectedVehicleId]);
+  }, [selectedVehicleId, userEmail]);
 
-  const currentVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || DEFAULT_VEHICLES[0];
+  const currentVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || null;
 
   // Vehicle Modal State (Add / Edit)
   const [showVehicleModal, setShowVehicleModal] = useState(false);
@@ -142,15 +150,11 @@ export default function CarWashPage() {
 
   const handleDeleteVehicle = (id, e) => {
     if (e) e.stopPropagation();
-    if (vehicles.length <= 1) {
-      alert('You must have at least one vehicle.');
-      return;
-    }
     if (window.confirm('Are you sure you want to remove this vehicle?')) {
       const updated = vehicles.filter(v => v.id !== id);
       setVehicles(updated);
       if (selectedVehicleId === id) {
-        setSelectedVehicleId(updated[0].id);
+        setSelectedVehicleId(updated[0]?.id || '');
       }
     }
   };
@@ -228,6 +232,7 @@ export default function CarWashPage() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     if (!prefersReducedMotion && videoRef.current) {
       const video = videoRef.current;
       video.defaultMuted = true;
@@ -236,13 +241,24 @@ export default function CarWashPage() {
       const playPromise = video.play();
       if (playPromise !== undefined) {
         playPromise.catch((error) => {
-          console.warn("Autoplay was prevented or video failed to play:", error);
+          // Suppress harmless AbortError caused by component unmounting or route changes
+          if (error.name !== 'AbortError' && error.name !== 'NotAllowedError' && isMounted) {
+            console.warn("Autoplay notice:", error.message);
+          }
         });
       }
     }
+    return () => {
+      isMounted = false;
+    };
   }, [prefersReducedMotion]);
 
   const handleBook = () => {
+    if (!currentVehicle) {
+      alert('Please add your vehicle before booking so we know which car to service.');
+      handleOpenAddVehicle();
+      return;
+    }
     navigate('/car-wash/confirm', {
       state: {
         service: selectedService,
@@ -330,21 +346,35 @@ export default function CarWashPage() {
             </span>
             <div className="carwash-vehicle-text">
               <span className="carwash-vehicle-name">
-                {currentVehicle.name} {currentVehicle.year ? `(${currentVehicle.year})` : ''}
+                {currentVehicle
+                  ? `${currentVehicle.name} ${currentVehicle.year ? `(${currentVehicle.year})` : ''}`
+                  : 'No vehicle registered'}
               </span>
-              <span className="carwash-vehicle-plate">{currentVehicle.plate}</span>
+              <span className="carwash-vehicle-plate">
+                {currentVehicle ? currentVehicle.plate : 'Tap to add your car'}
+              </span>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              type="button"
-              onClick={(e) => handleOpenEditVehicle(currentVehicle, e)}
-              className="p-1.5 rounded-lg hover:bg-amber-100/60 text-amber-800 transition-all"
-              title="Edit Current Car Details"
-            >
-              ✏️
-            </button>
+            {currentVehicle ? (
+              <button
+                type="button"
+                onClick={(e) => handleOpenEditVehicle(currentVehicle, e)}
+                className="p-1.5 rounded-lg hover:bg-amber-100/60 text-amber-800 transition-all"
+                title="Edit Current Car Details"
+              >
+                ✏️
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => handleOpenAddVehicle(e)}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-extrabold hover:bg-amber-600 transition-all"
+              >
+                + Add Car
+              </button>
+            )}
             <svg 
               className={`carwash-chevron ${showVehicleSwitcher ? 'rotated' : ''}`}
               width="20" 
@@ -373,6 +403,11 @@ export default function CarWashPage() {
             </div>
 
             <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+              {vehicles.length === 0 && (
+                <div className="p-4 text-center text-[11px] font-semibold text-slate-500">
+                  No vehicles registered yet. Add your car to book a wash.
+                </div>
+              )}
               {vehicles.map(v => {
                 const isSelected = v.id === selectedVehicleId;
                 return (
@@ -489,8 +524,8 @@ export default function CarWashPage() {
           onClick={handleBook}
           style={dbService?.theme?.buttonColor ? { backgroundColor: dbService.theme.buttonColor } : {}}
         >
-          <span className="carwash-book-btn-text">Book {selectedService.name}</span>
-          <span className="carwash-book-btn-price">₹{selectedService.price}</span>
+          <span className="carwash-book-btn-text">Book {selectedService?.name || 'Service'}</span>
+          <span className="carwash-book-btn-price">₹{selectedService?.price || 699}</span>
         </button>
       </div>
 

@@ -7,6 +7,15 @@ import { useTheme } from '../common/context/ThemeContext';
 import { useAuth } from '../common/context/AuthContext';
 import apiClient from '../common/utils/apiClient';
 import CustomerAuthModal from '../common/components/CustomerAuthModal';
+import {
+  isMembershipPackage,
+  buildMembershipSchedule,
+  groupMembershipSchedule,
+  scheduleNewMembership,
+  parseFlexibleDate,
+  isYearlyPass
+} from '../common/utils/membershipUtils';
+import { readScoped, writeScoped, normalizeEmail } from '../common/utils/userScopedStorage';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -66,30 +75,40 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const fetchMyBookings = async () => {
-      if (!isAuthenticated) {
+      let fetched = [];
+      // Strict ownership: the endpoint returns every customer's bookings, and a
+      // loose match used to hand a new account somebody else's history.
+      const userEmail = normalizeEmail(user?.email || profile?.email);
+      if (!userEmail) {
+        setBookings([]);
         setLoadingBookings(false);
         return;
       }
-      try {
-        let userEmail = (user?.email || profile?.email || '').toLowerCase();
-        const stored = localStorage.getItem('tsl_user');
-        if (stored) {
-          try { userEmail = (JSON.parse(stored).email || userEmail).toLowerCase(); } catch (e) {}
-        }
 
+      try {
         const res = await apiClient.get('/bookings');
         if (res.data && res.data.bookings) {
-          const allB = res.data.bookings;
-          const filtered = userEmail
-            ? allB.filter(b => (b.customerEmail || '').toLowerCase() === userEmail)
-            : [];
-          setBookings(filtered);
+          fetched = res.data.bookings.filter(b => normalizeEmail(b.customerEmail) === userEmail);
         }
       } catch (err) {
         console.warn('Could not load user bookings on profile page:', err.message);
-      } finally {
-        setLoadingBookings(false);
       }
+
+      // Merge bookings created in this browser, from this customer's own scope.
+      const localBookings = readScoped('tsl_user_bookings', userEmail, []);
+      if (Array.isArray(localBookings) && localBookings.length > 0) {
+        const existingIds = new Set(fetched.map(b => b.bookingId || b.id || b._id));
+        localBookings
+          .filter(lb => normalizeEmail(lb.customerEmail) === userEmail)
+          .forEach(lb => {
+            if (!existingIds.has(lb.bookingId) && !existingIds.has(lb.id)) {
+              fetched.unshift(lb);
+            }
+          });
+      }
+
+      setBookings(fetched);
+      setLoadingBookings(false);
     };
 
     const fetchServiceData = async () => {
@@ -110,12 +129,10 @@ export default function ProfilePage() {
     fetchMyBookings();
     fetchServiceData();
 
-    // Listen to live real-time updates from Admin panel updates
+    // Listen to live real-time updates from Admin panel updates and new bookings
     const handleLiveUpdate = (e) => {
-      if (e?.detail) {
-        if (e.detail.slug === 'car-wash') {
-          setDbService(e.detail);
-        }
+      if (e?.detail && e.detail.slug === 'car-wash') {
+        setDbService(e.detail);
       } else {
         const cached = localStorage.getItem('tsl_car_wash_service');
         if (cached) {
@@ -132,10 +149,12 @@ export default function ProfilePage() {
 
     window.addEventListener('storage', handleLiveUpdate);
     window.addEventListener('tsl_service_updated', handleLiveUpdate);
+    window.addEventListener('tsl_booking_created', handleLiveUpdate);
 
     return () => {
       window.removeEventListener('storage', handleLiveUpdate);
       window.removeEventListener('tsl_service_updated', handleLiveUpdate);
+      window.removeEventListener('tsl_booking_created', handleLiveUpdate);
     };
   }, [isAuthenticated, user]);
 
@@ -227,28 +246,55 @@ export default function ProfilePage() {
     alert('Notification settings updated successfully!');
   };
 
-  const activeMembership = bookings.find(b => 
-    b.packageName && 
-    (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass'))
-  );
+  const isMembershipPkg = isMembershipPackage;
+
+  // Every pass the customer holds — running now, queued behind it, or lapsed —
+  // laid out on non-overlapping periods so an upgrade never hides the plan the
+  // customer is still using.
+  const membershipRecords = React.useMemo(() => {
+    const sources = [...bookings].reverse(); // bookings arrive newest-first
+
+    const knownIds = new Set(sources.map(b => b.bookingId || b.id || b._id).filter(Boolean));
+    const addLocal = (raw) => {
+      if (!raw) return;
+      const list = Array.isArray(raw) ? raw : [raw];
+      list.forEach(pass => {
+        if (!pass || !pass.packageName) return;
+        const id = pass.bookingId || pass.id;
+        if (id && knownIds.has(id)) return;
+        if (id) knownIds.add(id);
+        sources.push(pass);
+      });
+    };
+
+    const myEmail = normalizeEmail(user?.email || profile.email);
+    addLocal(readScoped('tsl_membership_passes', myEmail, null));
+    addLocal(readScoped('tsl_active_membership', myEmail, null));
+
+    // The booking fetch falls back to a loose filter for guests; this page
+    // shows subscriptions, so only the signed-in customer's passes belong here.
+    const mine = myEmail
+      ? sources.filter(b => normalizeEmail(b.customerEmail) === myEmail)
+      : [];
+
+    return buildMembershipSchedule(mine, { catalog: dbService?.memberships });
+  }, [bookings, dbService, user, profile.email]);
+
+  const { active: activeMemberships, queued: queuedMemberships } = groupMembershipSchedule(membershipRecords);
+
+  // The plan the action buttons (renew / upgrade / invoice) operate on.
+  const primaryMembership = activeMemberships[0] || queuedMemberships[0] || null;
+
+  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   const getDates = (membership) => {
     if (!membership) return { start: '', expiry: '' };
-    
-    let start;
-    const dateStr = membership.date || '';
-    if (dateStr && !dateStr.includes('July 18') && !isNaN(Date.parse(dateStr))) {
-      start = new Date(dateStr);
-    } else {
-      start = new Date();
-    }
-
-    const isYearly = (membership.packageName || '').toLowerCase().includes('yearly');
-    const expiry = new Date(start);
-    if (isYearly) {
-      expiry.setFullYear(start.getFullYear() + 1);
-    } else {
-      expiry.setDate(start.getDate() + 30);
+    let start = membership.startISO ? new Date(membership.startISO) : new Date();
+    let expiry = membership.expiryISO ? new Date(membership.expiryISO) : new Date(start);
+    if (!membership.expiryISO) {
+      const isYearly = (membership.packageName || '').toLowerCase().includes('yearly');
+      if (isYearly) expiry.setFullYear(start.getFullYear() + 1);
+      else expiry.setDate(start.getDate() + 30);
     }
     const options = { month: 'long', day: 'numeric', year: 'numeric' };
     return {
@@ -257,95 +303,137 @@ export default function ProfilePage() {
     };
   };
 
-  const matchedMembership = (activeMembership && dbService?.memberships)
-    ? dbService.memberships.find(
-        m => {
-          const mName = (m.name || m.title || '').toLowerCase().trim();
-          const passName = (activeMembership.packageName || '').toLowerCase().trim();
-          return mName && (passName.includes(mName) || mName.includes(passName));
-        }
-      )
-    : (dbService?.memberships && dbService.memberships.length > 0 ? dbService.memberships[0] : null);
+  const washesLimitFor = (record) => {
+    if (!record) {
+      const fallback = dbService?.memberships?.[0]?.visitLimit;
+      return fallback ? (Number(fallback) === 999 ? 'Unlimited' : Number(fallback)) : 30;
+    }
+    if (record.visitLimit !== null && record.visitLimit !== undefined) return record.visitLimit;
+    return record.isYearly ? 'Unlimited' : 30;
+  };
 
-  const washesLimit = activeMembership 
-    ? (matchedMembership?.visitLimit !== undefined
-        ? (matchedMembership.visitLimit === 999 ? 'Unlimited' : Number(matchedMembership.visitLimit) || 30)
-        : ((activeMembership.packageName || '').toLowerCase().includes('yearly') ? 'Unlimited' : 30))
-    : (dbService?.memberships && dbService.memberships[0]?.visitLimit ? dbService.memberships[0].visitLimit : 30);
+  // Washes are counted inside the period of the pass that covered them, so a
+  // queued pass starts at zero instead of inheriting the old plan's usage.
+  const washesUsedFor = (record) => {
+    if (!record) return 0;
+    return bookings.filter(b => {
+      if (b.packageName && isMembershipPkg(b.packageName)) return false;
+      if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
+      const passPlate = normalizePlate(record.vehicleNo);
+      const washPlate = normalizePlate(b.vehicleNo);
+      if (passPlate && washPlate && passPlate !== washPlate) return false;
+      const washedOn = parseFlexibleDate(b.date);
+      if (!washedOn) return false;
+      return washedOn >= record.startDate && washedOn < record.expiryDate;
+    }).length;
+  };
 
-  const washSessions = bookings.filter(b => 
-    b.serviceKey === 'car-wash' && 
-    (!b.packageName || !b.packageName.toLowerCase().includes('membership'))
-  );
+  /**
+   * Buys a pass on top of whatever the customer already holds. The new pass is
+   * dated against the running one (queued, never overwriting it) and mirrored
+   * into localStorage so the card list updates without waiting on the server.
+   */
+  const purchaseMembership = async ({ packageName, price, basedOn }) => {
+    const payload = {
+      bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      serviceKey: basedOn?.serviceKey || 'car-wash',
+      serviceName: basedOn?.serviceName || 'Car Wash',
+      packageName,
+      price,
+      date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      timeSlot: '09:00 AM - 09:30 AM',
+      customerName: profile.name,
+      customerEmail: profile.email,
+      // Stay on the same vehicle, otherwise the pass would start its own chain
+      // instead of queueing behind the plan being upgraded.
+      vehicleNo: basedOn?.vehicleNo || '',
+      vehicleType: basedOn?.vehicleType || '',
+      purchasedAt: new Date().toISOString()
+    };
 
-  const washesUsedCount = washSessions.length;
+    const priorPasses = membershipRecords.map(r => r.booking);
+    const scheduled = scheduleNewMembership(priorPasses, payload, { catalog: dbService?.memberships });
+    if (scheduled) {
+      payload.membershipStartDate = scheduled.startISO;
+      payload.membershipExpiryDate = scheduled.expiryISO;
+      payload.membershipStartLabel = scheduled.startLabel;
+      payload.membershipExpiryLabel = scheduled.expiryLabel;
+      payload.membershipStatus = scheduled.status;
+    }
 
-  const handleRenewMembership = async () => {
-    if (!activeMembership) return;
-    const confirmRenew = window.confirm(`Confirm renewal of your ${activeMembership.packageName}? Amount: ₹${activeMembership.price} (Incl. GST) will be charged to your primary Visa card ending in 4820.`);
+    // membership* fields are derived client-side and are not part of the
+    // booking schema, so they stay out of the request body.
+    const { membershipStartDate, membershipExpiryDate, membershipStartLabel,
+      membershipExpiryLabel, membershipStatus, ...bookingPayload } = payload;
+    try {
+      await apiClient.post('/bookings', bookingPayload);
+    } catch (err) {
+      console.warn('Backend POST /bookings failed, preserving locally:', err.message);
+    }
+
+    const scopeEmail = normalizeEmail(payload.customerEmail);
+    const localBookings = readScoped('tsl_user_bookings', scopeEmail, []);
+    const nextLocal = Array.isArray(localBookings) ? localBookings : [];
+    nextLocal.unshift(payload);
+    writeScoped('tsl_user_bookings', scopeEmail, nextLocal);
+
+    const passes = nextLocal.filter(b => isMembershipPkg(b.packageName || b.plan));
+    writeScoped('tsl_membership_passes', scopeEmail, passes);
+
+    const schedule = buildMembershipSchedule(passes, { catalog: dbService?.memberships });
+    const current = schedule.find(r => r.isActive) || schedule[schedule.length - 1];
+    writeScoped('tsl_active_membership', scopeEmail, current ? current.booking : payload);
+
+    setBookings(prev => [payload, ...prev]);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tsl_booking_created', { detail: payload }));
+    }
+
+    return scheduled;
+  };
+
+  const handleRenewMembership = async (record) => {
+    const target = record || primaryMembership;
+    if (!target) return;
+    const confirmRenew = window.confirm(`Confirm renewal of your ${target.packageName}? Amount: ₹${target.price} (Incl. GST) will be charged to your primary Visa card ending in 4820.`);
     if (!confirmRenew) return;
 
     try {
-      // Simulate booking transaction
-      const payload = {
-        bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        serviceKey: activeMembership.serviceKey || 'car-wash',
-        serviceName: activeMembership.serviceName || 'Car Wash',
-        packageName: activeMembership.packageName,
-        price: activeMembership.price,
-        date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        timeSlot: '09:00 AM - 09:30 AM',
-        customerName: profile.name,
-        customerEmail: profile.email,
-        vehicleNo: 'TSL-3000',
-        vehicleType: 'Tesla Model 3'
-      };
-      
-      const res = await apiClient.post('/bookings', payload);
-      if (res.data && res.data.success) {
-        alert('🎉 Membership renewed successfully! Receipt generated.');
-        // Refresh bookings
-        const refresh = await apiClient.get('/bookings');
-        if (refresh.data && refresh.data.bookings) {
-          const uEmail = (profile.email || user?.email || '').toLowerCase().trim();
-          setBookings(refresh.data.bookings.filter(b => (b.customerEmail || '').toLowerCase().trim() === uEmail));
-        }
-      }
+      const scheduled = await purchaseMembership({
+        packageName: target.packageName,
+        price: target.price,
+        basedOn: target
+      });
+      alert(scheduled?.isQueued
+        ? `🎉 Membership renewed! Your current pass runs until ${scheduled.startLabel}, and the renewal covers ${scheduled.startLabel} – ${scheduled.expiryLabel}.`
+        : '🎉 Membership renewed successfully! Receipt generated.');
     } catch (err) {
       alert('Error renewing membership: ' + err.message);
     }
   };
 
-  const handleUpgradeMembership = async () => {
-    if (!activeMembership) return;
-    const confirmUpgrade = window.confirm(`Confirm upgrade to Yearly Elite Membership? Amount: ₹19,999 (plus 18% GST) will be charged to your primary Visa card.`);
+  const handleUpgradeMembership = async (record) => {
+    const target = record || primaryMembership;
+    if (!target) return;
+
+    const yearlyPlan = (dbService?.memberships || []).find(m => isYearlyPass(m.name || m.title));
+    const upgradeName = yearlyPlan?.name || yearlyPlan?.title || 'Yearly Membership';
+    const basePrice = Number(yearlyPlan?.price) || 19999;
+    const upgradePrice = Math.round(basePrice * 1.18);
+
+    const confirmUpgrade = window.confirm(`Confirm upgrade to ${upgradeName}? Amount: ₹${basePrice.toLocaleString()} (plus 18% GST) will be charged to your primary Visa card. Your current ${target.packageName} keeps running until it expires — the upgrade starts the day after.`);
     if (!confirmUpgrade) return;
 
     try {
-      const payload = {
-        bookingId: `B-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        serviceKey: 'car-wash',
-        serviceName: 'Car Wash',
-        packageName: 'Yearly Membership',
-        price: 23599, // 19999 + 18% GST
-        date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        timeSlot: '09:00 AM - 09:30 AM',
-        customerName: profile.name,
-        customerEmail: profile.email,
-        vehicleNo: 'TSL-3000',
-        vehicleType: 'Tesla Model 3'
-      };
-      
-      const res = await apiClient.post('/bookings', payload);
-      if (res.data && res.data.success) {
-        alert('🎉 Upgraded to Yearly Elite Membership successfully!');
-        // Refresh bookings
-        const refresh = await apiClient.get('/bookings');
-        if (refresh.data && refresh.data.bookings) {
-          const uEmail = (profile.email || user?.email || '').toLowerCase().trim();
-          setBookings(refresh.data.bookings.filter(b => (b.customerEmail || '').toLowerCase().trim() === uEmail));
-        }
-      }
+      const scheduled = await purchaseMembership({
+        packageName: upgradeName,
+        price: upgradePrice,
+        basedOn: target
+      });
+      alert(scheduled?.isQueued
+        ? `🎉 Upgrade confirmed! ${upgradeName} is queued and starts ${scheduled.startLabel}, valid until ${scheduled.expiryLabel}.`
+        : `🎉 Upgraded to ${upgradeName} successfully!`);
     } catch (err) {
       alert('Error upgrading membership: ' + err.message);
     }
@@ -909,6 +997,158 @@ export default function ProfilePage() {
     );
   };
 
+  const renderMembershipCard = (record) => {
+    const limit = washesLimitFor(record);
+    const used = record.isQueued ? 0 : washesUsedFor(record);
+    const numericLimit = Number(limit) || 4;
+    const cappedUsed = Math.min(used, numericLimit);
+    const hasQueuedUpgrade = queuedMemberships.some(q => q.chainKey === record.chainKey);
+
+    return (
+      <div
+        key={record.bookingId || `${record.chainKey}-${record.startISO}`}
+        className={`section-card shadow-md ${record.isQueued ? 'border-blue-500/40' : 'border-amber-500/40'}`}
+        style={{ marginBottom: 0, padding: '1.5rem', textAlign: 'left' }}
+      >
+        {record.isQueued && (
+          <div className="mb-3 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] font-bold text-blue-900 leading-relaxed">
+            ⏭️ Upgraded Pass Queued: Starts {record.startLabel} • Valid until {record.expiryLabel}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem', marginBottom: '1.15rem' }}>
+          <div>
+            <span style={{
+              fontSize: '0.65rem',
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              color: record.isQueued ? '#1d4ed8' : 'var(--primary-orange)',
+              backgroundColor: record.isQueued ? 'rgba(29, 78, 216, 0.08)' : 'rgba(255, 140, 26, 0.08)',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '0.5rem',
+              border: `1px solid ${record.isQueued ? 'rgba(29, 78, 216, 0.15)' : 'rgba(255, 140, 26, 0.15)'}`
+            }}>
+              {record.isQueued ? 'Queued Upgrade' : 'Active Subscription'}
+            </span>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginTop: '0.4rem', color: 'var(--text-main)' }}>
+              {record.packageName}
+            </h3>
+            <span className="text-[11px] text-gray-500 font-semibold">
+              {record.serviceName}{record.vehicleNo ? ` • ${record.vehicleNo}` : ''}
+            </span>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <span className="text-xs text-gray-700 font-bold block">ID: {record.bookingId || 'B-9028'}</span>
+            <span className="text-xs text-emerald-700 font-extrabold block">Paid: ₹{record.price}</span>
+          </div>
+        </div>
+
+        {/* Membership Info Grids */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-xs">
+          {/* Start and Expiry Dates */}
+          <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+            <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Validity Period</span>
+            <div className="flex justify-between font-semibold">
+              <span className="text-slate-600 font-bold">{record.isQueued ? 'Starts:' : 'Started:'}</span>
+              <span className="text-slate-900 font-bold">{record.startLabel}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span className="text-slate-600 font-bold">Expires:</span>
+              <span className="text-red-700 font-black">{record.expiryLabel}</span>
+            </div>
+          </div>
+
+          {/* Washes Meter */}
+          <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+            <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Wash Usage Meter</span>
+            {record.isQueued ? (
+              <div className="text-[11px] text-slate-700 font-bold leading-relaxed">
+                Fresh allowance of {limit === 'Unlimited' ? 'unlimited washes' : `${limit} washes`} unlocks on {record.startLabel}.
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-slate-600 font-bold">Total Washes Used:</span>
+                  <span className="text-amber-800 font-black">
+                    {limit === 'Unlimited' ? `${used} (Unlimited)` : `${cappedUsed} of ${limit} washes`}
+                  </span>
+                </div>
+                {limit !== 'Unlimited' ? (
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
+                    <div
+                      className="bg-amber-500 h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${(cappedUsed / numericLimit) * 100}%` }}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-emerald-700 font-black mt-1">
+                    ✨ Elite Unlimited Pass Active
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Membership Actions Row */}
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 justify-between items-center text-[10px] font-bold">
+          <div className="flex gap-2">
+            {!record.isQueued && (
+              <button
+                type="button"
+                onClick={() => handleRenewMembership(record)}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl shadow-xs transition-all active:scale-[0.98]"
+              >
+                🔄 Renew
+              </button>
+            )}
+            {!record.isQueued && !record.isYearly && !hasQueuedUpgrade && (
+              <button
+                type="button"
+                onClick={() => handleUpgradeMembership(record)}
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold rounded-xl transition-all"
+              >
+                ⚡ Upgrade Plan
+              </button>
+            )}
+            {!record.isQueued && hasQueuedUpgrade && (
+              <span className="px-3.5 py-2 bg-blue-50 text-blue-800 font-extrabold rounded-xl">
+                ⚡ Upgrade already queued
+              </span>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenModal('wash-history')}
+              className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
+            >
+              🚗 Wash Log
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenModal('payment-history')}
+              className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
+            >
+              💳 Payments
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInvoiceModalItem(record.booking);
+                setActiveModal('invoice');
+              }}
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition-all"
+            >
+              📄 GST Invoice
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderGSTInvoice = () => {
     if (!invoiceModalItem) return null;
     const item = invoiceModalItem;
@@ -1076,112 +1316,10 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Dynamic Active Membership Dashboard Section */}
-      {activeMembership ? (
-        <div className="section-card border-amber-500/40 shadow-md" style={{ marginBottom: 0, padding: '1.5rem', textAlign: 'left' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem', marginBottom: '1.15rem' }}>
-            <div>
-              <span style={{ fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', tracking: '0.05em', color: 'var(--primary-orange)', backgroundColor: 'rgba(255, 140, 26, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '0.5rem', border: '1px solid rgba(255, 140, 26, 0.15)' }}>
-                Active Subscription
-              </span>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginTop: '0.4rem', color: 'var(--text-main)' }}>
-                {activeMembership.packageName}
-              </h3>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <span className="text-xs text-gray-700 font-bold block">ID: {activeMembership.bookingId || 'B-9028'}</span>
-              <span className="text-xs text-emerald-700 font-extrabold block">Paid: ₹{activeMembership.price}</span>
-            </div>
-          </div>
-
-          {/* Membership Info Grids */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-xs">
-            {/* Start and Expiry Dates */}
-            <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
-              <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Validity Period</span>
-              <div className="flex justify-between font-semibold">
-                <span className="text-slate-600 font-bold">Started:</span>
-                <span className="text-slate-900 font-bold">{getDates(activeMembership).start}</span>
-              </div>
-              <div className="flex justify-between font-semibold">
-                <span className="text-slate-600 font-bold">Expires:</span>
-                <span className="text-red-700 font-black">{getDates(activeMembership).expiry}</span>
-              </div>
-            </div>
-
-            {/* Washes Meter */}
-            <div className="bg-slate-100/80 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
-              <span className="text-[11px] text-slate-700 font-extrabold uppercase tracking-wider block mb-1">Wash Usage Meter</span>
-              <div className="flex justify-between font-semibold">
-                <span className="text-slate-600 font-bold">Total Washes Used:</span>
-                <span className="text-amber-800 font-black">
-                  {washesLimit === 'Unlimited' ? `${washesUsedCount} (Unlimited)` : `${Math.min(washesUsedCount, Number(washesLimit) || 4)} of ${washesLimit || 4} washes`}
-                </span>
-              </div>
-              {/* Progress bar */}
-              {washesLimit !== 'Unlimited' ? (
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
-                  <div 
-                    className="bg-amber-500 h-full transition-all duration-300 rounded-full"
-                    style={{ width: `${(Math.min(washesUsedCount, Number(washesLimit) || 4) / (Number(washesLimit) || 4)) * 100}%` }}
-                  />
-                </div>
-              ) : (
-                <div className="text-[10px] text-emerald-700 font-black mt-1">
-                  ✨ Elite Unlimited Pass Active
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Membership Actions Row */}
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 justify-between items-center text-[10px] font-bold">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleRenewMembership}
-                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl shadow-xs transition-all active:scale-[0.98]"
-              >
-                🔄 Renew
-              </button>
-              {!(activeMembership.packageName || '').toLowerCase().includes('yearly') && (
-                <button
-                  type="button"
-                  onClick={handleUpgradeMembership}
-                  className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold rounded-xl transition-all"
-                >
-                  ⚡ Upgrade Plan
-                </button>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleOpenModal('wash-history')}
-                className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
-              >
-                🚗 Wash Log
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenModal('payment-history')}
-                className="px-3 py-2 text-gray-600 hover:text-gray-900 border rounded-xl hover:bg-gray-50 transition-all"
-              >
-                💳 Payments
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setInvoiceModalItem(activeMembership);
-                  setActiveModal('invoice');
-                }}
-                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition-all"
-              >
-                📄 GST Invoice
-              </button>
-            </div>
-          </div>
+      {/* Dynamic Membership Dashboard — running plans plus any queued upgrades */}
+      {activeMemberships.length + queuedMemberships.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {[...activeMemberships, ...queuedMemberships].map(renderMembershipCard)}
         </div>
       ) : (
         <div className="section-card bg-amber-50/20 border border-dashed border-amber-300 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left" style={{ marginBottom: 0 }}>
