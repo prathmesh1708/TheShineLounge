@@ -299,6 +299,26 @@ export default function SalonBookingPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [couponSuccess, setCouponSuccess] = useState("");
+  const [clientName, setClientName] = useState(() => {
+    try {
+      const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u && (u.fullName || u.name)) return u.fullName || u.name;
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [clientPhone, setClientPhone] = useState(() => {
+    try {
+      const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u && (u.mobile || u.phone)) return u.mobile || u.phone;
+      }
+    } catch (e) {}
+    return '';
+  });
 
   // Determine slot list (use dynamic active salon slots, or fallback to stylist slots)
   const displaySlots = useMemo(() => {
@@ -381,20 +401,29 @@ export default function SalonBookingPage() {
 
     const newBookingId = `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    let customerName = 'Salon Client';
+    let customerName = clientName.trim();
     let customerEmail = '';
-    let phone = '';
+    let phone = clientPhone.trim();
     try {
-      const stored = localStorage.getItem('tsl_user');
+      const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
       if (stored) {
         const u = JSON.parse(stored);
-        if (u.fullName) customerName = u.fullName;
-        else if (u.name) customerName = u.name;
+        if (!customerName && (u.fullName || u.name)) customerName = u.fullName || u.name;
         if (u.email) customerEmail = u.email;
-        if (u.mobile) phone = u.mobile;
-        else if (u.phone) phone = u.phone;
+        if (!phone && (u.mobile || u.phone)) phone = u.mobile || u.phone;
       }
     } catch (e) {}
+
+    if (!customerName) {
+      customerName = 'Salon Client';
+    }
+    if (!phone) {
+      phone = '+91 98210 77777';
+    }
+
+    const bookingSlotTime = (selectedDate && selectedTime) 
+      ? (selectedTime.includes(selectedDate) ? selectedTime : `${selectedDate} | ${selectedTime}`)
+      : (selectedTime || selectedDate || 'Today');
 
     const payload = {
       bookingId: newBookingId,
@@ -403,10 +432,12 @@ export default function SalonBookingPage() {
       packageName: selectedService?.name || 'Executive Haircut',
       price: totalAmount,
       date: selectedDate,
-      timeSlot: selectedTime,
+      timeSlot: bookingSlotTime,
       customerName,
       customerEmail,
       phone,
+      assignedStaffId: selectedStylist?._id || selectedStylist?.id || undefined,
+      stylist: selectedStylist?.name || 'Any Specialist',
       vehicleNo: `Stylist: ${selectedStylist?.name || 'Any Specialist'}`,
       vehicleType: 'Salon Client'
     };
@@ -417,17 +448,32 @@ export default function SalonBookingPage() {
       console.warn('Error creating salon booking in DB:', err.message);
     }
 
-    // Save booking to localStorage for client-side my-bookings
+    // Save booking to localStorage for client-side my-bookings and admin sync
     const newBooking = {
       id: newBookingId,
-      package: selectedService?.name,
-      status: "Upcoming",
+      bookingId: newBookingId,
+      serviceKey: 'salon',
+      serviceName: 'Men\'s Salon',
+      packageName: selectedService?.name || 'Executive Haircut',
+      package: selectedService?.name || 'Executive Haircut',
+      service: selectedService?.name || 'Executive Haircut',
+      status: "Confirmed",
       date: selectedDate,
       time: selectedTime,
-      service: selectedService?.name,
-      stylist: selectedStylist?.name,
+      timeSlot: bookingSlotTime,
+      customerName,
+      customerEmail,
+      phone,
+      stylist: selectedStylist?.name || 'Any Specialist',
+      staffName: selectedStylist?.name || 'Any Specialist',
+      assignedStaffName: selectedStylist?.name || 'Any Specialist',
+      vehicleNo: `Stylist: ${selectedStylist?.name || 'Any Specialist'}`,
+      vehicleType: 'Salon Client',
       location: "Shine Lounge Salon, Vijay Nagar, Indore",
       price: totalAmount,
+      total: totalAmount,
+      amount: totalAmount,
+      createdAt: new Date().toISOString(),
       timeline: [
         { status: "Appointment Placed", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), active: true },
         { status: "Stylist Confirmed", time: "Pending", active: false }
@@ -436,6 +482,11 @@ export default function SalonBookingPage() {
 
     const existing = JSON.parse(localStorage.getItem("salon_bookings") || "[]");
     localStorage.setItem("salon_bookings", JSON.stringify([newBooking, ...existing]));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('salonDataChanged'));
+      window.dispatchEvent(new CustomEvent('bookingAdded'));
+    }
 
     // Navigate to success screen
     navigate(`/salon/success?id=${newBookingId}&price=${totalAmount}`);
@@ -546,7 +597,38 @@ export default function SalonBookingPage() {
 
           </div>
 
-          {/* 3. Salon Location */}
+          {/* 3. Client Details */}
+          <div className="bg-white border border-zinc-200/80 rounded-24 p-6 md:p-8 space-y-6 shadow-sm">
+            <h3 className="font-extrabold text-lg text-zinc-800 border-b border-zinc-50 pb-3 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">3</span>
+              <span>Client Details</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-600 block">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rahul Sharma"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  className="w-full py-2.5 px-3.5 bg-zinc-50 border border-zinc-200 focus:border-primary text-zinc-800 text-xs font-semibold rounded-15 outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-600 block">Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. +91 98210 77777"
+                  value={clientPhone}
+                  onChange={(e) => setClientPhone(e.target.value)}
+                  className="w-full py-2.5 px-3.5 bg-zinc-50 border border-zinc-200 focus:border-primary text-zinc-800 text-xs font-semibold rounded-15 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Salon Location */}
           <div className="bg-white border border-zinc-200/80 rounded-24 p-6 md:p-8 space-y-4 shadow-sm flex items-start gap-4">
             <MapPin className="w-6 h-6 text-primary flex-shrink-0 mt-0.5" />
             <div className="space-y-1">

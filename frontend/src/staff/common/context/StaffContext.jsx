@@ -172,7 +172,7 @@ export function StaffProvider({ children }) {
     try {
       const res = await apiClient.get('/bookings');
       if (res.data && res.data.bookings) {
-        apiMapped = res.data.bookings.map(b => {
+        apiMapped = res.data.bookings.map((b, idx) => {
           const sName = (b.serviceName || b.plan || b.packageName || '').toLowerCase();
           const pName = (b.packageName || b.package || '').toLowerCase();
           const vType = (b.vehicleType || '').toLowerCase();
@@ -194,6 +194,35 @@ export function StaffProvider({ children }) {
             }
           }
 
+          const resolveCustomerName = (booking, idx = 0, defaultLabel = 'Salon Client') => {
+            let rawName = '';
+            if (typeof booking.customerName === 'string' && booking.customerName.trim()) {
+              rawName = booking.customerName.trim();
+            } else if (booking.customerName && typeof booking.customerName === 'object') {
+              rawName = booking.customerName.fullName || booking.customerName.name || '';
+            } else if (booking.user && typeof booking.user === 'object') {
+              rawName = booking.user.fullName || booking.user.name || booking.user.email || '';
+            } else if (typeof booking.user === 'string' && booking.user.trim()) {
+              rawName = booking.user.trim();
+            } else if (booking.customerEmail && typeof booking.customerEmail === 'string') {
+              rawName = booking.customerEmail.split('@')[0];
+            }
+
+            const stylistName = (booking.stylist || booking.staffName || booking.assignedStaffName || '').trim().toLowerCase();
+            const lowerRaw = rawName.toLowerCase();
+
+            // Return the actual stored customer name whenever available
+            if (rawName && lowerRaw !== 'super admin' && lowerRaw !== 'salon client' && (!stylistName || lowerRaw !== stylistName)) {
+              return rawName;
+            }
+
+            if (booking.phone && typeof booking.phone === 'string' && booking.phone.trim()) {
+              return `Client (${booking.phone.trim()})`;
+            }
+
+            return defaultLabel;
+          };
+
           return {
             _id: b._id,
             id: b.bookingId || b.id || `BK-${b._id?.slice(-4)}`,
@@ -209,7 +238,7 @@ export function StaffProvider({ children }) {
             vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
-            customerName: b.customerName || b.user || 'Customer',
+            customerName: resolveCustomerName(b, idx, resolvedKey === 'salon' ? 'Salon Client' : 'Customer'),
             phone: b.phone || b.mobile || b.customerEmail || '+91 98200 12345',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || b.time || '02:00 PM',
@@ -290,6 +319,38 @@ export function StaffProvider({ children }) {
       }
     } catch (e) {}
 
+    let localSalonJobs = [];
+    try {
+      const storedSalon = localStorage.getItem('salon_bookings') || localStorage.getItem('shine_salon_bookings');
+      if (storedSalon) {
+        const parsedSalon = JSON.parse(storedSalon);
+        if (Array.isArray(parsedSalon)) {
+          localSalonJobs = parsedSalon.map((b, idx) => ({
+            _id: b.id || b.bookingId || `BK-SAL-${idx}`,
+            id: b.bookingId || b.id || `BK-${7000 + idx}`,
+            serviceKey: 'salon',
+            serviceName: b.serviceName || 'Men\'s Salon',
+            planName: b.packageName || b.package || b.service || 'Executive Haircut',
+            vehicleNo: b.vehicleNo || (b.stylist ? `Stylist: ${b.stylist}` : 'Any Specialist'),
+            vehicleModel: 'Salon Client',
+            vehicleType: 'Salon Client',
+            customerName: resolveCustomerName(b, idx, 'Salon Client'),
+            phone: b.phone || b.customerEmail || '+91 98210 77777',
+            date: b.date || new Date().toISOString().split('T')[0],
+            timeSlot: b.timeSlot || (b.date && b.time ? `${b.date} | ${b.time}` : (b.time || '01:30 PM')),
+            amount: b.price || b.total || b.amount || 499,
+            total: b.price || b.total || b.amount || 499,
+            status: b.status === 'Upcoming' ? 'Confirmed' : (b.status || 'Confirmed'),
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || 'Salon appointment scheduled.',
+            photos: b.photos || [],
+            staffId: b.staffId || b.assignedStaffId || '',
+            staffName: b.assignedStaffName || b.stylist || b.staffName || ''
+          }));
+        }
+      }
+    } catch (e) {}
+
     // A job already returned by the API must not be duplicated by its local
     // storage mirror — the mirror carries only the display id as its _id.
     const apiIds = new Set(apiMapped.flatMap(j => [j.id, j._id].filter(Boolean)));
@@ -298,7 +359,8 @@ export function StaffProvider({ children }) {
     const combined = [
       ...apiMapped,
       ...localDetailingJobs.filter(notAlreadyLive),
-      ...localDogJobs.filter(notAlreadyLive)
+      ...localDogJobs.filter(notAlreadyLive),
+      ...localSalonJobs.filter(notAlreadyLive)
     ];
     const finalJobsList = combined.length > 0 ? combined : mockAssignedJobs;
     setJobs(finalJobsList);

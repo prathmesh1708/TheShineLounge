@@ -17,9 +17,38 @@ import {
   initialNotifications
 } from '../data/adminMockData';
 
+export const formatBookingDateTime = (rawSlot, rawDate) => {
+  if (!rawSlot && !rawDate) return 'N/A';
+  let text = String(rawSlot || '').trim();
+
+  // Strip leading 'Today ' prefix if present
+  if (text.startsWith('Today ')) {
+    text = text.replace(/^Today\s+/, '');
+  }
+
+  // If text has range with '-', extract start time
+  // Example: "August 10, 2026 | 02:01 PM - 02:31 PM" => "August 10, 2026 | 02:01 PM"
+  // Example: "02:01 PM - 02:31 PM" => "02:01 PM"
+  if (text.includes('-')) {
+    const parts = text.split('-');
+    const firstPart = parts[0].trim();
+    if (firstPart.match(/(AM|PM)/i) || firstPart.includes('|') || firstPart.length > 5) {
+      text = firstPart;
+    }
+  }
+
+  // If date is provided and not already included in text
+  if (rawDate && !text.includes(rawDate) && !text.includes('|') && !text.match(/^[A-Za-z]+\s+\d{1,2}/)) {
+    return `${rawDate} | ${text}`;
+  }
+
+  return text;
+};
+
 const AdminContext = createContext();
 
 export const AdminProvider = ({ children }) => {
+
   // Global State
   const [stats, setStats] = useState(initialDashboardStats);
   const [services, setServices] = useState([]);
@@ -93,6 +122,7 @@ export const AdminProvider = ({ children }) => {
 
   const fetchBookingsList = async () => {
     try {
+      let mapped = [];
       const res = await apiClient.get('/bookings');
       if (res.data && res.data.bookings) {
         const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -101,7 +131,7 @@ export const AdminProvider = ({ children }) => {
         const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
 
-        const mapped = res.data.bookings.map(b => {
+        mapped = res.data.bookings.map(b => {
           const rawDate = b.date || '';
           const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
           const displayDate = isLegacyDate ? liveDateStr : rawDate;
@@ -123,18 +153,66 @@ export const AdminProvider = ({ children }) => {
             serviceName: b.serviceName,
             plan: b.packageName,
             date: displayDate,
-            timeSlot: `${displayDate} | ${displayTime}`,
+            timeSlot: formatBookingDateTime(displayTime, displayDate),
             total: b.price,
             status: b.status,
             staffAssigned: b.assignedStaffName || 'Not Assigned',
             assignedStaffId: b.assignedStaffId,
             stepIndex: b.stepIndex,
             notes: b.notes,
-            photos: b.photos
+            photos: b.photos,
+            createdAt: b.createdAt || b.bookedAt || b.date,
+            bookedAt: b.bookedAt || b.createdAt
           };
         });
-        setBookings(mapped);
       }
+
+      // Merge client-side salon bookings from localStorage if available
+      let localSalonBookings = [];
+      try {
+        const storedSalon = localStorage.getItem('salon_bookings') || localStorage.getItem('shine_salon_bookings');
+        if (storedSalon) {
+          const parsedSalon = JSON.parse(storedSalon);
+          if (Array.isArray(parsedSalon)) {
+            localSalonBookings = parsedSalon.map((b, idx) => {
+              const bDate = b.date || new Date().toISOString().split('T')[0];
+              const bTime = b.timeSlot || b.time || '01:30 PM';
+              const formattedSlot = formatBookingDateTime(bTime, bDate);
+              return {
+                _id: b.id || b.bookingId || `BK-SAL-${idx}`,
+                id: b.bookingId || b.id || `BK-${7000 + idx}`,
+                customerName: b.customerName || b.user || 'Salon Client',
+                customerEmail: b.customerEmail || b.email || '',
+                vehicleNo: b.vehicleNo || (b.stylist ? `Stylist: ${b.stylist}` : 'Any Specialist'),
+                vehicleType: b.vehicleType || 'Salon Client',
+                location: b.location || 'Shine Lounge Salon',
+                phone: b.phone || b.mobile || '',
+                serviceKey: 'salon',
+                serviceName: b.serviceName || 'Men\'s Salon',
+                plan: b.packageName || b.package || b.service || 'Executive Haircut',
+                date: bDate,
+                timeSlot: formattedSlot,
+                total: b.price || b.total || b.amount || 0,
+                status: b.status === 'Upcoming' ? 'Confirmed' : (b.status || 'Confirmed'),
+                staffAssigned: b.stylist || b.staffAssigned || 'Not Assigned',
+                notes: b.notes || '',
+                createdAt: b.createdAt || b.bookedAt || bDate,
+                bookedAt: b.bookedAt || b.createdAt
+              };
+            });
+          }
+        }
+      } catch (e) {}
+
+      const apiIds = new Set(mapped.flatMap(b => [b.id, b._id].filter(Boolean)));
+      const notAlreadyLive = (b) => !apiIds.has(b.id) && !apiIds.has(b._id);
+
+      const combinedBookings = [
+        ...mapped,
+        ...localSalonBookings.filter(notAlreadyLive)
+      ];
+
+      setBookings(combinedBookings.length > 0 ? combinedBookings : initialBookings);
     } catch (err) {
       console.warn('Could not fetch bookings list:', err.message);
     }
@@ -220,7 +298,13 @@ export const AdminProvider = ({ children }) => {
 
     // Poll for live booking updates from staff every 5 seconds
     const interval = setInterval(fetchBookingsList, 5000);
-    return () => clearInterval(interval);
+    window.addEventListener('salonDataChanged', fetchBookingsList);
+    window.addEventListener('bookingAdded', fetchBookingsList);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('salonDataChanged', fetchBookingsList);
+      window.removeEventListener('bookingAdded', fetchBookingsList);
+    };
   }, []);
 
   // Compute dynamic stats based on database records
@@ -537,7 +621,9 @@ export const AdminProvider = ({ children }) => {
           gst: gstVal,
           total: totalVal,
           status: 'Pending',
-          date: new Date().toISOString().split('T')[0]
+          date: new Date().toISOString().split('T')[0],
+          createdAt: new Date().toISOString(),
+          bookedAt: new Date().toISOString()
         },
         ...prev
       ]);
@@ -550,7 +636,9 @@ export const AdminProvider = ({ children }) => {
     setStaffList(prev => [
       ...prev,
       {
-        id: `STF-${(prev.length + 1).toString().padStart(2, '0')}`,
+        // Prefer the real Mongo _id returned by the backend; only fall back to a
+        // synthetic placeholder id if the caller didn't have one (e.g. offline path).
+        id: newStaff._id || newStaff.id || `STF-${(prev.length + 1).toString().padStart(2, '0')}`,
         ...newStaff,
         status: 'Active',
         joinedDate: new Date().toISOString().split('T')[0],

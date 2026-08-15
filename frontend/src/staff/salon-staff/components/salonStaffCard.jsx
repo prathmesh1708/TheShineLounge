@@ -17,29 +17,32 @@ export default function SalonStaffCard({ job, onUpdateStatus }) {
       <div className="flex items-center justify-between">
         <div>
           <span className="text-[10px] font-black text-purple-600 tracking-wider uppercase">{job.id}</span>
-          <h3 className="font-extrabold text-sm text-gray-900">{job.customerName}</h3>
+          <h3 className="font-extrabold text-sm text-gray-900">{job.customerName || 'Salon Client'}</h3>
           <p className="text-xs text-gray-500 flex items-center gap-1">
             <Phone className="w-3 h-3 text-gray-400" /> {job.phone}
           </p>
         </div>
         <div className="text-right">
           <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
-            {job.planName}
+            {job.planName || job.serviceName}
           </span>
           <p className="text-xs font-black text-gray-900 mt-1 flex items-center justify-end">
-            <IndianRupee className="w-3 h-3 text-purple-600" /> {job.total}
+            <IndianRupee className="w-3 h-3 text-purple-600" /> {job.total || job.amount}
           </p>
         </div>
       </div>
 
-      <div className="bg-gray-50 rounded-xl p-2.5 flex items-center justify-between border border-gray-100">
+      <div className="bg-gray-50 rounded-xl p-2.5 flex items-center justify-between border border-gray-100 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Scissors className="w-4 h-4 text-purple-600" />
-          <span className="font-black text-xs text-gray-900">{job.vehicleNo}</span>
+          <span className="font-black text-xs text-gray-900">{job.vehicleNo || `Stylist: ${job.staffName || 'Any Specialist'}`}</span>
         </div>
-        <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
-          <Clock className="w-3 h-3" /> {job.timeSlot}
-        </span>
+        <div className="text-[10px] text-gray-700 font-bold flex items-center gap-2">
+          {job.date && <span>📅 {job.date}</span>}
+          <span className="flex items-center gap-1 text-purple-900">
+            <Clock className="w-3 h-3 text-purple-600" /> {(job.timeSlot || '09:00 AM').replace(/^[0-9]{4}-[0-9]{2}-[0-9]{2}\s*\|\s*/, '')}
+          </span>
+        </div>
       </div>
 
       <SalonAppointmentStepper

@@ -66,17 +66,54 @@ export default function ManageBookingsPage() {
       )
     },
     {
-      header: 'Date & Slot',
+      header: 'Booking Placed Date',
+      accessorKey: 'createdAt',
+      cell: (row) => {
+        const raw = row.createdAt || row.bookedAt;
+        let formatted = '';
+        if (raw) {
+          if (typeof raw === 'string' && raw.includes('|')) {
+            formatted = raw;
+          } else {
+            const d = new Date(raw);
+            if (!isNaN(d.getTime())) {
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              let hours = d.getHours();
+              const minutes = String(d.getMinutes()).padStart(2, '0');
+              const ampm = hours >= 12 ? 'PM' : 'AM';
+              hours = hours % 12 || 12;
+              const strHours = String(hours).padStart(2, '0');
+              formatted = `${year}-${month}-${day} | ${strHours}:${minutes} ${ampm}`;
+            } else {
+              formatted = String(raw);
+            }
+          }
+        }
+        if (!formatted) {
+          const dStr = row.date || new Date().toISOString().split('T')[0];
+          formatted = `${dStr} | 10:30 AM`;
+        }
+        return (
+          <div className="text-gray-700 font-medium">
+            <p className="font-semibold text-gray-800 text-xs">
+              {formatted}
+            </p>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Booking Date & Time',
       accessorKey: 'date',
       cell: (row) => (
         <div className="text-gray-700 font-medium">
-          <p className="font-bold text-gray-900">{row.date}</p>
-          <p className="text-[10px] text-gray-500 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-500" /> {row.timeSlot}
-          </p>
+          <p className="font-bold text-gray-900">{row.timeSlot || row.date}</p>
         </div>
       )
     },
+
     {
       header: 'Total Amount',
       accessorKey: 'total',

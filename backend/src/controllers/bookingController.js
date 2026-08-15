@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
+const User = require('../models/User');
 const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
@@ -60,9 +61,39 @@ const createBooking = async (req, res) => {
     // Auto generate booking ID if not supplied
     const finalBookingId = bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // Route the job to whichever staff member the admin has staffed on this
-    // service, so it lands in that person's queue the moment it is created.
-    const assignedStaff = await findStaffForService(serviceKey);
+    // Route the job to whichever staff member is requested or staffed on this service
+    let assignedStaff = null;
+    const requestedStylistId = req.body.assignedStaffId || req.body.stylistId;
+    const requestedStylist = req.body.stylist || req.body.assignedStaffName || req.body.staffName ||
+      (vehicleNo && vehicleNo.includes('Stylist:') ? vehicleNo.split('Stylist:')[1].trim() : '');
+
+    if (serviceKey === 'salon' && requestedStylistId && mongoose.Types.ObjectId.isValid(requestedStylistId)) {
+      // The client sent the stylist's real id — trust it over name matching.
+      assignedStaff = await User.findOne({
+        _id: requestedStylistId,
+        role: 'staff',
+        isActive: true,
+        isDeleted: { $ne: true }
+      });
+
+      var targetStaffName = assignedStaff ? assignedStaff.fullName : requestedStylist;
+      var targetStaffId = assignedStaff ? assignedStaff._id : null;
+    } else if (serviceKey === 'salon' && requestedStylist && !['any specialist', 'any'].includes(requestedStylist.toLowerCase().trim())) {
+      // Legacy/fallback path for callers that only send a name.
+      assignedStaff = await User.findOne({
+        role: 'staff',
+        isActive: true,
+        isDeleted: { $ne: true },
+        fullName: { $regex: new RegExp(`^${escapeRegex(requestedStylist.trim())}$`, 'i') }
+      });
+
+      var targetStaffName = assignedStaff ? assignedStaff.fullName : requestedStylist;
+      var targetStaffId = assignedStaff ? assignedStaff._id : null;
+    } else {
+      assignedStaff = await findStaffForService(serviceKey);
+      var targetStaffName = assignedStaff ? assignedStaff.fullName : '';
+      var targetStaffId = assignedStaff ? assignedStaff._id : null;
+    }
 
     const booking = await Booking.create({
       bookingId: finalBookingId,
@@ -82,8 +113,8 @@ const createBooking = async (req, res) => {
       location: location || '',
       phone: phone || '',
       ...(status ? { status } : {}),
-      assignedStaffId: assignedStaff ? assignedStaff._id : null,
-      assignedStaffName: assignedStaff ? assignedStaff.fullName : ''
+      assignedStaffId: targetStaffId,
+      assignedStaffName: targetStaffName
     });
 
     if (assignedStaff) {

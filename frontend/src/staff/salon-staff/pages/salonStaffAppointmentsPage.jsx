@@ -8,6 +8,8 @@ export default function SalonStaffAppointmentsPage() {
   const { jobs, updateJobStatus, currentStaff } = useStaff();
   const [filter, setFilter] = useState('all');
 
+  // Only for matching free-text stylist names on legacy bookings that have no
+  // staffId — never run an actual id through this, it strips digits.
   const normalizeName = (name) => {
     const clean = (name || '').toLowerCase().replace(/[^a-z]/gi, '').trim();
     if (clean === 'vikash' || clean === 'vikas') return 'vikas';
@@ -15,28 +17,47 @@ export default function SalonStaffAppointmentsPage() {
   };
 
   const salonJobs = jobs.filter(j => {
-    if (j.serviceKey !== 'salon') return false;
+    if (j.serviceKey !== 'salon' && !(j.serviceName && j.serviceName.toLowerCase().includes('salon'))) return false;
     if (!currentStaff) return true;
 
     // Managers see all salon jobs
     const isManager = ['Super Admin', 'Branch Manager', 'Cashier'].includes(currentStaff.role);
     if (isManager) return true;
 
+    // A real assigned staff id is the source of truth — compare it directly,
+    // no normalization (stripping digits would corrupt Mongo ObjectId comparisons).
+    const placeholderIds = ['stf-live', 'stf-05', 'stf-07'];
+    const jobStaffId = String(j.staffId || '').trim().toLowerCase();
+    if (jobStaffId && !placeholderIds.includes(jobStaffId)) {
+      return jobStaffId === String(currentStaff.id || '').trim().toLowerCase();
+    }
+
+    // Fall back to free-text name matching for legacy bookings with no staffId
     const staffNameNorm = normalizeName(currentStaff.name);
-
-    // Check if customer selected this stylist (stored in vehicleNo as "Stylist: <Name>")
-    const selectedStylist = (j.vehicleNo || '').toLowerCase();
-    if (selectedStylist.includes('stylist:')) {
-      const stylistNameNorm = normalizeName(selectedStylist.split('stylist:')[1]);
-      return stylistNameNorm === staffNameNorm;
+    let reqStylist = j.staffName || j.assignedStaffName || j.stylist || '';
+    const vehicleStr = (j.vehicleNo || '').toLowerCase();
+    if (!reqStylist && vehicleStr.includes('stylist:')) {
+      reqStylist = vehicleStr.split('stylist:')[1].trim();
+    } else if (vehicleStr.includes('stylist:')) {
+      const vStylist = vehicleStr.split('stylist:')[1].trim();
+      if (vStylist && normalizeName(vStylist) !== 'anyspecialist') {
+        reqStylist = vStylist;
+      }
     }
 
-    // Check if explicitly assigned to this staff member
-    if (j.staffName) {
-      return normalizeName(j.staffName) === staffNameNorm || j.staffId === currentStaff.id;
+    const normStylist = normalizeName(reqStylist);
+
+    // Check if requested stylist matches my name
+    if (normStylist && normStylist === staffNameNorm) return true;
+
+    // If requested stylist specifically targets ANOTHER active staff member (e.g. Raasi, Tahir), hide
+    const knownOtherStaff = ['raasi', 'tahir', 'tahirkhan', 'sameer', 'sameermerchant', 'vikash', 'vikas'];
+    if (normStylist && knownOtherStaff.includes(normStylist) && normStylist !== staffNameNorm) {
+      return false;
     }
 
-    return false;
+    // Otherwise, show to all salon staff
+    return true;
   });
 
   const filteredJobs = salonJobs.filter(j => {

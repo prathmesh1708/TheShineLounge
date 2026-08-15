@@ -1499,8 +1499,9 @@ export default function CarWashAdminHubPage() {
             { header: 'ID', accessorKey: 'id' },
             { header: 'Customer', accessorKey: 'customerName' },
             { header: 'Package', accessorKey: 'plan' },
-            { header: 'Slot', accessorKey: 'timeSlot' },
+            { header: 'Booking Date & Time', accessorKey: 'timeSlot' },
             { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total}</span> },
+
             {
               header: 'Status',
               accessorKey: 'status',

@@ -188,6 +188,17 @@ export const SERVICES = [
 
 export const STYLISTS = [
   {
+    id: "st-any",
+    name: "Any Specialist",
+    rating: 5.0,
+    experience: "Top Rated",
+    specialization: "First Available Senior Specialist",
+    avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=150",
+    about: "Assign to the first available salon specialist on duty.",
+    phone: "+91 98210 77777",
+    timeSlots: ["09:30 AM", "10:30 AM", "11:30 AM", "01:30 PM", "03:00 PM", "04:30 PM"]
+  },
+  {
     id: "st-albert",
     name: "Albert Flores",
     rating: 4.95,

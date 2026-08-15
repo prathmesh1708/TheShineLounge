@@ -123,7 +123,13 @@ export default function SalonAdminHubPage() {
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === 'salon' || (b.serviceName && b.serviceName.toLowerCase().includes('salon')));
+  const serviceBookings = bookings.filter(b => 
+    b.serviceKey === 'salon' || 
+    (b.serviceName && b.serviceName.toLowerCase().includes('salon')) ||
+    (b.service && b.service.toLowerCase().includes('salon')) ||
+    (b.id && String(b.id).startsWith('BK-2026-')) ||
+    (b.id && String(b.id).startsWith('BK-'))
+  );
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
 
   const allSalonStaffMap = new Map();
@@ -360,6 +366,8 @@ export default function SalonAdminHubPage() {
         
         // Sync with global AdminContext & localStorage
         addStaff({
+          _id: res.data.staff?._id,
+          id: res.data.staff?._id,
           fullName: staffForm.fullName,
           name: staffForm.fullName,
           email: staffForm.email,
@@ -1001,16 +1009,50 @@ export default function SalonAdminHubPage() {
                 </div>
               )},
               { header: 'Treatment / Service', accessorKey: 'plan', cell: (r) => <span className="font-bold text-amber-700">{r.plan || r.service}</span> },
-              { header: 'Date & Slot', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.date || r.timeSlot || 'Today'}</span> },
+              { header: 'Booking Placed Date', accessorKey: 'createdAt', cell: (r) => {
+                const raw = r.createdAt || r.bookedAt;
+                let formatted = '';
+                if (raw) {
+                  if (typeof raw === 'string' && raw.includes('|')) {
+                    formatted = raw;
+                  } else {
+                    const d = new Date(raw);
+                    if (!isNaN(d.getTime())) {
+                      const year = d.getFullYear();
+                      const month = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      let hours = d.getHours();
+                      const minutes = String(d.getMinutes()).padStart(2, '0');
+                      const ampm = hours >= 12 ? 'PM' : 'AM';
+                      hours = hours % 12 || 12;
+                      const strHours = String(hours).padStart(2, '0');
+                      formatted = `${year}-${month}-${day} | ${strHours}:${minutes} ${ampm}`;
+                    } else {
+                      formatted = String(raw);
+                    }
+                  }
+                }
+                if (!formatted) {
+                  const dStr = r.date || new Date().toISOString().split('T')[0];
+                  formatted = `${dStr} | 10:30 AM`;
+                }
+                return (
+                  <span className="text-xs font-semibold text-gray-700 block">
+                    {formatted}
+                  </span>
+                );
+              }},
+              { header: 'Booking Date & Time', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.timeSlot || (r.date && r.time ? `${r.date} | ${r.time}` : r.date) || 'Today'}</span> },
               { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+
               { header: 'Status', accessorKey: 'status', cell: (r) => (
                 <select
-                  value={r.status || 'Confirmed'}
+                  value={r.status === 'Upcoming' ? 'Confirmed' : (r.status || 'Confirmed')}
                   onChange={(e) => updateBookingStatus(r.id, e.target.value)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-extrabold cursor-pointer border-0 shadow-xs focus:ring-2 focus:ring-amber-500 ${
                     r.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
                     r.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
-                    r.status === 'Confirmed' ? 'bg-amber-100 text-amber-800' :
+                    (r.status === 'Confirmed' || r.status === 'Upcoming') ? 'bg-amber-100 text-amber-800' :
                     r.status === 'Cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
                   }`}
                 >

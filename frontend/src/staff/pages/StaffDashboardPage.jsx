@@ -15,9 +15,48 @@ export default function StaffDashboardPage() {
   const myStaffId = String(currentStaff?.id || '');
   const myStaffName = (currentStaff?.name || '').toLowerCase();
 
-  // A job belongs to me when the admin assigned it to me. Jobs nobody has been
-  // assigned to yet stay visible to the whole department so they are not lost.
+  const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+  // A job belongs to me when the admin assigned it to me or when customer requested me.
   const isMine = (job) => {
+    const isSalonJob = job.serviceKey === 'salon' || (job.serviceName && job.serviceName.toLowerCase().includes('salon'));
+    
+    if (isSalonJob) {
+      let requestedStylist = job.staffName || job.assignedStaffName || job.stylist || '';
+      const vehicleStr = (job.vehicleNo || '').toLowerCase();
+      if (!requestedStylist && vehicleStr.includes('stylist:')) {
+        requestedStylist = job.vehicleNo.split(/stylist:/i)[1].trim();
+      } else if (vehicleStr.includes('stylist:')) {
+        const vStylist = job.vehicleNo.split(/stylist:/i)[1].trim();
+        if (vStylist && normalize(vStylist) !== 'anyspecialist') {
+          requestedStylist = vStylist;
+        }
+      }
+
+      const normStylist = normalize(requestedStylist);
+      const normMyName = normalize(myStaffName);
+      const normMyId = normalize(myStaffId);
+      const jobStaffId = normalize(job.staffId || job.assignedStaffId || '');
+
+      // Check if job is assigned to me by staff ID
+      if (jobStaffId && jobStaffId !== 'stflive' && jobStaffId !== 'stf05' && jobStaffId !== 'stf07') {
+        if (jobStaffId === normMyId) return true;
+        if (jobStaffId !== normMyId) return false;
+      }
+
+      // Check if requested stylist matches my name
+      if (normStylist && normStylist === normMyName) return true;
+
+      // If requested stylist specifically targets ANOTHER active staff member (e.g. Raasi, Tahir), hide from me
+      const knownOtherStaff = ['raasi', 'tahir', 'tahirkhan', 'sameer', 'sameermerchant', 'vikash', 'vikas'];
+      if (normStylist && knownOtherStaff.includes(normStylist) && normStylist !== normMyName) {
+        return false;
+      }
+
+      // Otherwise (for "Any Specialist", generic stylists, or unassigned salon orders), show to all salon staff
+      return true;
+    }
+
     const jobStaffId = String(job.staffId || '');
     if (!jobStaffId) return true;
     if (jobStaffId === myStaffId) return true;
@@ -242,9 +281,16 @@ export default function StaffDashboardPage() {
                             🐶 <span className="font-bold text-emerald-800">{job.vehicleNo || 'Pet'}</span>
                           </span>
                         ) : job.serviceKey === 'salon' ? (
-                          <span className="flex items-center gap-1">
-                            ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
-                          </span>
+                          <div className="space-y-1 mt-1">
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
+                              <span className="text-gray-400">•</span>
+                              <span className="font-bold text-purple-700">{job.vehicleNo || `Stylist: ${job.staffName || 'Any Specialist'}`}</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-amber-800 font-bold text-[10px]">
+                              📅 {job.date || 'Today'} • ⏱ {(job.timeSlot || '01:30 PM').replace(/^[0-9]{4}-[0-9]{2}-[0-9]{2}\s*\|\s*/, '')}
+                            </span>
+                          </div>
                         ) : job.serviceKey === 'cafe' ? (
                           <span className="flex items-center gap-1">
                             ☕ <span className="font-bold text-amber-800">{job.vehicleNo || 'Table / Order'}</span>

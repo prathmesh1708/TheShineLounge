@@ -637,7 +637,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Rohan Deshmukh',
     paymentMode: 'UPI',
-    vehicleNo: 'MH01AB1234'
+    vehicleNo: 'MH01AB1234',
+    createdAt: '2026-07-20 02:15 PM'
   },
   {
     id: 'BK-9002',
@@ -654,7 +655,8 @@ export const initialBookings = [
     status: 'In Progress',
     staffAssigned: 'Vijay Shinde',
     paymentMode: 'Card',
-    vehicleNo: 'MH04XY7788'
+    vehicleNo: 'MH04XY7788',
+    createdAt: '2026-07-20 01:30 PM'
   },
   // Car Detailing Bookings
   {
@@ -672,7 +674,8 @@ export const initialBookings = [
     status: 'In Progress',
     staffAssigned: 'Deepak Joshi',
     paymentMode: 'Card',
-    vehicleNo: 'MH02CD5678'
+    vehicleNo: 'MH02CD5678',
+    createdAt: '2026-07-20 12:45 PM'
   },
   {
     id: 'BK-9004',
@@ -689,7 +692,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Amit Saxena',
     paymentMode: 'UPI',
-    vehicleNo: 'MH01KJ0001'
+    vehicleNo: 'MH01KJ0001',
+    createdAt: '2026-07-20 10:00 AM'
   },
   // Dog Wash Bookings
   {
@@ -707,7 +711,8 @@ export const initialBookings = [
     status: 'Pending',
     staffAssigned: 'Sneha Rao',
     paymentMode: 'Cash',
-    vehicleNo: 'N/A'
+    vehicleNo: 'N/A',
+    createdAt: '2026-07-20 04:00 PM'
   },
   {
     id: 'BK-9006',
@@ -724,7 +729,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Pooja Kulkarni',
     paymentMode: 'UPI',
-    vehicleNo: 'N/A'
+    vehicleNo: 'N/A',
+    createdAt: '2026-07-20 11:30 AM'
   },
   // Cafe Bookings
   {
@@ -742,7 +748,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Kavita Nair',
     paymentMode: 'UPI',
-    vehicleNo: 'N/A'
+    vehicleNo: 'N/A',
+    createdAt: '2026-07-20 09:45 AM'
   },
   {
     id: 'BK-9008',
@@ -759,7 +766,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Chef Vikram Thapar',
     paymentMode: 'Card',
-    vehicleNo: 'MH02RS8888'
+    vehicleNo: 'MH02RS8888',
+    createdAt: '2026-07-20 08:15 AM'
   },
   // Drive-Thru Cafe Bookings
   {
@@ -777,7 +785,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Manish Sharma',
     paymentMode: 'UPI',
-    vehicleNo: 'MH05XY9999'
+    vehicleNo: 'MH05XY9999',
+    createdAt: '2026-07-20 07:30 AM'
   },
   {
     id: 'BK-9010',
@@ -794,7 +803,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Manish Sharma',
     paymentMode: 'UPI',
-    vehicleNo: 'MH01VD1000'
+    vehicleNo: 'MH01VD1000',
+    createdAt: '2026-07-20 08:00 AM'
   },
   // Salon Bookings
   {
@@ -812,7 +822,8 @@ export const initialBookings = [
     status: 'Confirmed',
     staffAssigned: 'Tahir Khan',
     paymentMode: 'Card',
-    vehicleNo: 'N/A'
+    vehicleNo: 'N/A',
+    createdAt: '2026-07-20 04:30 PM'
   },
   {
     id: 'BK-9012',
@@ -829,7 +840,8 @@ export const initialBookings = [
     status: 'Completed',
     staffAssigned: 'Sameer Merchant',
     paymentMode: 'UPI',
-    vehicleNo: 'N/A'
+    vehicleNo: 'N/A',
+    createdAt: '2026-07-20 02:00 PM'
   }
 ];
 
