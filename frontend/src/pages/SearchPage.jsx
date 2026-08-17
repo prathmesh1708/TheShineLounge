@@ -51,7 +51,7 @@ export default function SearchPage() {
       gap: '1rem', 
       maxWidth: '550px', 
       margin: '0 auto', 
-      paddingBottom: '6rem',
+      paddingBottom: '1rem',
       marginTop: '-0.75rem'
     }}>
 

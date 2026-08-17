@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import TSLLogo from '../../common/components/TSLLogo';
 import { useAuth } from '../../common/context/AuthContext';
+import staffHeroImg from '../../assets/images/staff_hero.png';
 
 const shimmerStyle = `
 @keyframes shimmer {
@@ -250,7 +251,7 @@ function HeroSection() {
           className="w-full h-full relative"
         >
           <img 
-            src="/src/assets/images/staff_hero.png" 
+            src={staffHeroImg} 
             alt="Luxury Detailing Garage" 
             className="w-full h-full object-cover"
           />

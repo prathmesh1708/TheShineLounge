@@ -109,7 +109,9 @@ const initialServices = [
     description: 'Treat your furry friend to a relaxing warm hydrobath, organic herbal shampoos, flea treatments, and warm velocity blow drying in our climate-controlled pet spa.',
     icon: 'Dog',
     bannerImage: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=1200&q=80',
-    heroVideo: '/src/assets/images/dog-wash-banner.mp4',
+    // Deliberately no heroVideo here: '/src/...' is a Vite dev-server-only
+    // path and 404s in the production build. The frontend already falls
+    // back to its bundled dog-wash-banner.mp4 import when this is empty.
     thumbnail: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=400&q=80',
     displayOrder: 3,
     isActive: true,

@@ -213,7 +213,7 @@ export default function DogWashAdminHubPage() {
       ]);
 
   // Hero Video Management State
-  const [heroVideoUrl, setHeroVideoUrl] = useState('/src/assets/images/dog-wash-banner.mp4');
+  const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [isSavingVideo, setIsSavingVideo] = useState(false);
   const [uploadedVideoFile, setUploadedVideoFile] = useState(null);
   const [videoUploadProgress, setVideoUploadProgress] = useState(false);
@@ -1251,7 +1251,7 @@ export default function DogWashAdminHubPage() {
                         type="text"
                         value={heroVideoUrl}
                         onChange={(e) => setHeroVideoUrl(e.target.value)}
-                        placeholder="e.g. /src/assets/images/dog-wash-banner.mp4 or https://..."
+                        placeholder="e.g. https://res.cloudinary.com/.../dog-wash-banner.mp4"
                         className="w-full p-3 border border-gray-200 rounded-xl font-mono text-xs text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none shadow-xs"
                       />
                     </div>
@@ -1264,18 +1264,6 @@ export default function DogWashAdminHubPage() {
                     Quick Presets
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const sample = '/src/assets/images/dog-wash-banner.mp4';
-                        setHeroVideoUrl(sample);
-                        setUploadedVideoFile({ name: 'Default Dog Wash Video', size: 'Asset File', type: 'video/mp4' });
-                        handleSaveHeroVideo(sample);
-                      }}
-                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-all"
-                    >
-                      Default Dog Wash Asset MP4
-                    </button>
                     <button
                       type="button"
                       onClick={() => {

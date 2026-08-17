@@ -108,7 +108,7 @@ export default function SalonHomePage() {
   const activeServices = servicesList.filter(s => s.status !== 'inactive');
 
   return (
-    <div className="space-y-6 md:space-y-10 pb-16">
+    <div className="space-y-6 md:space-y-10">
       
       {/* Dynamic Hero Slider */}
       <section className="relative w-full h-[380px] sm:h-[450px] rounded-3xl overflow-hidden shadow-2xl bg-zinc-900 border border-zinc-200">

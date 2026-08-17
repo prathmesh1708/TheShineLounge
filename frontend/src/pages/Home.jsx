@@ -14,7 +14,6 @@ import SectionHeader from '../common/components/SectionHeader';
 import ServiceGrid from '../common/components/ServiceGrid';
 import TrendingSection from '../common/components/TrendingSection';
 import ServiceIcon from '../common/components/ServiceIcon';
-import { ShimmerCard } from '../common/components/Shimmer';
 import serviceApi from '../common/services/serviceApi';
 
 // Import local image assets for trending items
@@ -41,12 +40,14 @@ export default function Home() {
   const navigate = useNavigate();
   const { isDark } = useTheme();
 
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activePromoIndex, setActivePromoIndex] = useState(0);
   const [savedItems, setSavedItems] = useState([]);
   const [dynamicServices, setDynamicServices] = useState([]);
 
+  // The 6 services below are hardcoded fallbacks, so there's no need to block
+  // the whole page behind the /services/home round trip. Render immediately
+  // with the defaults and swap in live data in the background if it differs.
   useEffect(() => {
     const loadHomeData = async () => {
       try {
@@ -56,8 +57,6 @@ export default function Home() {
         }
       } catch {
         // Fallback to defaults
-      } finally {
-        setLoading(false);
       }
     };
     loadHomeData();
@@ -170,26 +169,10 @@ export default function Home() {
     }
   ];
 
-  if (loading) {
-    return (
-      <div className="w-full max-w-[550px] mx-auto p-4">
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="w-full h-14 rounded-2xl bg-gray-800/20 animate-pulse" />
-          <div className="w-full h-44 rounded-3xl bg-gray-800/20 animate-pulse" />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <ShimmerCard key={idx} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // --- 1. DARK THEME UI VIEW ---
   if (isDark) {
     return (
-      <div className="w-full max-w-[550px] mx-auto min-h-screen flex flex-col pb-24 px-1 bg-black">
+      <div className="w-full max-w-[550px] mx-auto flex flex-col px-1 bg-black">
         {/* Header */}
         <Header />
 

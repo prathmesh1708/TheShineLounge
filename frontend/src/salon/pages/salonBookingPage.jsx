@@ -496,7 +496,7 @@ export default function SalonBookingPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-5 pb-12 md:space-y-8 md:pb-16 text-zinc-800"
+      className="space-y-5 md:space-y-8 text-zinc-800"
     >
       
       {/* Page Title */}

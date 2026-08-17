@@ -199,7 +199,11 @@ export default function DogWashHomePage() {
     description: p.description || (p.features && p.features.join(', '))
   }));
 
-  const activeVideoSrc = dbService?.heroVideo || dbService?.bannerVideo || dogWashVideo;
+  // `/src/...` paths only resolve on Vite's dev server, not in a production
+  // build — ignore stale/misconfigured DB values shaped like that instead of
+  // requesting a URL that will 404 once deployed.
+  const dbVideoSrc = dbService?.heroVideo || dbService?.bannerVideo;
+  const activeVideoSrc = (dbVideoSrc && !dbVideoSrc.startsWith('/src/')) ? dbVideoSrc : dogWashVideo;
   const currentPetDisplay = activePet || pets[0] || { name: 'Max', breed: 'Golden Retriever', weight: '25 kg', icon: '🐕' };
 
   return (
