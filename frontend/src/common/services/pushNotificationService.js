@@ -1,6 +1,6 @@
 import { messaging, getToken, onMessage } from '../config/firebase';
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BFPEY84-yBeazY81vy6BVVrJhSFMm1A4olHQuAcdX6Sh6DCkE6iG2xWGqqPhHqFv4C2H4DAaAB-fpvDxdc7p_II';
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BNQTIYwpiZnwXFtWtOyovW01zm4q9k5Gu8OF2dKYSE9Ll0grTtZZTzweBEkExTsc8a0Yb6H-LvQaUekEyY6c65U';
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 /**
@@ -9,7 +9,20 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 export async function registerServiceWorker() {
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     try {
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+      const firebaseEnv = {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+        appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+        measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ''
+      };
+
+      const params = new URLSearchParams(firebaseEnv).toString();
+      const swUrl = `/firebase-messaging-sw.js?${params}`;
+
+      const registration = await navigator.serviceWorker.register(swUrl, {
         scope: '/'
       });
       console.log('✅ FCM Service Worker registered:', registration.scope);

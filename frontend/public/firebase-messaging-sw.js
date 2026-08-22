@@ -4,25 +4,29 @@
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// Production Firebase configuration
+// Extract Firebase credentials from URL query parameters (passed from env on SW registration)
+const locationUrl = new URL(self.location.href);
+const params = locationUrl.searchParams;
+
 const firebaseConfig = {
-  apiKey: "AIzaSyA9-NBjzyPSsRS6jRrmGxWconrVi0nNN9s",
-  authDomain: "the-shinelounge.firebaseapp.com",
-  projectId: "the-shinelounge",
-  storageBucket: "the-shinelounge.firebasestorage.app",
-  messagingSenderId: "19011784644",
-  appId: "1:19011784644:web:05184a7d8382995ac21e91",
-  measurementId: "G-7EJJDLK3D4"
+  apiKey: params.get('apiKey') || '',
+  authDomain: params.get('authDomain') || '',
+  projectId: params.get('projectId') || '',
+  storageBucket: params.get('storageBucket') || '',
+  messagingSenderId: params.get('messagingSenderId') || '',
+  appId: params.get('appId') || '',
+  measurementId: params.get('measurementId') || ''
 };
 
 // Initialize Firebase
-if (firebase.apps.length === 0) {
+if (firebase.apps.length === 0 && firebaseConfig.apiKey) {
   firebase.initializeApp(firebaseConfig);
 }
 
-const messaging = firebase.messaging();
+if (firebase.apps.length > 0) {
+  const messaging = firebase.messaging();
 
-// Handle background push messages
+  // Handle background push messages
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Background message received:', payload);
 
@@ -35,7 +39,8 @@ messaging.onBackgroundMessage((payload) => {
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
-});
+  });
+}
 
 // Handle notification click and tab focus / open window
 self.addEventListener('notificationclick', (event) => {
