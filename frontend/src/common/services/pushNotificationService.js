@@ -1,6 +1,6 @@
 import { messaging, getToken, onMessage } from '../config/firebase';
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BFPEY84-yBeazY81vy6BVVrJhSFMm1A4olHQuAcdX6Sh6DCkE6iG2xWGqqPhHqFv4C2H4DAaAB-fpvDxdc7p_II';
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BNQTIYwpiZnwXFtWtOyovW01zm4q9k5Gu8OF2dKYSE9Ll0grTtZZTzweBEkExTsc8a0Yb6H-LvQaUekEyY6c65U';
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 /**

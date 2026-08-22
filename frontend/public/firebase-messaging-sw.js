@@ -6,13 +6,13 @@ importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-comp
 
 // Production Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyA9-NBjzyPSsRS6jRrmGxWconrVi0nNN9s",
-  authDomain: "the-shinelounge.firebaseapp.com",
-  projectId: "the-shinelounge",
-  storageBucket: "the-shinelounge.firebasestorage.app",
-  messagingSenderId: "19011784644",
-  appId: "1:19011784644:web:05184a7d8382995ac21e91",
-  measurementId: "G-7EJJDLK3D4"
+  apiKey: "AIzaSyD_Z0657YemedimKix0bj-0ld7pvuA9iDo",
+  authDomain: "the-shine-lounge-64b46.firebaseapp.com",
+  projectId: "the-shine-lounge-64b46",
+  storageBucket: "the-shine-lounge-64b46.firebasestorage.app",
+  messagingSenderId: "823359895270",
+  appId: "1:823359895270:web:b0a8c4e1e1dd9c215b6d27",
+  measurementId: "G-YE7W6ZMD3T"
 };
 
 // Initialize Firebase

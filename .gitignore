@@ -26,6 +26,9 @@ Thumbs.db
 .env.test.local
 .env.production.local
 
+# Firebase secrets
+**/firebase-service-account*.json
+
 # IDE configurations
 .idea/
 .vscode/
