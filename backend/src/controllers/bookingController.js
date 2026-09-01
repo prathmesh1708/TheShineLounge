@@ -18,6 +18,15 @@ const findBookingByAnyId = async (id) => {
   return Booking.findOne({ bookingId: id });
 };
 
+const isPrivileged = (user) => user && (user.role === 'admin' || user.role === 'staff');
+
+// Legacy rows were written with whatever casing the client sent, so ownership
+// is matched case-insensitively rather than on an exact string. New bookings
+// are stored lower-cased (see createBooking) so this converges over time.
+const ownedByFilter = (email) => ({
+  customerEmail: new RegExp(`^${escapeRegex(String(email))}$`, 'i')
+});
+
 // @desc    Create a new booking
 // @route   POST /api/bookings
 // @access  Public (Users/Guests)
@@ -105,7 +114,10 @@ const createBooking = async (req, res) => {
       date: finalDate,
       timeSlot: finalTimeSlot,
       customerName,
-      customerEmail: customerEmail || '',
+      // Stored lower-cased because it is the ownership key every read scopes
+      // on. Mixed casing here is what forced the case-insensitive matching in
+      // ownedByFilter.
+      customerEmail: String(customerEmail || '').toLowerCase().trim(),
       vehicleNo: vehicleNo || '',
       vehicleType: vehicleType || '',
       items: Array.isArray(items) ? items : [],
@@ -137,7 +149,7 @@ const createBooking = async (req, res) => {
 
 // @desc    Get all bookings
 // @route   GET /api/bookings
-// @access  Private (Admin/Staff)
+// @access  Private (customers see only their own; admin/staff see all)
 const getBookings = async (req, res) => {
   try {
     const { serviceKey, assignedStaffId, mine } = req.query;
@@ -156,9 +168,49 @@ const getBookings = async (req, res) => {
     // A customer only ever sees their own bookings. Scoping here rather than in
     // the client means the customer app can't be thrown off by a stale
     // localStorage identity, and no one else's bookings leave the server.
-    const role = req.user?.role;
-    if (req.user && role !== 'admin' && role !== 'staff') {
-      query.customerEmail = new RegExp(`^${escapeRegex(req.user.email || '')}$`, 'i');
+    if (!isPrivileged(req.user)) {
+      const email = (req.user.email || '').toLowerCase().trim();
+      // An account with no email address owns nothing. Falling through with an
+      // empty pattern would match every booking whose customerEmail is ''
+      // — which is every guest booking ever taken at the counter.
+      if (!email) {
+        return res.status(200).json({ success: true, count: 0, bookings: [] });
+      }
+      Object.assign(query, ownedByFilter(email));
+    }
+
+    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: bookings.length,
+      bookings
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error while fetching bookings.'
+    });
+  }
+};
+
+// @desc    Get the authenticated caller's own bookings
+// @route   GET /api/bookings/my-bookings
+// @access  Private
+//
+// Unlike GET /, this never widens for staff or admins — it is always "mine".
+// The customer app calls this so its result cannot silently become the whole
+// table when a staff member browses the customer-facing pages as themselves.
+const getMyBookings = async (req, res) => {
+  try {
+    const email = (req.user.email || '').toLowerCase().trim();
+    if (!email) {
+      return res.status(200).json({ success: true, count: 0, bookings: [] });
+    }
+
+    const query = ownedByFilter(email);
+    if (req.query.serviceKey) {
+      query.serviceKey = req.query.serviceKey;
     }
 
     const bookings = await Booking.find(query).sort({ createdAt: -1 });
@@ -178,7 +230,7 @@ const getBookings = async (req, res) => {
 
 // @desc    Update booking details or status
 // @route   PUT /api/bookings/:id
-// @access  Private (Admin/Staff)
+// @access  Private (Admin/Staff; a customer may only cancel their own)
 const updateBooking = async (req, res) => {
   try {
     const booking = await findBookingByAnyId(req.params.id);
@@ -187,6 +239,35 @@ const updateBooking = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Booking not found.'
+      });
+    }
+
+    // Holding a valid token used to be enough to drive any booking in the
+    // system through its whole workflow — including someone else's, and
+    // including marking a wash "Delivered" that never happened. A customer may
+    // now only cancel a job that is theirs.
+    if (!isPrivileged(req.user)) {
+      const email = (req.user.email || '').toLowerCase().trim();
+      const owner = (booking.customerEmail || '').toLowerCase().trim();
+      if (!email || owner !== email) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only modify your own bookings.'
+        });
+      }
+      if (req.body.status !== 'Cancelled') {
+        return res.status(403).json({
+          success: false,
+          message: 'Booking progress is updated by our staff. You can cancel this booking.'
+        });
+      }
+      booking.status = 'Cancelled';
+      booking.statusSource = 'customer';
+      await booking.save();
+      return res.status(200).json({
+        success: true,
+        message: 'Booking cancelled successfully.',
+        booking
       });
     }
 
@@ -283,6 +364,7 @@ const deleteBooking = async (req, res) => {
 module.exports = {
   createBooking,
   getBookings,
+  getMyBookings,
   updateBooking,
   deleteBooking
 };

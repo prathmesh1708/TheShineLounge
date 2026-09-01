@@ -25,7 +25,9 @@ export default function StaffMembershipsPage() {
       passId: `TSL-PASS-${Math.floor(1000 + Math.random() * 9000)}`,
       customerName: currentCust.name,
       phone: currentCust.mobile,
-      vehicleNo: currentCust.vehicles[0]?.registrationNumber || 'MH01AB1234',
+      // A pass is bound to a plate at the gate, so a stand-in here would bind
+      // the customer's membership to a car that is not theirs.
+      vehicleNo: currentCust.vehicles[0]?.registrationNumber || '',
       planName: currentPlan.name,
       amount: currentPlan.price,
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],

@@ -98,8 +98,10 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     }
     const vMap = {};
     carBookings.forEach(b => {
-      const plate = (b.vehicleNo || b.vehiclePlate || 'TSL-3000').toUpperCase();
-      vMap[plate] = true;
+      // Bookings with no plate on them are not a vehicle. They used to all
+      // collapse onto a placeholder key and be counted as one phantom car.
+      const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
+      if (plate) vMap[plate] = true;
     });
     const vCount = Math.max(Object.keys(vMap).length, 1);
 

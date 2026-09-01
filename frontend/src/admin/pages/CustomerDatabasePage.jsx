@@ -34,12 +34,15 @@ export default function CustomerDatabasePage() {
     boundVehiclesOnly: true
   });
 
+  // The vehicle field starts blank. It used to be pre-filled with a sample
+  // plate, so an operator who tabbed past it silently registered a car that
+  // does not exist onto a brand new customer.
   const [form, setForm] = useState({
     name: '',
     phone: '',
     email: '',
     city: 'Mumbai',
-    vehicle: 'MH01AB1234 (Hyundai Creta)'
+    vehicle: ''
   });
 
   const handleExportCSV = () => {
@@ -80,7 +83,7 @@ export default function CustomerDatabasePage() {
           c.city || 'Mumbai',
           c.segment || 'Regular Customer',
           c.totalSpent !== undefined ? c.totalSpent : 24500,
-          (c.vehicles && c.vehicles.length > 0) ? c.vehicles.join(' | ') : 'MH01AB1234 (Hyundai Creta)',
+          (c.vehicles && c.vehicles.length > 0) ? c.vehicles.join(' | ') : 'None registered',
           c.lastVisit || '2026-08-01',
           c.maxServicesPerDay || 2,
           c.plateBindingEnabled !== false ? 'Enabled' : 'Disabled'
@@ -117,10 +120,10 @@ export default function CustomerDatabasePage() {
       phone: form.phone,
       email: form.email,
       city: form.city,
-      vehicles: [form.vehicle]
+      vehicles: form.vehicle.trim() ? [form.vehicle.trim()] : []
     });
     setIsAddModalOpen(false);
-    setForm({ name: '', phone: '', email: '', city: 'Mumbai', vehicle: 'MH01AB1234 (Hyundai Creta)' });
+    setForm({ name: '', phone: '', email: '', city: 'Mumbai', vehicle: '' });
   };
 
   const openCustomerModal = (customer) => {
@@ -283,7 +286,14 @@ export default function CustomerDatabasePage() {
       header: 'Registered Vehicles',
       accessorKey: 'vehicles',
       cell: (row) => {
-        const vehs = row.vehicles && row.vehicles.length > 0 ? row.vehicles : ['MH01AB1234 (Hyundai Creta)'];
+        // An empty garage reads as empty. This column used to print
+        // "MH01AB1234 (Hyundai Creta)" for every customer with no vehicle,
+        // which put a plate nobody owns in front of an operator — and into the
+        // CSV export below.
+        const vehs = row.vehicles || [];
+        if (vehs.length === 0) {
+          return <span className="text-[11px] font-semibold text-gray-400 italic">None registered</span>;
+        }
         return (
           <div className="text-[11px] font-semibold text-gray-700 truncate max-w-[160px]">
             <span className="inline-flex items-center gap-1">
@@ -495,9 +505,14 @@ export default function CustomerDatabasePage() {
 
                 {/* Registered Vehicles */}
                 <div className="space-y-2">
-                  <span className="font-bold text-gray-800 block">Registered Vehicles ({selectedCustomer.vehicles?.length || 1})</span>
+                  <span className="font-bold text-gray-800 block">Registered Vehicles ({selectedCustomer.vehicles?.length || 0})</span>
                   <div className="space-y-1.5">
-                    {(selectedCustomer.vehicles || ['MH01AB1234 (Hyundai Creta)']).map((v, i) => (
+                    {(selectedCustomer.vehicles || []).length === 0 && (
+                      <div className="p-2.5 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center">
+                        <span className="text-[11px] font-bold text-gray-500">No Registered Vehicles</span>
+                      </div>
+                    )}
+                    {(selectedCustomer.vehicles || []).map((v, i) => (
                       <div key={i} className="p-2.5 bg-gray-100 rounded-xl font-bold text-gray-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Car className="w-4 h-4 text-amber-500" />
@@ -817,7 +832,10 @@ export default function CustomerDatabasePage() {
           </div>
 
           <div>
-            <label className="font-bold text-gray-700 block mb-1">Primary Vehicle (Reg. No & Model)</label>
+            <label className="font-bold text-gray-700 block mb-1">
+              Primary Vehicle (Reg. No &amp; Model){' '}
+              <span className="font-medium text-gray-400">— optional, leave blank if none</span>
+            </label>
             <input
               type="text"
               placeholder="e.g. MH01AB1234 (Hyundai Creta)"

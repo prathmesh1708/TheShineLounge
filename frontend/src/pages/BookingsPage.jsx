@@ -81,7 +81,9 @@ export default function BookingsPage() {
 
       let combinedRawBookings = [];
       try {
-        const res = await apiClient.get('/bookings');
+        // Scoped to this account server-side. `isMine` stays as a second check
+        // so a stale cached response can't render as someone else's history.
+        const res = await apiClient.get('/bookings/my-bookings');
         if (res.data && Array.isArray(res.data.bookings)) {
           combinedRawBookings = res.data.bookings.filter(isMine);
         }

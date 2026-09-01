@@ -5,41 +5,63 @@ import { carwashMockData } from '../data/carwashMockData';
 import serviceApi from '../../common/services/serviceApi';
 import { cacheService } from '../../common/utils/serviceCache';
 import { useAuth } from '../../common/context/AuthContext';
+import CustomerAuthModal from '../../common/components/CustomerAuthModal';
+import vehicleService from '../../common/services/vehicleService';
 import { readScoped, writeScoped, normalizeEmail } from '../../common/utils/userScopedStorage';
-
-const DEFAULT_VEHICLES = [
-  { id: 'v1', brand: 'Hyundai', name: 'Hyundai Elite i20', year: '2023', plate: 'MP09WC4444', icon: '🏎️' },
-  { id: 'v2', brand: 'BMW', name: 'BMW X5', year: '2022', plate: 'MH-12-AB-1234', icon: '🚘' },
-  { id: 'v3', brand: 'Audi', name: 'Audi A6', year: '2021', plate: 'MH-02-CD-5678', icon: '🏎️' }
-];
 
 export default function CarWashPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const userEmail = normalizeEmail(user?.email);
 
-  // Saved vehicles are per account. A signed-in customer starts with an empty
-  // garage and registers their own car; the demo fleet is only for guests.
-  const loadVehicles = (email, signedIn) => {
+  // A garage holds the cars this visitor actually registered and nothing else.
+  // There used to be a DEFAULT_VEHICLES array standing in for guests, which
+  // meant an anonymous visitor was shown three cars — plate, model and year —
+  // that belonged to no one, and could take those plates all the way to a
+  // booking. An empty garage now looks empty.
+  const readLocalVehicles = (email) => {
     const saved = readScoped('tsl_saved_vehicles', email, null);
-    if (Array.isArray(saved)) return saved;
-    return signedIn ? [] : DEFAULT_VEHICLES;
+    return Array.isArray(saved) ? saved : [];
   };
 
-  const [vehicles, setVehicles] = useState(() => loadVehicles(userEmail, isAuthenticated));
+  const [vehicles, setVehicles] = useState(() => readLocalVehicles(userEmail));
   const [selectedVehicleId, setSelectedVehicleId] = useState(
     () => readScoped('tsl_selected_vehicle_id', userEmail, null) || ''
   );
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [vehicleError, setVehicleError] = useState('');
+  const [savingVehicle, setSavingVehicle] = useState(false);
 
-  // Switching accounts (or signing in from guest) swaps the whole garage.
-  const loadedScopeRef = useRef(`${userEmail}|${isAuthenticated}`);
+  // Signing in, signing out or switching accounts swaps the whole garage. For a
+  // signed-in customer the server is the source of truth; the scoped local copy
+  // is only a cache so the page still renders their own cars while offline.
+  const loadedScopeRef = useRef(null);
   useEffect(() => {
     const scope = `${userEmail}|${isAuthenticated}`;
     if (loadedScopeRef.current === scope) return;
     loadedScopeRef.current = scope;
-    const next = loadVehicles(userEmail, isAuthenticated);
-    setVehicles(next);
-    setSelectedVehicleId(readScoped('tsl_selected_vehicle_id', userEmail, null) || next[0]?.id || '');
+
+    let cancelled = false;
+    const cached = readLocalVehicles(userEmail);
+    setVehicles(cached);
+    setSelectedVehicleId(readScoped('tsl_selected_vehicle_id', userEmail, null) || cached[0]?.id || '');
+
+    if (!isAuthenticated) return undefined;
+
+    vehicleService.getMyVehicles()
+      .then(serverVehicles => {
+        if (cancelled) return;
+        setVehicles(serverVehicles);
+        setSelectedVehicleId(prev =>
+          serverVehicles.some(v => v.id === prev) ? prev : (serverVehicles[0]?.id || '')
+        );
+      })
+      .catch(err => {
+        // Keep showing this account's cached cars rather than inventing any.
+        console.warn('Could not load your vehicles from the server:', err.message);
+      });
+
+    return () => { cancelled = true; };
   }, [userEmail, isAuthenticated]);
 
   useEffect(() => {
@@ -57,11 +79,13 @@ export default function CarWashPage() {
   // Vehicle Modal State (Add / Edit)
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState(null); // null = Add, string = Edit
+  // Blank, not pre-filled with a sample car. A pre-filled plate is one hurried
+  // tap away from being registered as a real vehicle on a real account.
   const [vehicleForm, setVehicleForm] = useState({
-    brand: 'Tesla',
-    name: 'Model 3',
-    year: '2023',
-    plate: 'TSL-3000'
+    brand: '',
+    name: '',
+    year: '',
+    plate: ''
   });
 
   const [dbService, setDbService] = useState(null);
@@ -77,6 +101,7 @@ export default function CarWashPage() {
   // Handlers for Vehicle Modal
   const handleOpenAddVehicle = (e) => {
     if (e) e.stopPropagation();
+    setVehicleError('');
     setEditingVehicleId(null);
     setVehicleForm({
       brand: '',
@@ -89,6 +114,7 @@ export default function CarWashPage() {
 
   const handleOpenEditVehicle = (v, e) => {
     if (e) e.stopPropagation();
+    setVehicleError('');
     setEditingVehicleId(v.id);
     // Extract brand/model if name includes brand
     let brandVal = v.brand || '';
@@ -107,10 +133,12 @@ export default function CarWashPage() {
     setShowVehicleModal(true);
   };
 
-  const handleSaveVehicle = (e) => {
+  const handleSaveVehicle = async (e) => {
     e.preventDefault();
+    setVehicleError('');
+
     if (!vehicleForm.name.trim() || !vehicleForm.plate.trim()) {
-      alert('Please enter Car Name/Model and Registration/License Plate number.');
+      setVehicleError('Please enter the car model and its registration number.');
       return;
     }
 
@@ -120,27 +148,45 @@ export default function CarWashPage() {
       ? `${brandStr} ${modelStr}`
       : modelStr;
 
-    if (editingVehicleId) {
-      // Edit existing
-      setVehicles(prev => prev.map(v => v.id === editingVehicleId ? {
-        ...v,
-        brand: brandStr,
-        name: formattedFullName,
-        year: vehicleForm.year.trim(),
-        plate: vehicleForm.plate.trim().toUpperCase()
-      } : v));
+    const draft = {
+      brand: brandStr,
+      name: formattedFullName,
+      year: vehicleForm.year.trim(),
+      plate: vehicleForm.plate.trim().toUpperCase(),
+      icon: '🚗'
+    };
+
+    // A signed-in customer's garage lives on their account, so the same cars
+    // are there on their next device and staff see the real plate at the bay.
+    // A guest's entry stays in this browser until they sign in.
+    if (isAuthenticated) {
+      setSavingVehicle(true);
+      try {
+        if (editingVehicleId) {
+          // Plates are the account's identity to the ANPR camera, so an edit is
+          // a remove-then-add rather than an in-place rewrite.
+          const editing = vehicles.find(v => v.id === editingVehicleId);
+          if (editing?._id) {
+            await vehicleService.deleteMyVehicle(editing._id);
+          }
+        }
+        const updated = await vehicleService.addMyVehicle(draft);
+        setVehicles(updated);
+        const saved = updated.find(v => v.plate === draft.plate);
+        setSelectedVehicleId(saved?.id || updated[0]?.id || '');
+      } catch (err) {
+        setVehicleError(
+          err.response?.data?.message || 'Could not save this vehicle. Please check the registration number and try again.'
+        );
+        return;
+      } finally {
+        setSavingVehicle(false);
+      }
+    } else if (editingVehicleId) {
+      setVehicles(prev => prev.map(v => (v.id === editingVehicleId ? { ...v, ...draft } : v)));
     } else {
-      // Add new
       const newId = `v_${Date.now()}`;
-      const newVeh = {
-        id: newId,
-        brand: brandStr,
-        name: formattedFullName,
-        year: vehicleForm.year.trim(),
-        plate: vehicleForm.plate.trim().toUpperCase(),
-        icon: '🚗'
-      };
-      setVehicles(prev => [...prev, newVeh]);
+      setVehicles(prev => [...prev, { id: newId, ...draft }]);
       setSelectedVehicleId(newId);
     }
 
@@ -148,14 +194,30 @@ export default function CarWashPage() {
     setShowVehicleSwitcher(false);
   };
 
-  const handleDeleteVehicle = (id, e) => {
+  const handleDeleteVehicle = async (id, e) => {
     if (e) e.stopPropagation();
-    if (window.confirm('Are you sure you want to remove this vehicle?')) {
-      const updated = vehicles.filter(v => v.id !== id);
-      setVehicles(updated);
-      if (selectedVehicleId === id) {
-        setSelectedVehicleId(updated[0]?.id || '');
+    if (!window.confirm('Are you sure you want to remove this vehicle?')) return;
+
+    const target = vehicles.find(v => v.id === id);
+
+    if (isAuthenticated && target?._id) {
+      try {
+        const updated = await vehicleService.deleteMyVehicle(target._id);
+        setVehicles(updated);
+        if (selectedVehicleId === id) {
+          setSelectedVehicleId(updated[0]?.id || '');
+        }
+        return;
+      } catch (err) {
+        setVehicleError(err.response?.data?.message || 'Could not remove this vehicle. Please try again.');
+        return;
       }
+    }
+
+    const updated = vehicles.filter(v => v.id !== id);
+    setVehicles(updated);
+    if (selectedVehicleId === id) {
+      setSelectedVehicleId(updated[0]?.id || '');
     }
   };
 
@@ -254,8 +316,10 @@ export default function CarWashPage() {
   }, [prefersReducedMotion]);
 
   const handleBook = () => {
+    // Without a real vehicle there is nothing to attach the wash to — the page
+    // used to have a demo car standing by, so this could never be reached.
     if (!currentVehicle) {
-      alert('Please add your vehicle before booking so we know which car to service.');
+      setVehicleError('Add your vehicle first so we know which car to service.');
       handleOpenAddVehicle();
       return;
     }
@@ -332,7 +396,63 @@ export default function CarWashPage() {
 
       {/* 2. Vehicle Selector Card */}
       <div className="carwash-vehicle-card-wrapper" style={{ position: 'relative' }}>
-        <div 
+        {vehicles.length === 0 ? (
+          /* No cars on this account (or no account yet). Say so plainly and
+             offer the two ways forward — signing in restores a garage that
+             already exists, adding a car starts one here. */
+          <div className="carwash-vehicle-card" style={{ display: 'block', cursor: 'default' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              <span className="carwash-vehicle-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 17h14M5 17a2 2 0 0 1-2-2v-2a1 1 0 0 1 1-1h1l2.5-4.5A2 2 0 0 1 9.24 6h5.52a2 2 0 0 1 1.74 1.01L19 11.5h1a1 1 0 0 1 1 1V15a2 2 0 0 1-2 2" />
+                  <circle cx="7.5" cy="17" r="2" />
+                  <circle cx="16.5" cy="17" r="2" />
+                </svg>
+              </span>
+              <div className="carwash-vehicle-text">
+                <span className="carwash-vehicle-name">
+                  {isAuthenticated ? 'Your garage is empty' : 'No vehicle registered'}
+                </span>
+                <span className="carwash-vehicle-plate">
+                  {isAuthenticated
+                    ? 'Add your car so we know which vehicle to service'
+                    : 'Sign in to load your saved cars, or add one now'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {!isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(true)}
+                  className="flex-1 px-3 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all shadow-sm"
+                  style={{ minWidth: '150px' }}
+                >
+                  🔐 Sign In to Access Your Garage
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => handleOpenAddVehicle(e)}
+                className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-black transition-all ${
+                  isAuthenticated
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                }`}
+                style={{ minWidth: '130px' }}
+              >
+                + Add Vehicle
+              </button>
+            </div>
+
+            {vehicleError && (
+              <p className="mt-2.5 text-[11px] font-bold text-rose-600">{vehicleError}</p>
+            )}
+          </div>
+        ) : (
+        <>
+        <div
           className="carwash-vehicle-card"
           onClick={() => setShowVehicleSwitcher(!showVehicleSwitcher)}
         >
@@ -346,36 +466,22 @@ export default function CarWashPage() {
             </span>
             <div className="carwash-vehicle-text">
               <span className="carwash-vehicle-name">
-                {currentVehicle
-                  ? `${currentVehicle.name} ${currentVehicle.year ? `(${currentVehicle.year})` : ''}`
-                  : 'No vehicle registered'}
+                {`${currentVehicle.name} ${currentVehicle.year ? `(${currentVehicle.year})` : ''}`}
               </span>
-              <span className="carwash-vehicle-plate">
-                {currentVehicle ? currentVehicle.plate : 'Tap to add your car'}
-              </span>
+              <span className="carwash-vehicle-plate">{currentVehicle.plate}</span>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {currentVehicle ? (
-              <button
-                type="button"
-                onClick={(e) => handleOpenEditVehicle(currentVehicle, e)}
-                className="p-1.5 rounded-lg hover:bg-amber-100/60 text-amber-800 transition-all"
-                title="Edit Current Car Details"
-              >
-                ✏️
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => handleOpenAddVehicle(e)}
-                className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-extrabold hover:bg-amber-600 transition-all"
-              >
-                + Add Car
-              </button>
-            )}
-            <svg 
+            <button
+              type="button"
+              onClick={(e) => handleOpenEditVehicle(currentVehicle, e)}
+              className="p-1.5 rounded-lg hover:bg-amber-100/60 text-amber-800 transition-all"
+              title="Edit Current Car Details"
+            >
+              ✏️
+            </button>
+            <svg
               className={`carwash-chevron ${showVehicleSwitcher ? 'rotated' : ''}`}
               width="20" 
               height="20" 
@@ -403,11 +509,6 @@ export default function CarWashPage() {
             </div>
 
             <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
-              {vehicles.length === 0 && (
-                <div className="p-4 text-center text-[11px] font-semibold text-slate-500">
-                  No vehicles registered yet. Add your car to book a wash.
-                </div>
-              )}
               {vehicles.map(v => {
                 const isSelected = v.id === selectedVehicleId;
                 return (
@@ -462,6 +563,12 @@ export default function CarWashPage() {
               <span>Add New Vehicle</span>
             </button>
           </div>
+        )}
+
+        {vehicleError && (
+          <p className="mt-2 text-[11px] font-bold text-rose-600">{vehicleError}</p>
+        )}
+        </>
         )}
       </div>
 
@@ -552,6 +659,24 @@ export default function CarWashPage() {
             </div>
 
             <form onSubmit={handleSaveVehicle} className="space-y-3 text-xs">
+              {vehicleError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-bold">
+                  ⚠️ {vehicleError}
+                </div>
+              )}
+              {!isAuthenticated && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl font-semibold">
+                  This car is saved in this browser only.{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setShowVehicleModal(false); setShowAuthModal(true); }}
+                    className="font-black underline"
+                  >
+                    Sign in
+                  </button>{' '}
+                  to keep it on your account.
+                </div>
+              )}
               <div>
                 <label className="block font-extrabold text-slate-700 mb-1">Car Brand / Make</label>
                 <input
@@ -610,15 +735,24 @@ export default function CarWashPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl shadow-md transition-all"
+                  disabled={savingVehicle}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl shadow-md transition-all disabled:opacity-60"
                 >
-                  {editingVehicleId ? 'Save Changes' : 'Add Vehicle'}
+                  {savingVehicle ? 'Saving…' : (editingVehicleId ? 'Save Changes' : 'Add Vehicle')}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* 5. Sign-in for guests, so their real garage replaces the empty state */}
+      <CustomerAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        titlePrompt="Sign In to Access Your Garage"
+        onSuccess={() => setShowAuthModal(false)}
+      />
 
     </div>
   );

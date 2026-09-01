@@ -1,6 +1,13 @@
 const User = require('../models/User');
 const Feedback = require('../models/Feedback');
 const bcrypt = require('bcryptjs');
+const { isUsablePlate, normalizePlate } = require('../utils/plateNormalizer');
+const {
+  computeMembershipStatus,
+  sanitizeUser,
+  sanitizeVehicles,
+  sanitizeMembership
+} = require('../utils/sanitizeUser');
 
 
 // ─── STAFF MANAGEMENT (Admin Only) ──────────────────────────
@@ -450,28 +457,9 @@ const deleteStaff = async (req, res) => {
 
 // ─── CUSTOMER CRM & MEMBERSHIP MANAGEMENT ─────────────────────────────────────
 
-// Helper to compute dynamic membership status
-const computeMembershipStatus = (user) => {
-  if (!user.membership || !user.membership.planName || user.membership.status === 'None') {
-    return 'Regular Customer';
-  }
-  if (user.membership.status === 'Suspended') {
-    return 'Suspended Member';
-  }
-  const now = new Date();
-  const expiry = user.membership.expiryDate ? new Date(user.membership.expiryDate) : null;
-  
-  if (!expiry || expiry < now) {
-    return 'Expired Member';
-  }
-  
-  const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24));
-  if (diffDays <= 7) {
-    return 'Due for Renewal';
-  }
-  
-  return 'Active Member';
-};
+// `computeMembershipStatus` lives in utils/sanitizeUser.js so the admin CRM and
+// the customer's own /membership endpoint can never disagree about whether a
+// plan is still running.
 
 // @desc    Get all customers with enriched CRM profile & membership info
 // @route   GET /api/users/customers
@@ -508,9 +496,11 @@ const getCustomers = async (req, res) => {
     // field must look empty.
     const customers = rawCustomers.map(u => {
       const computedSegment = computeMembershipStatus(u);
-      const vehicleList = (u.vehicles || [])
-        .filter(v => v.plateNumber)
-        .map(v => `${v.plateNumber}${v.model ? ` (${v.model})` : ''}`);
+      const ownedVehicles = sanitizeVehicles(u.vehicles);
+      const vehicleList = ownedVehicles.map(v => {
+        const label = [v.brand, v.model].filter(Boolean).join(' ');
+        return `${v.plateNumber}${label ? ` (${label})` : ''}`;
+      });
 
       return {
         _id: u._id,
@@ -525,7 +515,7 @@ const getCustomers = async (req, res) => {
         totalSpent: u.totalSpent || 0,
         loyaltyPoints: u.loyaltyPoints || 0,
         vehicles: vehicleList,
-        rawVehicles: u.vehicles || [],
+        rawVehicles: ownedVehicles,
         membership: u.membership || null,
         lastVisit: u.updatedAt ? new Date(u.updatedAt).toISOString().split('T')[0] : null,
         createdAt: u.createdAt
@@ -672,34 +662,70 @@ const updateCustomerUsageRules = async (req, res) => {
   }
 };
 
+// Shared by the admin path and the customer's own path so a plate typed at the
+// counter and a plate typed in the app are validated and de-duplicated the same
+// way. A plate that fails `isUsablePlate` is rejected rather than stored: a
+// half-read or placeholder plate on an account is worse than no plate at all,
+// because ANPR will act on it.
+//
+// Returns `{ error }` for the caller to turn into a 400, or `{ vehicle }`.
+const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrimary }, addedVia) => {
+  if (!plateNumber || !String(plateNumber).trim()) {
+    return { error: 'Plate number is required' };
+  }
+
+  if (!isUsablePlate(plateNumber)) {
+    return {
+      error: 'That does not look like a valid registration number. Enter the plate exactly as it appears on the vehicle.'
+    };
+  }
+
+  const normalized = normalizePlate(plateNumber);
+  const alreadyOwned = (user.vehicles || []).some(v => normalizePlate(v.plateNumber) === normalized);
+  if (alreadyOwned) {
+    return { error: 'That vehicle is already registered on this account' };
+  }
+
+  const vehicle = {
+    plateNumber: String(plateNumber).trim().toUpperCase(),
+    brand: (brand || '').trim(),
+    model: (model || '').trim(),
+    year: (year || '').toString().trim(),
+    category: category || 'Car',
+    // The first car on an empty account is the primary one; nothing else is
+    // promoted automatically.
+    isPrimary: isPrimary === undefined ? (user.vehicles || []).length === 0 : Boolean(isPrimary),
+    addedVia
+  };
+
+  user.vehicles.push(vehicle);
+
+  // Keep the membership's plate binding in step, otherwise a customer adds a
+  // car in the app and is then turned away at the gate for using it.
+  if (user.membership && Array.isArray(user.membership.boundVehicles)) {
+    const label = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
+    const formatted = `${vehicle.plateNumber}${label ? ` (${label})` : ''}`;
+    if (!user.membership.boundVehicles.includes(formatted)) {
+      user.membership.boundVehicles.push(formatted);
+    }
+  }
+
+  return { vehicle };
+};
+
 // @desc    Add vehicle to customer CRM profile
 // @route   POST /api/users/customers/:id/vehicles
 // @access  Admin
 const addCustomerVehicle = async (req, res) => {
   try {
-    const { plateNumber, model, category, isPrimary } = req.body;
-    if (!plateNumber) {
-      return res.status(400).json({ success: false, message: 'Plate number is required' });
-    }
-
     const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    user.vehicles.push({
-      plateNumber,
-      model: model || 'Vehicle',
-      category: category || 'Car',
-      isPrimary: Boolean(isPrimary)
-    });
-
-    // Also update boundVehicles if array exists
-    if (user.membership && user.membership.boundVehicles) {
-      const formatted = `${plateNumber} (${model || 'Vehicle'})`;
-      if (!user.membership.boundVehicles.includes(formatted)) {
-        user.membership.boundVehicles.push(formatted);
-      }
+    const { error } = attachVehicle(user, req.body, 'admin');
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
     }
 
     await user.save({ validateBeforeSave: false });
@@ -707,7 +733,7 @@ const addCustomerVehicle = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Vehicle added successfully',
-      vehicles: user.vehicles
+      vehicles: sanitizeVehicles(user.vehicles)
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message || 'Server error adding vehicle' });
@@ -715,6 +741,19 @@ const addCustomerVehicle = async (req, res) => {
 };
 
 // ─── USER SELF-SERVICE ────────────────────────────────────────
+//
+// Every handler below reads `req.user._id` and nothing else. There is
+// deliberately no id, email or plate parameter that selects *whose* record is
+// returned — the only account these endpoints can reach is the one the bearer
+// token belongs to, so there is no parameter left to tamper with.
+
+// Admin accounts live in a separate collection and hold no garage or
+// membership. Rather than 404 (which the client would read as "session broken")
+// they get a valid, empty self-service payload.
+const loadSelf = async (req) => {
+  const user = await User.findById(req.user._id);
+  return user;
+};
 
 // @desc    Update own profile
 // @route   PUT /api/users/profile
@@ -723,7 +762,7 @@ const updateProfile = async (req, res) => {
   try {
     const { fullName, mobile, profileImage } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await loadSelf(req);
 
     if (!user) {
       return res.status(404).json({
@@ -741,22 +780,137 @@ const updateProfile = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        mobile: user.mobile,
-        role: user.role,
-        department: user.department,
-        permissions: user.permissions,
-        profileImage: user.profileImage,
-        branch: user.branch
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: error.message || 'Server error updating profile'
+    });
+  }
+};
+
+// @desc    List the authenticated customer's own vehicles
+// @route   GET /api/users/vehicles
+// @access  Private
+const getMyVehicles = async (req, res) => {
+  try {
+    const user = await loadSelf(req);
+    if (!user) {
+      return res.status(200).json({ success: true, vehicles: [] });
+    }
+
+    res.status(200).json({
+      success: true,
+      vehicles: sanitizeVehicles(user.vehicles)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error fetching vehicles'
+    });
+  }
+};
+
+// @desc    Register a vehicle on the authenticated customer's own account
+// @route   POST /api/users/vehicles
+// @access  Private
+const addMyVehicle = async (req, res) => {
+  try {
+    const user = await loadSelf(req);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { error } = attachVehicle(user, req.body, 'self');
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    res.status(201).json({
+      success: true,
+      message: 'Vehicle added successfully',
+      vehicles: sanitizeVehicles(user.vehicles)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error adding vehicle'
+    });
+  }
+};
+
+// @desc    Remove a vehicle from the authenticated customer's own account
+// @route   DELETE /api/users/vehicles/:vehicleId
+// @access  Private
+const deleteMyVehicle = async (req, res) => {
+  try {
+    const user = await loadSelf(req);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // `.id()` searches this user's own subdocument array, so a vehicle id
+    // belonging to another account simply is not found here.
+    const vehicle = user.vehicles.id(req.params.vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found on your account' });
+    }
+
+    const removedPlate = normalizePlate(vehicle.plateNumber);
+    vehicle.deleteOne();
+
+    // Drop the matching plate binding too, so a deleted car cannot keep
+    // redeeming washes off the membership.
+    if (user.membership && Array.isArray(user.membership.boundVehicles)) {
+      user.membership.boundVehicles = user.membership.boundVehicles.filter(
+        entry => normalizePlate(String(entry).split('(')[0]) !== removedPlate
+      );
+    }
+
+    // The account still needs a primary car if any are left.
+    if (user.vehicles.length > 0 && !user.vehicles.some(v => v.isPrimary)) {
+      user.vehicles[0].isPrimary = true;
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      message: 'Vehicle removed successfully',
+      vehicles: sanitizeVehicles(user.vehicles)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error removing vehicle'
+    });
+  }
+};
+
+// @desc    Get the authenticated customer's own membership status
+// @route   GET /api/users/membership
+// @access  Private
+const getMyMembership = async (req, res) => {
+  try {
+    const user = await loadSelf(req);
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        membership: sanitizeMembership(null)
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      membership: sanitizeMembership(user)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error fetching membership'
     });
   }
 };
@@ -777,9 +931,16 @@ const submitFeedback = async (req, res) => {
 
     const userId = req.user ? req.user._id : null;
 
+    // A signed-in submission is filed under the account's own address, not
+    // whatever the form posted. Otherwise a ticket could be filed against
+    // someone else's email and would then surface in *their* /my-feedback.
+    const ownerEmail = req.user
+      ? (req.user.email || '').toLowerCase().trim()
+      : String(email || '').toLowerCase().trim();
+
     const feedback = await Feedback.create({
       name: name || (req.user ? (req.user.fullName || req.user.name) : 'Customer'),
-      email: (email || (req.user ? req.user.email : '')).toLowerCase(),
+      email: ownerEmail,
       phone: phone || (req.user ? req.user.mobile : ''),
       category: category || 'General Feedback',
       rating: Number(rating) || 5,
@@ -816,24 +977,19 @@ const submitFeedback = async (req, res) => {
 
 // @desc    Get customer's own submitted feedbacks & support tickets
 // @route   GET /api/users/my-feedback
-// @access  Private (or query by email)
+// @access  Private
 const getMyFeedback = async (req, res) => {
   try {
-    let query = {};
-    if (req.user) {
-      query = {
-        $or: [
-          { userId: req.user._id },
-          { email: (req.user.email || '').toLowerCase() }
-        ]
-      };
-    } else if (req.query.email) {
-      query = { email: String(req.query.email).toLowerCase() };
-    } else {
-      return res.status(200).json({ success: true, feedbacks: [] });
+    // This route used to fall back to `?email=` when no session was present,
+    // which meant anyone could read anyone else's support tickets by guessing
+    // an address. The caller's own identity is now the only selector.
+    const ownEmail = (req.user.email || '').toLowerCase().trim();
+    const ownership = [{ userId: req.user._id }];
+    if (ownEmail) {
+      ownership.push({ email: ownEmail });
     }
 
-    const feedbacks = await Feedback.find(query).sort({ createdAt: -1 });
+    const feedbacks = await Feedback.find({ $or: ownership }).sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
       feedbacks
@@ -1040,6 +1196,10 @@ module.exports = {
   updateCustomerUsageRules,
   addCustomerVehicle,
   updateProfile,
+  getMyVehicles,
+  addMyVehicle,
+  deleteMyVehicle,
+  getMyMembership,
   submitFeedback,
   getMyFeedback,
   getAdminFeedbacks,

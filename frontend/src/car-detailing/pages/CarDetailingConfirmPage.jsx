@@ -13,8 +13,10 @@ export default function CarDetailingConfirmPage() {
     price: stateData.price || stateData.service?.price || 490,
     duration: stateData.duration || stateData.service?.duration || '45 mins'
   };
+  // No stand-in car. A booking confirmed against "Tesla Model 3 (TSL-3000)"
+  // names a vehicle that belongs to nobody.
   const vehicle = {
-    name: stateData.vehicle || 'Tesla Model 3 (TSL-3000)',
+    name: stateData.vehicle || '',
     icon: '🚗'
   };
 
@@ -54,7 +56,7 @@ export default function CarDetailingConfirmPage() {
       price: finalTotal,
       customerName,
       customerEmail,
-      vehicleNo: vehicle.name || 'MH-01-AB-1234',
+      vehicleNo: vehicle.name,
       vehicleType: 'Car'
     };
 

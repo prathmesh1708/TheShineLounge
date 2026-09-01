@@ -217,7 +217,9 @@ export const AdminProvider = ({ children }) => {
         customerName: record.customerName,
         phone: record.phone || record.customerEmail || '+91 98200 99887',
         email: record.customerEmail,
-        vehicleNo: record.vehicleNo || 'MH01AB1234',
+        // Empty, not a sample plate. This row is a membership card an operator
+        // checks a car against at the gate.
+        vehicleNo: record.vehicleNo || '',
         vehicleModel: record.vehicleType || 'Car',
         planName: record.packageName,
         serviceKey: record.serviceKey,

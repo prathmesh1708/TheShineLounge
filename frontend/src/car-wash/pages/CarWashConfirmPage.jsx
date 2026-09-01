@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../../common/utils/apiClient';
+import { useAuth } from '../../common/context/AuthContext';
 import { cacheService } from '../../common/utils/serviceCache';
 import {
   isMembershipPackage,
@@ -17,13 +18,15 @@ import {
 export default function CarWashConfirmPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
-  // Retrieve booking details from state
-  const { service, slot, vehicle } = location.state || {
-    service: { name: 'Premium Hydro Wash', price: 299, duration: '40 min' },
-    slot: { label: 'Today 4:30 PM' },
-    vehicle: { name: 'Hyundai Elite i20', plate: 'MP09WC4444', icon: '🏎️' }
-  };
+  // Booking details arrive from the car wash page. Landing here without them —
+  // a refresh, a shared link, a bookmark — used to fall back to a made-up
+  // service on a made-up car (MP09WC4444), which would happily be confirmed as
+  // a real booking against a plate belonging to no one. There is nothing to
+  // confirm in that case, so say so and send the customer back.
+  const { service, slot, vehicle } = location.state || {};
+  const hasBookingContext = Boolean(service && vehicle && vehicle.plate);
 
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [scheduledPass, setScheduledPass] = useState(null);
@@ -50,17 +53,18 @@ export default function CarWashConfirmPage() {
 
   // Detect number of registered cars
   let numCars = 1;
-  const isMembership = (service.name || '').toLowerCase().includes('membership') || (service.name || '').toLowerCase().includes('pass');
-  
+  const serviceName = service?.name || '';
+  const isMembership = serviceName.toLowerCase().includes('membership') || serviceName.toLowerCase().includes('pass');
+
   const savedVehicles = readScoped('tsl_saved_vehicles', currentUserEmail(), []);
   if (Array.isArray(savedVehicles) && savedVehicles.length > 0) {
     numCars = savedVehicles.length;
   }
 
   // Price calculations
-  const basePrice = service.price;
+  const basePrice = Number(service?.price) || 0;
   const totalBasePrice = isMembership ? (basePrice * numCars) : basePrice;
-  const isPremiumWashPromo = service.id === 'premium-wash';
+  const isPremiumWashPromo = service?.id === 'premium-wash';
   
   // Calculate discounts
   let totalDiscount = 0;
@@ -89,21 +93,23 @@ export default function CarWashConfirmPage() {
 
   const handleConfirm = async () => {
     try {
-      // Get customer info from localStorage / AuthContext
-      let customerName = 'Valued Customer';
-      let customerEmail = '';
-      try {
-        const stored = localStorage.getItem('tsl_user') || localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_admin_user');
-        if (stored) {
-          const u = JSON.parse(stored);
-          customerName = u.fullName || u.name || customerName;
-          customerEmail = (u.email || '').toLowerCase().trim();
-        }
-      } catch (e) {
-        console.warn('Error reading customer from localStorage:', e);
+      // The signed-in session is the only source for who this booking belongs
+      // to. It used to read localStorage and, failing that, fall back to
+      // customer@theshinelounge.com — a shared address, so every guest booking
+      // landed in one bucket that any guest could then read back as "theirs".
+      const customerEmail = (user?.email || '').toLowerCase().trim();
+      const customerName = user?.fullName || user?.name || '';
+
+      if (!isAuthenticated || !customerEmail) {
+        alert('Please sign in before confirming — your booking is saved to your account so you can track it.');
+        navigate('/login');
+        return;
       }
-      if (!customerEmail) {
-        customerEmail = 'customer@theshinelounge.com';
+
+      if (!vehicle?.plate) {
+        alert('Please add the vehicle you want serviced before confirming.');
+        navigate('/car-wash');
+        return;
       }
 
       // Parse date and timeslot dynamically from system clock
@@ -133,10 +139,10 @@ export default function CarWashConfirmPage() {
         price: finalTotal,
         date: dateVal,
         timeSlot: timeSlotVal,
-        customerName,
+        customerName: customerName || 'Valued Customer',
         customerEmail,
-        vehicleNo: vehicle?.plate || 'MP09WC4444',
-        vehicleType: vehicle?.name || 'Hyundai Elite i20',
+        vehicleNo: vehicle.plate,
+        vehicleType: vehicle.name || '',
         purchasedAt: new Date().toISOString()
       };
 
@@ -150,8 +156,10 @@ export default function CarWashConfirmPage() {
         let priorPasses = localBookings.filter(b => isMembershipPackage(b.packageName || b.plan));
 
         // localStorage can be cleared between purchases; the server still knows.
+        // `/my-bookings` is scoped to this account server-side, so the client
+        // filter below is a belt-and-braces check rather than the only one.
         try {
-          const res = await apiClient.get('/bookings');
+          const res = await apiClient.get('/bookings/my-bookings');
           const serverBookings = (res.data?.bookings || []).filter(
             b => (b.customerEmail || '').toLowerCase().trim() === customerEmail
               && isMembershipPackage(b.packageName)
@@ -231,7 +239,18 @@ export default function CarWashConfirmPage() {
         <div style={{ width: '44px' }} /> {/* Spacing spacer */}
       </div>
 
-      {bookingConfirmed ? (
+      {!hasBookingContext ? (
+        <div className="confirm-section-card" style={{ textAlign: 'center', padding: '2.5rem 1.5rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.6rem' }}>🚗</div>
+          <h2 className="confirm-card-heading" style={{ marginBottom: '0.4rem' }}>Nothing to confirm yet</h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+            Pick a wash package and the vehicle you want serviced, and we will bring you back here.
+          </p>
+          <button className="confirm-final-btn" onClick={() => navigate('/car-wash')}>
+            Choose a Wash
+          </button>
+        </div>
+      ) : bookingConfirmed ? (
         <div className="confirm-success-card">
           <div className="success-icon-badge">✨</div>
           <h2 className="success-title">Booking Confirmed!</h2>

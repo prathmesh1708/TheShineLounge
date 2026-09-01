@@ -29,9 +29,12 @@ export default function ProfilePage() {
   // User state initialized from AuthContext
   const isRealCustomer = isAuthenticated && (user?.role === 'user' || user?.role === 'customer' || (!user?.role && user?.role !== 'staff' && user?.role !== 'admin'));
 
+  // A guest has no email. It used to read 'guest@theshinelounge.com', which is
+  // a real-looking address that then got used as the identity for booking and
+  // feedback lookups — a shared bucket every guest on every device resolved to.
   const [profile, setProfile] = useState({
     name: user ? (user.fullName || user.name || 'Customer') : 'Guest Explorer',
-    email: user ? (user.email || '') : 'guest@theshinelounge.com',
+    email: user ? (user.email || '') : '',
     phone: user ? (user.mobile || '') : ''
   });
 
@@ -46,7 +49,7 @@ export default function ProfilePage() {
     } else {
       setProfile({
         name: 'Guest Explorer',
-        email: 'guest@theshinelounge.com',
+        email: '',
         phone: ''
       });
     }
@@ -76,9 +79,9 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchMyBookings = async () => {
       let fetched = [];
-      // Strict ownership: the endpoint returns every customer's bookings, and a
-      // loose match used to hand a new account somebody else's history.
-      const userEmail = normalizeEmail(user?.email || profile?.email);
+      // The signed-in account is the only identity here — never the display
+      // profile, which holds a placeholder name for guests.
+      const userEmail = normalizeEmail(user?.email);
       if (!userEmail) {
         setBookings([]);
         setLoadingBookings(false);
@@ -86,7 +89,9 @@ export default function ProfilePage() {
       }
 
       try {
-        const res = await apiClient.get('/bookings');
+        // Scoped to this account server-side; the filter below is a second
+        // check rather than the only one.
+        const res = await apiClient.get('/bookings/my-bookings');
         if (res.data && res.data.bookings) {
           fetched = res.data.bookings.filter(b => normalizeEmail(b.customerEmail) === userEmail);
         }
@@ -188,18 +193,24 @@ export default function ProfilePage() {
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const fetchMyFeedbacks = async () => {
+    // Tickets belong to an account. The `?email=` parameter this used to send
+    // is gone — the server identifies the owner from the session, and answers
+    // 401 to a guest — so there is nothing to fetch without one.
+    if (!isAuthenticated) {
+      setMyFeedbacks([]);
+      return;
+    }
+
     try {
-      const email = user ? (user.email || profile.email || '') : (profile.email || '');
-      const res = await apiClient.get(`/users/my-feedback?email=${encodeURIComponent(email)}`);
+      const res = await apiClient.get('/users/my-feedback');
       if (res.data && res.data.success) {
         setMyFeedbacks(res.data.feedbacks || []);
       } else {
-        const localData = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
-        setMyFeedbacks(localData);
+        setMyFeedbacks([]);
       }
     } catch (e) {
-      const localData = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
-      setMyFeedbacks(localData);
+      console.warn('Could not load your support history:', e.message);
+      setMyFeedbacks([]);
     }
   };
 

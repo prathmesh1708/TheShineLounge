@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 const generateToken = require('../utils/generateToken');
+const { sanitizeUser } = require('../utils/sanitizeUser');
 
 // @desc    Register a new customer
 // @route   POST /api/auth/register
@@ -40,16 +41,7 @@ const registerCustomer = async (req, res) => {
       success: true,
       message: 'Registration successful',
       token,
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        mobile: user.mobile,
-        role: user.role,
-        permissions: user.permissions,
-        profileImage: user.profileImage,
-        branch: user.branch
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -127,19 +119,7 @@ const login = async (req, res) => {
       success: true,
       message: 'Login successful',
       token,
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        mobile: user.mobile,
-        role: user.role,
-        department: user.department,
-        permissions: user.permissions,
-        profileImage: user.profileImage,
-        branch: user.branch,
-        isActive: user.isActive,
-        lastLogin: user.lastLogin
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
     res.status(500).json({
@@ -168,20 +148,7 @@ const getMe = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        mobile: user.mobile,
-        role: user.role,
-        department: user.department,
-        permissions: user.permissions,
-        profileImage: user.profileImage,
-        branch: user.branch,
-        isActive: user.isActive,
-        lastLogin: user.lastLogin,
-        createdAt: user.createdAt
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
     res.status(500).json({

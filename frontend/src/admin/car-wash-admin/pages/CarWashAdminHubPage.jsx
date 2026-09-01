@@ -99,37 +99,35 @@ export default function CarWashAdminHubPage() {
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
-  // Extract unique registered customer vehicles & fleet from live database bookings
+  // The fleet is whatever plates actually appear on this service's bookings.
+  //
+  // This block used to manufacture the list it was reporting: a plate was
+  // generated from the row index when a booking had none (MH-01-TS-###), one
+  // named customer's plate was rewritten to a fixed value, and an empty result
+  // was replaced wholesale by a fictional owner. Operators read this panel as
+  // the register of cars entitled to enter, so every one of those was a car
+  // that would be waved through on the strength of a display bug.
   const registeredVehiclesMap = {};
-  serviceBookings.forEach((b, idx) => {
+  serviceBookings.forEach((b) => {
     const email = (b.customerEmail || '').toLowerCase().trim();
     const name = b.customerName || 'Valued Customer';
-    const isPrabhat = email.includes('prabhat') || name.toLowerCase().includes('prabhat');
 
-    const rawPlate = b.vehicleNo || b.vehiclePlate;
-    const plate = isPrabhat
-      ? 'MP09WC4444'
-      : ((rawPlate && rawPlate !== 'MH-01-AB-1234' && rawPlate !== 'MH-01-AB-1000')
-        ? rawPlate.toUpperCase()
-        : (email ? `MH-01-TS-${(100 + idx % 900)}` : `MH-01-AB-${1000 + idx}`));
+    const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
+    // A booking with no plate on it contributes no vehicle.
+    if (!plate) return;
 
-    const model = isPrabhat
-      ? 'Hyundai Elite i20'
-      : (b.vehicleType || b.vehicleModel || 'Executive Sedan');
-
-    // Unique key per customer + vehicle plate
     const key = `${email || name}_${plate}`.toLowerCase();
 
     if (!registeredVehiclesMap[key]) {
       registeredVehiclesMap[key] = {
-        plate: plate,
-        model: model,
-        ownerName: isPrabhat ? 'prabhat' : name,
-        ownerEmail: isPrabhat ? 'prabhat@gmail.com' : (email || 'customer@shinelounge.com'),
-        ownerPhone: b.phone || b.mobile || '+91 98200 54321',
-        packageName: isPrabhat ? 'Monthly Membership' : (b.packageName || 'Car Wash Package'),
+        plate,
+        model: b.vehicleType || b.vehicleModel || '',
+        ownerName: name,
+        ownerEmail: email,
+        ownerPhone: b.phone || b.mobile || '',
+        packageName: b.packageName || '',
         totalWashes: 1,
-        lastWashDate: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        lastWashDate: b.date || ''
       };
     } else {
       registeredVehiclesMap[key].totalWashes += 1;
@@ -139,20 +137,7 @@ export default function CarWashAdminHubPage() {
     }
   });
 
-  const registeredVehiclesList = Object.values(registeredVehiclesMap).length > 0
-    ? Object.values(registeredVehiclesMap)
-    : [
-        {
-          plate: 'MP09WC4444',
-          model: 'Hyundai Elite i20',
-          ownerName: 'prabhat',
-          ownerEmail: 'prabhat@gmail.com',
-          ownerPhone: '+91 98200 54321',
-          packageName: 'Monthly Membership',
-          totalWashes: 1,
-          lastWashDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-        }
-      ];
+  const registeredVehiclesList = Object.values(registeredVehiclesMap);
 
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);

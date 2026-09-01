@@ -80,7 +80,9 @@ export default function StaffInvoicingPage() {
       id: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
       customerName: currentCust.name,
       phone: currentCust.mobile,
-      vehicleNo: currentCust.vehicles[0]?.registrationNumber || 'MH01AB1234',
+      // Blank rather than a stand-in plate — an invoice is a record, and
+      // MH01AB1234 on it is a claim about a car the customer does not own.
+      vehicleNo: currentCust.vehicles[0]?.registrationNumber || '',
       items,
       subtotal,
       discount: discountAmount,

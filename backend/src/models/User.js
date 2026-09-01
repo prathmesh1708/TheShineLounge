@@ -131,7 +131,9 @@ const userSchema = new mongoose.Schema(
         // customers never format a plate the same way, so every lookup goes
         // through this field. Kept in sync by the pre-save hook below.
         plateNormalized: { type: String, default: '', index: true },
+        brand: { type: String, default: '' },
         model: { type: String, default: '' },
+        year: { type: String, default: '' },
         category: { type: String, default: 'Car' },
         isPrimary: { type: Boolean, default: false },
         // How this vehicle came to be on the account, so an unverified plate

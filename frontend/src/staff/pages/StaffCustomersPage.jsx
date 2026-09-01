@@ -139,23 +139,16 @@ export default function StaffCustomersPage() {
             <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100 space-y-1">
               <span className="text-[10px] font-black uppercase text-gray-400">Registered Vehicles</span>
               {(() => {
-                const emailLower = (cust.email || cust.id || '').toLowerCase().trim();
-                const nameLower = (cust.name || cust.fullName || '').toLowerCase().trim();
+                // Only what the customer registered. A stand-in plate here was
+                // read by staff as the real one.
+                const vList = (cust.vehicles || []).filter(v => v.registrationNumber);
 
-                let vList = (cust.vehicles && cust.vehicles.length > 0) ? cust.vehicles : [];
                 if (vList.length === 0) {
-                  if (emailLower.includes('prabhat') || nameLower.includes('prabhat')) {
-                    vList = [{ id: 'v-prabhat', registrationNumber: 'MP09WC4444', brand: 'Hyundai', model: 'Elite i20', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('jawade') || nameLower.includes('prathmesh')) {
-                    vList = [{ id: 'v-prathmesh', registrationNumber: 'DL09AC4444', brand: 'BMW', model: 'M4', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('harsh') || nameLower.includes('harsh')) {
-                    vList = [{ id: 'v-harsh', registrationNumber: 'MH02CP4455', brand: 'Hyundai', model: 'Creta', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('mohit') || nameLower.includes('mohit')) {
-                    vList = [{ id: 'v-mohit', registrationNumber: 'MH04AB1234', brand: 'Honda', model: 'City', fuelType: 'Petrol' }];
-                  } else {
-                    const num = 1000 + ((emailLower + nameLower).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 8999);
-                    vList = [{ id: `v-${cust.id}`, registrationNumber: `MH02AB${num}`, brand: 'Toyota', model: 'Fortuner', fuelType: 'Petrol' }];
-                  }
+                  return (
+                    <div className="text-[11px] font-semibold text-gray-400 italic">
+                      No Registered Vehicles
+                    </div>
+                  );
                 }
 
                 return vList.map(v => (
@@ -163,7 +156,10 @@ export default function StaffCustomersPage() {
                     <span className="font-black text-gray-900 flex items-center gap-1">
                       <Car className="w-3.5 h-3.5 text-amber-600" /> {v.registrationNumber}
                     </span>
-                    <span className="text-gray-500 font-semibold">{v.brand} {v.model} ({v.fuelType || 'Petrol'})</span>
+                    <span className="text-gray-500 font-semibold">
+                      {[v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle'}
+                      {v.fuelType ? ` (${v.fuelType})` : ''}
+                    </span>
                   </div>
                 ));
               })()}
@@ -245,51 +241,66 @@ export default function StaffCustomersPage() {
 
               {/* Registered Vehicles */}
               {(() => {
-                const emailLower = (selectedCustomer.email || selectedCustomer.id || '').toLowerCase().trim();
-                const nameLower = (selectedCustomer.name || selectedCustomer.fullName || '').toLowerCase().trim();
+                const registered = (selectedCustomer.vehicles || []).filter(v => v.registrationNumber);
 
-                const vehiclesFromBookings = customerBookings.filter(b => b.vehicleNo).map((b, i) => ({
-                  id: `v-booking-${i}`,
-                  registrationNumber: b.vehicleNo,
-                  brand: b.vehicleType || 'Car',
-                  model: 'Vehicle',
-                  fuelType: 'Petrol'
-                }));
-
-                let effectiveVehicles = (selectedCustomer.vehicles && selectedCustomer.vehicles.length > 0)
-                  ? selectedCustomer.vehicles
-                  : vehiclesFromBookings.length > 0
-                  ? vehiclesFromBookings
-                  : [];
-
-                if (effectiveVehicles.length === 0) {
-                  if (emailLower.includes('prabhat') || nameLower.includes('prabhat')) {
-                    effectiveVehicles = [{ id: 'v-prabhat', registrationNumber: 'MP09WC4444', brand: 'Hyundai', model: 'Elite i20', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('jawade') || nameLower.includes('prathmesh')) {
-                    effectiveVehicles = [{ id: 'v-prathmesh', registrationNumber: 'DL09AC4444', brand: 'BMW', model: 'M4', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('harsh') || nameLower.includes('harsh')) {
-                    effectiveVehicles = [{ id: 'v-harsh', registrationNumber: 'MH02CP4455', brand: 'Hyundai', model: 'Creta', fuelType: 'Petrol' }];
-                  } else if (emailLower.includes('mohit') || nameLower.includes('mohit')) {
-                    effectiveVehicles = [{ id: 'v-mohit', registrationNumber: 'MH04AB1234', brand: 'Honda', model: 'City', fuelType: 'Petrol' }];
-                  } else {
-                    const num = 1000 + ((emailLower + nameLower).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 8999);
-                    effectiveVehicles = [{ id: `v-gen-${selectedCustomer.id}`, registrationNumber: `MH02AB${num}`, brand: 'Toyota', model: 'Fortuner', fuelType: 'Petrol' }];
-                  }
-                }
+                // Plates seen on this customer's own past bookings are real —
+                // someone typed them at the counter — so they are still worth
+                // showing, but labelled as what they are rather than passed off
+                // as registered vehicles. What is gone is the block that
+                // manufactured a plate when both lists were empty.
+                const seen = new Set(registered.map(v => String(v.registrationNumber).toUpperCase()));
+                const fromBookings = [];
+                customerBookings.forEach((b, i) => {
+                  const plate = (b.vehicleNo || '').trim().toUpperCase();
+                  if (!plate || seen.has(plate)) return;
+                  seen.add(plate);
+                  fromBookings.push({
+                    id: `v-booking-${i}`,
+                    registrationNumber: plate,
+                    brand: b.vehicleType || '',
+                    model: ''
+                  });
+                });
 
                 return (
                   <div className="space-y-2">
                     <h4 className="text-xs font-black text-gray-900 flex items-center gap-1.5 uppercase tracking-wider">
                       <Car className="w-3.5 h-3.5 text-blue-600" /> Registered Vehicles
                     </h4>
-                    {effectiveVehicles.map(v => (
+
+                    {registered.length === 0 && fromBookings.length === 0 && (
+                      <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-3 text-center">
+                        <p className="text-[11px] font-bold text-gray-500">No Registered Vehicles</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          This customer has not added a vehicle to their account.
+                        </p>
+                      </div>
+                    )}
+
+                    {registered.map(v => (
                       <div key={v.id || v.registrationNumber} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
                         <div>
                           <span className="font-black text-sm text-gray-900">{v.registrationNumber}</span>
-                          <p className="text-[10px] text-gray-500 font-semibold">{v.brand} {v.model}</p>
+                          <p className="text-[10px] text-gray-500 font-semibold">
+                            {[v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle'}
+                          </p>
                         </div>
-                        <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          {v.fuelType || 'Petrol'}
+                        {v.fuelType && (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            {v.fuelType}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+
+                    {fromBookings.map(v => (
+                      <div key={v.id} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="font-black text-sm text-gray-900">{v.registrationNumber}</span>
+                          <p className="text-[10px] text-gray-500 font-semibold">{v.brand || 'Vehicle'}</p>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          From booking
                         </span>
                       </div>
                     ))}

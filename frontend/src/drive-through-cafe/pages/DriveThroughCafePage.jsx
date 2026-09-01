@@ -15,14 +15,6 @@ import { useAuth } from '../../common/context/AuthContext';
 import CustomerAuthModal from '../../common/components/CustomerAuthModal';
 import { cacheService } from '../../common/utils/serviceCache';
 
-// Vehicles the customer can pick at the drive-through window. Any vehicle saved
-// on the logged-in account is prepended to this fallback list.
-const FALLBACK_VEHICLES = [
-  { model: 'Tesla Model 3', plate: 'TSL-3000' },
-  { model: 'Mercedes Benz C-Class', plate: 'MBZ-5500' },
-  { model: 'Porsche Taycan', plate: 'PC-911' }
-];
-
 // Minutes ahead of now that each pickup option represents.
 const PICKUP_OPTIONS = [
   { label: 'Now (Ready in 2 min)', minutes: 2 },
@@ -52,24 +44,31 @@ export default function DriveThroughCafePage() {
   const [orderError, setOrderError] = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
 
-  // Vehicles saved on the account come first so the plate the staff sees is the
-  // one the customer actually registered.
+  // Only the vehicles registered on this account. There used to be a fallback
+  // list here (Tesla Model 3, Mercedes C-Class, Porsche Taycan) that filled the
+  // picker for anyone with no saved car — so the plate handed to the staff at
+  // the bay, and written onto the order, belonged to nobody. A customer with no
+  // registered vehicle now types the plate they have actually arrived in.
   const vehicleOptions = React.useMemo(() => {
-    const saved = (user?.vehicles || []).map(v => ({
-      model: [v.brand, v.model].filter(Boolean).join(' ') || 'My Vehicle',
-      plate: v.registrationNumber || v.plate || ''
-    })).filter(v => v.plate);
-
     const seen = new Set();
-    return [...saved, ...FALLBACK_VEHICLES].filter(v => {
-      if (seen.has(v.plate)) return false;
-      seen.add(v.plate);
-      return true;
-    });
+    return (user?.vehicles || [])
+      .map(v => ({
+        model: [v.brand, v.model].filter(Boolean).join(' ') || 'My Vehicle',
+        plate: v.plateNumber || v.registrationNumber || v.plate || ''
+      }))
+      .filter(v => {
+        if (!v.plate || seen.has(v.plate)) return false;
+        seen.add(v.plate);
+        return true;
+      });
   }, [user]);
 
   const [selectedPlate, setSelectedPlate] = useState('');
-  const selectedVehicle = vehicleOptions.find(v => v.plate === selectedPlate) || vehicleOptions[0];
+  // Typed by customers whose account has no vehicle on it yet.
+  const [manualPlate, setManualPlate] = useState('');
+
+  const selectedVehicle = vehicleOptions.find(v => v.plate === selectedPlate)
+    || (manualPlate.trim() ? { model: 'My Vehicle', plate: manualPlate.trim().toUpperCase() } : null);
 
   useEffect(() => {
     if (!selectedPlate && vehicleOptions.length > 0) {
@@ -297,6 +296,13 @@ export default function DriveThroughCafePage() {
     }
     if (cart.length === 0) return;
 
+    // Staff match the order to the car at the window by its plate, so an order
+    // with no real plate on it cannot be handed over.
+    if (!selectedVehicle?.plate) {
+      setOrderError('Enter the registration number of the vehicle you are arriving in so we can match your order at the bay.');
+      return;
+    }
+
     setOrderError('');
     setPrepProgress(0);
     setOrderStep(2); // Transmitting screen
@@ -522,28 +528,51 @@ export default function DriveThroughCafePage() {
                 <h3 className="confirm-card-heading">Drive-Through Pickup Settings</h3>
                 <div className="confirm-details-list">
                   <div className="confirm-detail-item">
-                    <span className="confirm-detail-label">Vehicle Registered</span>
-                    <select
-                      value={selectedPlate}
-                      onChange={(e) => setSelectedPlate(e.target.value)}
-                      style={{
-                        border: '1px solid var(--border-color)',
-                        background: '#ffffff',
-                        borderRadius: '0.5rem',
-                        padding: '0.4rem',
-                        fontSize: '0.85rem',
-                        fontWeight: 700,
-                        color: 'var(--text-main)',
-                        maxWidth: '175px',
-                        width: '100%'
-                      }}
-                    >
-                      {vehicleOptions.map(v => (
-                        <option key={v.plate} value={v.plate}>
-                          {v.model} ({v.plate})
-                        </option>
-                      ))}
-                    </select>
+                    <span className="confirm-detail-label">
+                      {vehicleOptions.length > 0 ? 'Vehicle Registered' : 'Arriving In'}
+                    </span>
+                    {vehicleOptions.length > 0 ? (
+                      <select
+                        value={selectedPlate}
+                        onChange={(e) => setSelectedPlate(e.target.value)}
+                        style={{
+                          border: '1px solid var(--border-color)',
+                          background: '#ffffff',
+                          borderRadius: '0.5rem',
+                          padding: '0.4rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          color: 'var(--text-main)',
+                          maxWidth: '175px',
+                          width: '100%'
+                        }}
+                      >
+                        {vehicleOptions.map(v => (
+                          <option key={v.plate} value={v.plate}>
+                            {v.model} ({v.plate})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={manualPlate}
+                        onChange={(e) => setManualPlate(e.target.value.toUpperCase())}
+                        placeholder="e.g. MH 02 TX 9999"
+                        style={{
+                          border: '1px solid var(--border-color)',
+                          background: '#ffffff',
+                          borderRadius: '0.5rem',
+                          padding: '0.4rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          color: 'var(--text-main)',
+                          textTransform: 'uppercase',
+                          maxWidth: '175px',
+                          width: '100%'
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="confirm-detail-item">
                     <span className="confirm-detail-label">Expected Pickup Time</span>
