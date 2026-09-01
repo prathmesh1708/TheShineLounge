@@ -8,16 +8,22 @@ let isFirebaseInitialized = false;
 try {
   let credential;
 
+  const certFn = admin.cert || (admin.credential && admin.credential.cert);
+
   if (process.env.FIREBASE_CONFIG) {
     // Option A: Full JSON string in environment variable
     const serviceAccountJson = JSON.parse(process.env.FIREBASE_CONFIG);
-    credential = admin.credential.cert(serviceAccountJson);
+    if (typeof certFn === 'function') {
+      credential = certFn(serviceAccountJson);
+    }
   } else {
     // Option B: File Path
     const resolvedPath = path.resolve(__dirname, '../../../', FIREBASE_SERVICE_ACCOUNT_PATH);
     if (fs.existsSync(resolvedPath)) {
       const serviceAccount = require(resolvedPath);
-      credential = admin.credential.cert(serviceAccount);
+      if (typeof certFn === 'function') {
+        credential = certFn(serviceAccount);
+      }
     }
   }
 
