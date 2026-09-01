@@ -40,6 +40,8 @@ import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
+import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import apiClient from '../../../common/utils/apiClient';
 import {
   getServicesSync,
@@ -82,7 +84,8 @@ export default function CarDetailingAdminHubPage() {
     deleteBanner,
     toggleBannerStatus,
     addInventoryItem,
-    showToast
+    showToast,
+    addOfflineSale
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -381,6 +384,8 @@ export default function CarDetailingAdminHubPage() {
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
+  const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1117,14 +1122,31 @@ export default function CarDetailingAdminHubPage() {
               </h3>
               <p className="text-xs text-gray-500">Live list of customer vehicles registered during detailing sessions</p>
             </div>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
-              {registeredVehiclesList.length} Registered Cars
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                {registeredVehiclesList.length} Registered Cars
+              </span>
+              <button
+                onClick={() => setIsOfflineSaleModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1 shadow-sm transition-all hover:shadow-md"
+                style={{ backgroundColor: '#e07b2a' }}
+              >
+                <Plus className="w-3.5 h-3.5" /> Record Offline Sale
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {registeredVehiclesList.map((v, i) => (
-              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between">
+              <div
+                key={v.plate || i}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between cursor-pointer hover:shadow-md"
+                onClick={() => {
+                  const plate = (v.plate || '').toUpperCase().trim();
+                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                }}
+              >
                 <div>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -1174,6 +1196,27 @@ export default function CarDetailingAdminHubPage() {
               </div>
             ))}
           </div>
+
+          {/* Vehicle Detail Modal */}
+          <RegisteredVehicleDetailModal
+            isOpen={!!selectedVehicleDetail}
+            onClose={() => setSelectedVehicleDetail(null)}
+            vehicle={selectedVehicleDetail?.vehicle}
+            bookingHistory={selectedVehicleDetail?.history || []}
+            onNewOfflineSale={() => {
+              setSelectedVehicleDetail(null);
+              setIsOfflineSaleModalOpen(true);
+            }}
+          />
+
+          {/* Offline Sale Modal */}
+          <OfflineSaleModal
+            isOpen={isOfflineSaleModalOpen}
+            onClose={() => setIsOfflineSaleModalOpen(false)}
+            onSubmit={async (formData) => {
+              if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
+            }}
+          />
         </div>
       )}
 

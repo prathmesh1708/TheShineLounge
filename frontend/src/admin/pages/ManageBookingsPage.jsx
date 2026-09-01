@@ -49,9 +49,22 @@ export default function ManageBookingsPage() {
       header: 'Customer Details',
       accessorKey: 'customerName',
       cell: (row) => (
-        <div>
-          <p className="font-bold text-gray-900">{row.customerName}</p>
-          <p className="text-[11px] text-gray-500">{row.phone}</p>
+        <div className="space-y-0.5">
+          <p className="font-extrabold text-gray-900 text-xs">
+            {row.customerName || 'Customer'}
+          </p>
+          {(row.phone || row.customerEmail) && (
+            <p className="text-[11px] font-medium text-gray-500">
+              {row.phone || row.customerEmail}
+            </p>
+          )}
+          {row.vehicleNo && (
+            <div className="pt-0.5">
+              <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono font-bold tracking-wider">
+                {row.vehicleNo}
+              </span>
+            </div>
+          )}
         </div>
       )
     },
@@ -184,8 +197,8 @@ export default function ManageBookingsPage() {
       <DataTable
         columns={columns}
         data={bookings}
-        searchPlaceholder="Search bookings by ID, customer name, service..."
-        searchKeys={['id', 'customerName', 'phone', 'service', 'vehicleNo']}
+        searchPlaceholder="Search bookings by ID, customer name, email, service..."
+        searchKeys={['id', 'customerName', 'phone', 'customerEmail', 'service', 'serviceName', 'vehicleNo', 'plan', 'packageName']}
         filterKey="status"
         filterOptions={['All', 'Pending', 'Confirmed', 'In Progress', 'Completed']}
       />
@@ -202,11 +215,14 @@ export default function ManageBookingsPage() {
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Customer Name</span>
-                <span className="font-extrabold text-gray-900">{selectedBooking.customerName}</span>
+                <span className="font-extrabold text-gray-900">{selectedBooking.customerName || 'Customer'}</span>
               </div>
               <div>
-                <span className="text-gray-400 font-bold block">Contact Phone</span>
-                <span className="font-extrabold text-gray-900">{selectedBooking.phone}</span>
+                <span className="text-gray-400 font-bold block">Contact Details</span>
+                <span className="font-extrabold text-gray-900 block">{selectedBooking.phone || '—'}</span>
+                {selectedBooking.customerEmail && (
+                  <span className="text-gray-500 font-medium text-[11px] block truncate">{selectedBooking.customerEmail}</span>
+                )}
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Selected Package</span>

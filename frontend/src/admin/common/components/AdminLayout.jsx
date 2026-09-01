@@ -19,6 +19,7 @@ import InventoryManagementPage from '../../pages/InventoryManagementPage';
 import RevenueReportsPage from '../../pages/RevenueReportsPage';
 import OffersCouponsPage from '../../pages/OffersCouponsPage';
 import AdminSettingsPage from '../../pages/AdminSettingsPage';
+import ManageOfflineSalesPage from '../../pages/ManageOfflineSalesPage';
 
 export default function AdminLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -58,6 +59,7 @@ export default function AdminLayout() {
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="memberships" element={<ManageMembershipsPage />} />
             <Route path="bookings" element={<ManageBookingsPage />} />
+            <Route path="offline-sales" element={<ManageOfflineSalesPage />} />
             <Route path="staff" element={<ManageStaffPage />} />
             <Route path="customers" element={<CustomerDatabasePage />} />
             <Route path="inventory" element={<InventoryManagementPage />} />

@@ -27,7 +27,8 @@ import {
   TrendingUp,
   Cpu,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  ShoppingBag
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useAuth } from '../../../common/context/AuthContext';
@@ -41,7 +42,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
-    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback'].includes(location.pathname.replace('/admin/', ''))
+    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback', 'offline-sales'].includes(location.pathname.replace('/admin/', ''))
       ? location.pathname.replace('/admin/', '')
       : null;
 
@@ -60,6 +61,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
 
   const globalNavItems = [
     { label: 'All Bookings', path: '/admin/bookings', icon: CalendarCheck, badge: stats.pendingBookings },
+    { label: 'Offline Sales', path: '/admin/offline-sales', icon: ShoppingBag },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
     { label: 'Feedback & Support', path: '/admin/feedback', icon: HelpCircle },

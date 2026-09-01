@@ -268,25 +268,30 @@ export const AdminProvider = ({ children }) => {
             _id: b._id,
             id: b.bookingId,
             bookingId: b.bookingId,
-            customerEmail: b.customerEmail || '',
-            vehicleNo: b.vehicleNo || '',
-            vehicleType: b.vehicleType || '',
-            location: b.location || '',
-            phone: b.phone || '',
+            customerName: b.customerName || b.userName || b.name || (b.customerEmail ? b.customerEmail.split('@')[0] : 'Valued Customer'),
+            customerEmail: b.customerEmail || b.email || '',
+            vehicleNo: b.vehicleNo || b.vehiclePlate || '',
+            vehicleType: b.vehicleType || b.vehicleModel || '',
+            location: b.location || 'Main Branch',
+            phone: b.phone || b.mobile || b.customerPhone || '',
             serviceKey: b.serviceKey,
-            serviceName: b.serviceName,
-            plan: b.packageName,
-            packageName: b.packageName,
+            serviceName: b.serviceName || b.service || 'Service',
+            service: b.serviceName || b.service || 'Service',
+            plan: b.packageName || b.plan || 'Standard',
+            packageName: b.packageName || b.plan || 'Standard',
             // Ordering key for two passes bought on the same day (buy, upgrade).
             date: displayDate,
             timeSlot: formatBookingDateTime(displayTime, displayDate),
-            total: b.price,
-            status: b.status,
+            total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+            price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+            status: b.status || 'Pending',
             staffAssigned: b.assignedStaffName || 'Not Assigned',
             assignedStaffId: b.assignedStaffId,
-            stepIndex: b.stepIndex,
-            notes: b.notes,
-            photos: b.photos,
+            assignedStaffName: b.assignedStaffName || '',
+            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+            notes: b.notes || '',
+            photos: b.photos || [],
+            paymentMode: b.paymentMode || 'UPI',
             createdAt: b.createdAt || b.bookedAt || b.date,
             bookedAt: b.bookedAt || b.createdAt
           };
@@ -780,6 +785,70 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  // 5b. Offline Sales (manual counter POS)
+  const addOfflineSale = async (formData) => {
+    const newId = `OFS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const timeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Compute membership expiry if applicable
+    let membershipExpiry = '';
+    let membershipValidity = '';
+    if (formData.saleType === 'membership') {
+      const days = formData.validityDays === 'custom'
+        ? Math.ceil((new Date(formData.customExpiryDate) - now) / (1000 * 60 * 60 * 24))
+        : Number(formData.validityDays) || 30;
+      const expiryDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      membershipExpiry = expiryDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      membershipValidity = `${days} Days`;
+    }
+
+    const bookingPayload = {
+      bookingId: newId,
+      serviceKey: formData.serviceKey || 'car-wash',
+      serviceName: formData.serviceName || 'Car Wash',
+      packageName: formData.saleType === 'membership' ? formData.membershipName : formData.packageName,
+      price: Number(formData.price) || 0,
+      date: dateStr,
+      timeSlot: `${timeStart} - ${timeEnd}`,
+      customerName: formData.customerName,
+      customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
+      vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
+      vehicleType: formData.vehicleModel || '',
+      phone: formData.phone || '',
+      status: 'Completed'
+    };
+
+    // Try saving to backend
+    try {
+      await apiClient.post('/bookings', bookingPayload);
+      fetchBookingsList();
+    } catch (err) {
+      console.warn('Offline sale backend save error, using local fallback:', err.message);
+    }
+
+    // Always update local state immediately
+    const localRecord = {
+      id: newId,
+      ...bookingPayload,
+      isOfflineSale: true,
+      saleType: formData.saleType,
+      vehicleModel: formData.vehicleModel || '',
+      membershipName: formData.saleType === 'membership' ? formData.membershipName : '',
+      membershipValidity,
+      membershipExpiry,
+      paymentMode: formData.paymentMode || 'Cash',
+      notes: formData.notes || '',
+      createdAt: now.toISOString(),
+      bookedAt: now.toISOString()
+    };
+
+    setBookings(prev => [localRecord, ...prev]);
+    showToast(`✅ Offline sale ${newId} recorded successfully!`);
+  };
+
   // 6. Staff
   const addStaff = (newStaff) => {
     setStaffList(prev => [
@@ -992,6 +1061,7 @@ export const AdminProvider = ({ children }) => {
       updateBookingStatus,
       assignStaffToBooking,
       addBooking,
+      addOfflineSale,
       addStaff,
       updateStaff,
       deleteStaff,

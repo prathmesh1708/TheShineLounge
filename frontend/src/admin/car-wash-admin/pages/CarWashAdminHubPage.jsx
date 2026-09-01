@@ -46,6 +46,8 @@ import { serviceStatsMap } from '../../common/data/adminMockData';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
+import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
@@ -73,7 +75,8 @@ export default function CarWashAdminHubPage() {
     deleteBanner,
     addInventoryItem,
     updateStock,
-    showToast
+    showToast,
+    addOfflineSale
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -589,6 +592,8 @@ export default function CarWashAdminHubPage() {
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
+  const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1606,14 +1611,30 @@ export default function CarWashAdminHubPage() {
               </h3>
               <p className="text-xs text-gray-500">Live list of customer vehicles registered during bookings and membership passes</p>
             </div>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
-              {registeredVehiclesList.length} Active Fleet Cars
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                {registeredVehiclesList.length} Active Fleet Cars
+              </span>
+              <button
+                onClick={() => setIsOfflineSaleModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1 shadow-sm transition-all hover:shadow-md bg-amber-600"
+              >
+                <Plus className="w-3.5 h-3.5" /> Record Offline Sale
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {registeredVehiclesList.map((v, i) => (
-              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all">
+              <div
+                key={v.plate || i}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
+                onClick={() => {
+                  const plate = (v.plate || '').toUpperCase().trim();
+                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                }}
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
@@ -1654,6 +1675,27 @@ export default function CarWashAdminHubPage() {
               </div>
             ))}
           </div>
+
+          {/* Vehicle Detail Modal */}
+          <RegisteredVehicleDetailModal
+            isOpen={!!selectedVehicleDetail}
+            onClose={() => setSelectedVehicleDetail(null)}
+            vehicle={selectedVehicleDetail?.vehicle}
+            bookingHistory={selectedVehicleDetail?.history || []}
+            onNewOfflineSale={() => {
+              setSelectedVehicleDetail(null);
+              setIsOfflineSaleModalOpen(true);
+            }}
+          />
+
+          {/* Offline Sale Modal */}
+          <OfflineSaleModal
+            isOpen={isOfflineSaleModalOpen}
+            onClose={() => setIsOfflineSaleModalOpen(false)}
+            onSubmit={async (formData) => {
+              if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-wash', serviceName: 'Car Wash' });
+            }}
+          />
         </div>
       )}
 
