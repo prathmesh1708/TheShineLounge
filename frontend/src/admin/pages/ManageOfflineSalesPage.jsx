@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Plus, ShoppingBag, Car, CreditCard, Users, Eye, Search, ChevronLeft, ChevronRight, FileText, Download, Calendar, X, Trash2 } from 'lucide-react';
+import { Plus, ShoppingBag, Car, CreditCard, Users, Eye, Search, ChevronLeft, ChevronRight, FileText, Calendar, X, Trash2 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import OfflineSaleModal from '../common/components/OfflineSaleModal';
 import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicleDetailModal';
@@ -236,14 +236,6 @@ export default function ManageOfflineSalesPage() {
           <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Record walk-in counter sales, offline membership purchases & manual vehicle registrations</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={() => setSelectedInvoiceSale(offlineSales[0] || defaultOfflineSale)}
-            className="flex-1 sm:flex-initial px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-gray-800 bg-white border border-gray-300 hover:border-amber-400 hover:text-amber-700 shadow-xs transition-all flex items-center justify-center gap-1.5"
-            title="Download / Generate Invoice PDF"
-          >
-            <Download className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span className="truncate">Download Invoice</span>
-          </button>
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex-1 sm:flex-initial px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5"
