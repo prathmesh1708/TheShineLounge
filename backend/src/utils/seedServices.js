@@ -40,7 +40,7 @@ const initialServices = [
         renewable: true,
         upgradeAvailable: true,
         isPopular: false,
-        badge: ''
+        badge: 'PASS'
       },
       {
         name: 'Yearly Membership',

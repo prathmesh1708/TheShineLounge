@@ -5,7 +5,7 @@ import OfflineSaleModal from '../common/components/OfflineSaleModal';
 import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicleDetailModal';
 
 export default function ManageOfflineSalesPage() {
-  const { bookings, addOfflineSale, showToast } = useAdmin();
+  const { bookings, addOfflineSale, showToast, services } = useAdmin();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -243,6 +243,7 @@ export default function ManageOfflineSalesPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleOfflineSaleSubmit}
+        services={services}
       />
 
       {/* Vehicle Detail Modal */}

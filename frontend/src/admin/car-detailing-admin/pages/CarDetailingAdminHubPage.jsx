@@ -1216,6 +1216,7 @@ export default function CarDetailingAdminHubPage() {
             onSubmit={async (formData) => {
               if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
             }}
+            services={services}
           />
         </div>
       )}

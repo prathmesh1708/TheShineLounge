@@ -205,9 +205,14 @@ export const initialServices = [
     status: 'active',
     image: 'https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&w=600&q=80',
     plans: [
-      { id: 'p1', name: 'Single Wash', price: 699, description: 'Complimentary vacuum, polish, matt cleaning', billing: 'per wash' },
-      { id: 'p2', name: 'Monthly Membership', price: 2499, description: '1-3 times car fragrance, 4 washes included', billing: 'per month' },
-      { id: 'p3', name: 'Annual VIP Pass', price: 24999, description: 'Unlimited washes + 2 detailing sessions', billing: 'per year' }
+      { id: 'pw-1', name: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning', billing: 'per wash' }
+    ],
+    pricing: [
+      { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
+    ],
+    memberships: [
+      { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS' },
+      { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE' }
     ]
   },
   {

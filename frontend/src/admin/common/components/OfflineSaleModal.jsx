@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { useAdmin } from '../context/AdminContext';
 
 const SERVICE_OPTIONS = [
   { key: 'car-wash', label: 'Car Wash', serviceName: 'Car Wash' },
@@ -46,20 +47,163 @@ const initialFormState = {
   notes: ''
 };
 
-export default function OfflineSaleModal({ isOpen, onClose, onSubmit }) {
+// Fallback Car Wash packages & memberships (matches /admin/car-wash?tab=packages)
+const DEFAULT_CAR_WASH_PACKAGES = [
+  { id: 'pw-1', name: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
+];
+
+const DEFAULT_CAR_WASH_MEMBERSHIPS = [
+  { id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, description: 'Up to 4 washes/month + interior car fragrance' },
+  { id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, description: 'Unlimited washes + ceramic coating & 5x car fragrance' }
+];
+
+// Extract normalized plans/packages from a service object
+const extractPlans = (service, serviceKey) => {
+  if (!service && serviceKey === 'car-wash') return DEFAULT_CAR_WASH_PACKAGES;
+  if (!service) return [];
+
+  const rawPricing = service.pricing || [];
+  const rawPlans = service.plans || [];
+
+  const fromPricing = rawPricing.map(p => ({
+    id: p._id || p.id || p.title || p.name,
+    name: p.title || p.name || 'Package',
+    price: Number(p.price) || 0,
+    description: p.description || ''
+  }));
+
+  const fromPlans = rawPlans.map(p => ({
+    id: p._id || p.id || p.name,
+    name: p.name || p.title || 'Package',
+    price: Number(p.price) || 0,
+    description: p.description || ''
+  }));
+
+  const combined = fromPricing.length > 0 ? fromPricing : fromPlans;
+
+  if (combined.length === 0 && serviceKey === 'car-wash') {
+    return DEFAULT_CAR_WASH_PACKAGES;
+  }
+
+  return combined;
+};
+
+// Extract memberships from a service object
+const extractMemberships = (service, serviceKey) => {
+  if (!service && serviceKey === 'car-wash') return DEFAULT_CAR_WASH_MEMBERSHIPS;
+  if (!service) return [];
+
+  const raw = service.memberships || [];
+  const list = raw.map(m => ({
+    id: m._id || m.id || m.name,
+    name: m.name || m.title || 'Membership',
+    price: Number(m.price) || 0,
+    duration: Number(m.duration) || 30,
+    description: Array.isArray(m.benefits) ? m.benefits.join(', ') : (m.description || '')
+  }));
+
+  if (list.length === 0 && serviceKey === 'car-wash') {
+    return DEFAULT_CAR_WASH_MEMBERSHIPS;
+  }
+
+  return list;
+};
+
+export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: propsServices = [] }) {
+  const adminContext = useAdmin();
+  const contextServices = adminContext?.services || [];
+  const allServices = propsServices.length > 0 ? propsServices : contextServices;
+
   const [form, setForm] = useState({ ...initialFormState });
   const [submitting, setSubmitting] = useState(false);
+  const [isCustomPackage, setIsCustomPackage] = useState(false);
+  const [isCustomMembership, setIsCustomMembership] = useState(false);
+  const [cacheVersion, setCacheVersion] = useState(0);
+
+  // Re-sync whenever a service is edited/added in admin hub
+  useEffect(() => {
+    const handleUpdate = () => setCacheVersion(v => v + 1);
+    window.addEventListener('tsl_service_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('tsl_service_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  // Find the selected service, merging live localStorage cached service if available
+  const selectedService = useMemo(() => {
+    let match = allServices.find(s =>
+      s.key === form.serviceKey ||
+      s.slug === form.serviceKey ||
+      s._id === form.serviceKey
+    ) || null;
+
+    if (form.serviceKey === 'car-wash') {
+      try {
+        const cached = localStorage.getItem('tsl_car_wash_service');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          match = { ...(match || {}), ...parsed };
+        }
+      } catch (e) {}
+    }
+
+    return match;
+  }, [allServices, form.serviceKey, cacheVersion]);
+
+  // Derive available packages and memberships for the selected service
+  const availablePackages = useMemo(() => extractPlans(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
+  const availableMemberships = useMemo(() => extractMemberships(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
 
   const handleChange = (field, value) => {
     setForm(prev => {
       const updated = { ...prev, [field]: value };
-      // If service selection changed, update serviceName
+      // If service selection changed, update serviceName and reset package/membership
       if (field === 'serviceKey') {
         const match = SERVICE_OPTIONS.find(s => s.key === value);
         updated.serviceName = match ? match.serviceName : value;
+        updated.packageName = '';
+        updated.membershipName = '';
+        updated.price = '';
+        setIsCustomPackage(false);
+        setIsCustomMembership(false);
       }
       return updated;
     });
+  };
+
+  // Handle package selection from dropdown — auto-fill price but keep it editable
+  const handlePackageSelect = (selectedValue) => {
+    if (selectedValue === '__custom__') {
+      setIsCustomPackage(true);
+      setForm(prev => ({ ...prev, packageName: '', price: '' }));
+      return;
+    }
+    setIsCustomPackage(false);
+    const pkg = availablePackages.find(p => p.name === selectedValue);
+    setForm(prev => ({
+      ...prev,
+      packageName: selectedValue,
+      price: pkg ? String(pkg.price) : prev.price
+    }));
+  };
+
+  // Handle membership selection from dropdown — auto-fill price but keep it editable
+  const handleMembershipSelect = (selectedValue) => {
+    if (selectedValue === '__custom__') {
+      setIsCustomMembership(true);
+      setForm(prev => ({ ...prev, membershipName: '', price: '' }));
+      return;
+    }
+    setIsCustomMembership(false);
+    const mem = availableMemberships.find(m => m.name === selectedValue);
+    setForm(prev => ({
+      ...prev,
+      membershipName: selectedValue,
+      price: mem ? String(mem.price) : prev.price,
+      validityDays: mem ? String(mem.duration) : prev.validityDays
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -69,6 +213,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit }) {
     try {
       await onSubmit(form);
       setForm({ ...initialFormState });
+      setIsCustomPackage(false);
+      setIsCustomMembership(false);
       onClose();
     } catch (err) {
       console.error('Offline sale submission error:', err);
@@ -230,30 +376,104 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit }) {
             </div>
 
             {form.saleType === 'service' ? (
-              <div>
-                <label className={labelClass}>Package / Service Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.packageName}
-                  onChange={e => handleChange('packageName', e.target.value)}
-                  placeholder="e.g. Executive Wash, Full Detailing, Beard Trim"
-                  className={inputClass}
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className={labelClass}>Select Package *</label>
+                  {availablePackages.length > 0 && !isCustomPackage ? (
+                    <select
+                      value={form.packageName}
+                      onChange={e => handlePackageSelect(e.target.value)}
+                      className={inputClass}
+                      required
+                    >
+                      <option value="">— Select a package —</option>
+                      {availablePackages.map(p => (
+                        <option key={p.id} value={p.name}>
+                          {p.name} — ₹{p.price}
+                        </option>
+                      ))}
+                      <option value="__custom__">✏️ Custom / Other</option>
+                    </select>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        required
+                        value={form.packageName}
+                        onChange={e => handleChange('packageName', e.target.value)}
+                        placeholder="Enter custom package name"
+                        className={inputClass}
+                      />
+                      {availablePackages.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { setIsCustomPackage(false); setForm(prev => ({ ...prev, packageName: '', price: '' })); }}
+                          className="text-[10px] font-bold text-amber-600 hover:text-amber-700 transition-colors"
+                        >
+                          ← Back to package list
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {form.packageName && !isCustomPackage && (() => {
+                  const selectedPkg = availablePackages.find(p => p.name === form.packageName);
+                  return selectedPkg?.description ? (
+                    <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100">
+                      {selectedPkg.description}
+                    </p>
+                  ) : null;
+                })()}
               </div>
             ) : (
               <div className="space-y-3">
                 <div>
-                  <label className={labelClass}>Membership Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={form.membershipName}
-                    onChange={e => handleChange('membershipName', e.target.value)}
-                    placeholder="e.g. Monthly Unlimited Wash, Premium Detailing Pass"
-                    className={inputClass}
-                  />
+                  <label className={labelClass}>Select Membership *</label>
+                  {availableMemberships.length > 0 && !isCustomMembership ? (
+                    <select
+                      value={form.membershipName}
+                      onChange={e => handleMembershipSelect(e.target.value)}
+                      className={inputClass}
+                      required
+                    >
+                      <option value="">— Select a membership —</option>
+                      {availableMemberships.map(m => (
+                        <option key={m.id} value={m.name}>
+                          {m.name} — ₹{m.price}
+                        </option>
+                      ))}
+                      <option value="__custom__">✏️ Custom / Other</option>
+                    </select>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        required
+                        value={form.membershipName}
+                        onChange={e => handleChange('membershipName', e.target.value)}
+                        placeholder="Enter custom membership name"
+                        className={inputClass}
+                      />
+                      {availableMemberships.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { setIsCustomMembership(false); setForm(prev => ({ ...prev, membershipName: '', price: '' })); }}
+                          className="text-[10px] font-bold text-amber-600 hover:text-amber-700 transition-colors"
+                        >
+                          ← Back to membership list
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {form.membershipName && !isCustomMembership && (() => {
+                  const selectedMem = availableMemberships.find(m => m.name === form.membershipName);
+                  return selectedMem?.description ? (
+                    <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100">
+                      {selectedMem.description}
+                    </p>
+                  ) : null;
+                })()}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className={labelClass}>Validity Duration *</label>
@@ -301,6 +521,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit }) {
                   className={inputClass}
                   min="0"
                 />
+                <span className="text-[9px] text-gray-400 mt-0.5 block">Auto-filled from package. You can edit this.</span>
               </div>
               <div>
                 <label className={labelClass}>Payment Mode *</label>

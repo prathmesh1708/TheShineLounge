@@ -163,21 +163,17 @@ export default function CarWashAdminHubPage() {
     const cached = localStorage.getItem('tsl_car_wash_service');
     if (cached) {
       setDbService(JSON.parse(cached));
-    } else {
       setDbService({
         _id: serviceMain?.id || 'srv-1',
         pricing: [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
+          { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
         ],
         plans: [
-          { _id: 'pw-1', name: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', name: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', name: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
+          { _id: 'pw-1', name: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
         ],
         memberships: [
-          { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR' }
+          { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 4 },
+          { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE', duration: 365, visitLimit: 365 }
         ]
       });
     }
@@ -231,9 +227,7 @@ export default function CarWashAdminHubPage() {
           description: p.description || (p.features && p.features.join(', ')) || ''
         }))
       : (serviceMain?.pricing || [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
+          { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
         ]));
 
   const activeMemberships = (dbService?.memberships !== undefined)
@@ -249,7 +243,8 @@ export default function CarWashAdminHubPage() {
         renewable: m.renewable !== false
       }))
     : (serviceMain?.memberships || [
-        { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR', duration: 30, visitLimit: 999 }
+        { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 4 },
+        { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE', duration: 365, visitLimit: 365 }
       ]);
 
   // Per Car Discount as it is currently stored on the service. Read from
@@ -1695,6 +1690,7 @@ export default function CarWashAdminHubPage() {
             onSubmit={async (formData) => {
               if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-wash', serviceName: 'Car Wash' });
             }}
+            services={services}
           />
         </div>
       )}
