@@ -42,6 +42,7 @@ import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleModal from '../../common/components/OfflineSaleModal';
+import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import apiClient from '../../../common/utils/apiClient';
 import {
   getServicesSync,
@@ -386,6 +387,7 @@ export default function CarDetailingAdminHubPage() {
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
+  const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1207,6 +1209,24 @@ export default function CarDetailingAdminHubPage() {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);
             }}
+            onDownloadInvoice={(v) => {
+              setSelectedInvoiceSale({
+                id: v.offlineSaleId || 'OFS-RECEIPT',
+                customerName: v.ownerName,
+                phone: v.ownerPhone,
+                customerEmail: v.ownerEmail,
+                vehicleNo: v.plate,
+                vehicleModel: v.model,
+                packageName: v.packageName || 'Car Detailing',
+                membershipName: v.membershipName,
+                saleType: v.membershipName ? 'membership' : 'service',
+                price: v.offlineSalePrice || v.price || 1499,
+                paymentMode: v.paymentMode || 'Cash',
+                date: v.offlineSaleDate || v.lastWashDate || v.lastServiceDate,
+                membershipExpiry: v.membershipExpiry,
+                membershipValidity: v.membershipValidity
+              });
+            }}
           />
 
           {/* Offline Sale Modal */}
@@ -1217,6 +1237,13 @@ export default function CarDetailingAdminHubPage() {
               if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
             }}
             services={services}
+          />
+
+          {/* Invoice / Receipt Download Modal */}
+          <OfflineSaleInvoiceModal
+            isOpen={!!selectedInvoiceSale}
+            onClose={() => setSelectedInvoiceSale(null)}
+            sale={selectedInvoiceSale}
           />
         </div>
       )}

@@ -127,7 +127,13 @@ const createBooking = async (req, res) => {
       phone: phone || '',
       ...(status ? { status } : {}),
       assignedStaffId: targetStaffId,
-      assignedStaffName: targetStaffName
+      assignedStaffName: targetStaffName,
+      isOfflineSale: req.body.isOfflineSale !== undefined ? req.body.isOfflineSale : (finalBookingId && finalBookingId.startsWith('OFS-')),
+      saleType: req.body.saleType || 'service',
+      paymentMode: req.body.paymentMode || 'Cash',
+      membershipName: req.body.membershipName || '',
+      membershipValidity: req.body.membershipValidity || '',
+      membershipExpiry: req.body.membershipExpiry || ''
     });
 
     if (assignedStaff) {

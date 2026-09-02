@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
@@ -44,6 +44,7 @@ const initialFormState = {
   customExpiryDate: '',
   price: '',
   paymentMode: 'Cash',
+  saleDate: new Date().toISOString().split('T')[0],
   notes: ''
 };
 
@@ -119,6 +120,15 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const [isCustomPackage, setIsCustomPackage] = useState(false);
   const [isCustomMembership, setIsCustomMembership] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
+  const isSubmittingRef = useRef(false);
+
+  // Reset submit lock when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      isSubmittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [isOpen]);
 
   // Re-sync whenever a service is edited/added in admin hub
   useEffect(() => {
@@ -208,18 +218,28 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Guard against multiple concurrent clicks
+    if (isSubmittingRef.current || submitting) return;
     if (!form.customerName || !form.phone || !form.vehicleNo || !form.price) return;
+
+    isSubmittingRef.current = true;
     setSubmitting(true);
+
+    const payload = { ...form };
+
+    // Close the modal window IMMEDIATELY
+    onClose();
+    setForm({ ...initialFormState });
+    setIsCustomPackage(false);
+    setIsCustomMembership(false);
+
     try {
-      await onSubmit(form);
-      setForm({ ...initialFormState });
-      setIsCustomPackage(false);
-      setIsCustomMembership(false);
-      onClose();
+      await onSubmit(payload);
     } catch (err) {
       console.error('Offline sale submission error:', err);
     } finally {
       setSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -230,21 +250,21 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const sectionHeadingClass = 'flex items-center gap-2 text-xs font-black text-gray-900 pb-2 border-b border-gray-100 mb-3';
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-md">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-gray-900/70 backdrop-blur-md">
       <div className="absolute inset-0" onClick={onClose} />
       <div
-        className="relative z-10 w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative z-10 w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[94vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: '#e07b2a' }}>
-              <ShoppingBag className="w-4.5 h-4.5" />
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#e07b2a' }}>
+              <ShoppingBag className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-900 leading-tight">Create Offline Sale</h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">Record a walk-in / counter sale manually</p>
+              <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">Create Offline Sale</h3>
+              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">Record a walk-in / counter sale manually</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors">
@@ -253,7 +273,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
         </div>
 
         {/* Form Content */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 custom-scrollbar">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-5 custom-scrollbar">
 
           {/* Service Selection — FIRST */}
           <div>
@@ -509,7 +529,18 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
               <FileText className="w-4 h-4 text-amber-500" />
               Pricing & Payment
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Sale Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={form.saleDate}
+                  onChange={e => handleChange('saleDate', e.target.value)}
+                  className={inputClass}
+                />
+                <span className="text-[9px] text-gray-400 mt-0.5 block">Record date of sale.</span>
+              </div>
               <div>
                 <label className={labelClass}>Price / Amount (₹) *</label>
                 <input
@@ -521,7 +552,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
                   className={inputClass}
                   min="0"
                 />
-                <span className="text-[9px] text-gray-400 mt-0.5 block">Auto-filled from package. You can edit this.</span>
+                <span className="text-[9px] text-gray-400 mt-0.5 block">Auto-filled. You can edit this.</span>
               </div>
               <div>
                 <label className={labelClass}>Payment Mode *</label>
@@ -535,7 +566,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
                   ))}
                 </select>
               </div>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-3">
                 <label className={labelClass}>Notes / Remarks</label>
                 <textarea
                   value={form.notes}

@@ -48,6 +48,7 @@ import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleModal from '../../common/components/OfflineSaleModal';
+import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
@@ -589,6 +590,7 @@ export default function CarWashAdminHubPage() {
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
+  const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1681,6 +1683,24 @@ export default function CarWashAdminHubPage() {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);
             }}
+            onDownloadInvoice={(v) => {
+              setSelectedInvoiceSale({
+                id: v.offlineSaleId || 'OFS-RECEIPT',
+                customerName: v.ownerName,
+                phone: v.ownerPhone,
+                customerEmail: v.ownerEmail,
+                vehicleNo: v.plate,
+                vehicleModel: v.model,
+                packageName: v.packageName || 'Car Wash',
+                membershipName: v.membershipName,
+                saleType: v.membershipName ? 'membership' : 'service',
+                price: v.offlineSalePrice || v.price || 699,
+                paymentMode: v.paymentMode || 'Cash',
+                date: v.offlineSaleDate || v.lastWashDate || v.lastServiceDate,
+                membershipExpiry: v.membershipExpiry,
+                membershipValidity: v.membershipValidity
+              });
+            }}
           />
 
           {/* Offline Sale Modal */}
@@ -1691,6 +1711,13 @@ export default function CarWashAdminHubPage() {
               if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-wash', serviceName: 'Car Wash' });
             }}
             services={services}
+          />
+
+          {/* Invoice / Receipt Download Modal */}
+          <OfflineSaleInvoiceModal
+            isOpen={!!selectedInvoiceSale}
+            onClose={() => setSelectedInvoiceSale(null)}
+            sale={selectedInvoiceSale}
           />
         </div>
       )}

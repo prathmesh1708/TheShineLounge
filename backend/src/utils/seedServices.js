@@ -303,6 +303,8 @@ const initialServices = [
   }
 ];
 
+const Booking = require('../models/Booking');
+
 const seedServices = async () => {
   try {
     for (const serviceData of initialServices) {
@@ -315,6 +317,31 @@ const seedServices = async () => {
       }
     }
     console.log(`✅ Seeded & Synced ${initialServices.length} dynamic services successfully!`);
+
+    // Ensure initial offline sale is seeded
+    const existingSale = await Booking.findOne({ bookingId: 'OFS-MTJX5GRW-3986' });
+    if (!existingSale) {
+      await Booking.create({
+        bookingId: 'OFS-MTJX5GRW-3986',
+        customerName: 'Prathmesh Jawade',
+        customerEmail: 'prathmesh@gmail.com',
+        phone: '98098090',
+        serviceKey: 'car-wash',
+        serviceName: 'Car Wash',
+        packageName: 'Single Wash',
+        price: 499,
+        date: 'September 2, 2026',
+        timeSlot: '03:23 PM - 03:53 PM',
+        status: 'Completed',
+        paymentMode: 'Cash',
+        vehicleNo: 'MP09GG8790',
+        vehicleType: 'HYUNDAI i20',
+        isOfflineSale: true,
+        saleType: 'service',
+        notes: 'Walk-in counter sale'
+      });
+      console.log('✅ Seeded default offline sale OFS-MTJX5GRW-3986');
+    }
   } catch (error) {
     console.error('❌ Error seeding services:', error.message);
   }

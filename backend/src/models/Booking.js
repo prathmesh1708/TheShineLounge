@@ -156,6 +156,32 @@ const bookingSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'WashSession',
     default: null
+  },
+  // Offline sale / Manual counter sale tracking
+  isOfflineSale: {
+    type: Boolean,
+    default: false
+  },
+  saleType: {
+    type: String,
+    enum: ['service', 'membership'],
+    default: 'service'
+  },
+  paymentMode: {
+    type: String,
+    default: 'Cash'
+  },
+  membershipName: {
+    type: String,
+    default: ''
+  },
+  membershipValidity: {
+    type: String,
+    default: ''
+  },
+  membershipExpiry: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true

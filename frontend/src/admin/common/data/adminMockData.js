@@ -626,6 +626,34 @@ export const initialStaff = [
 
 // Initial Bookings for ALL 6 Services
 export const initialBookings = [
+  // Offline Counter Sale (Manual POS)
+  {
+    id: 'OFS-MTJX5GRW-3986',
+    bookingId: 'OFS-MTJX5GRW-3986',
+    customerName: 'Prathmesh Jawade',
+    customerEmail: 'prathmesh@gmail.com',
+    phone: '98098090',
+    serviceKey: 'car-wash',
+    serviceName: 'Car Wash',
+    service: 'Car Wash',
+    plan: 'Single Wash',
+    packageName: 'Single Wash',
+    amount: 499,
+    price: 499,
+    total: 499,
+    date: 'September 2, 2026',
+    timeSlot: '03:23 PM - 03:53 PM',
+    status: 'Completed',
+    staffAssigned: 'Rajesh Patel',
+    paymentMode: 'Cash',
+    vehicleNo: 'MP09GG8790',
+    vehicleModel: 'HYUNDAI i20',
+    vehicleType: 'HYUNDAI i20',
+    isOfflineSale: true,
+    saleType: 'service',
+    notes: 'Walk-in counter sale',
+    createdAt: '2026-09-02T09:53:57.635Z'
+  },
   // Car Wash Bookings
   {
     id: 'BK-9001',

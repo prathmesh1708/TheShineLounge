@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X, User, Car, CreditCard, Calendar, Clock, ShoppingBag, Phone, Mail, FileText, Plus } from 'lucide-react';
 
-export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle, bookingHistory = [], onNewOfflineSale }) {
+export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle, bookingHistory = [], onNewOfflineSale, onDownloadInvoice }) {
   if (!isOpen || !vehicle) return null;
 
   const v = vehicle;
@@ -29,6 +29,15 @@ export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle,
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onDownloadInvoice && (
+              <button
+                onClick={() => onDownloadInvoice(v)}
+                className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 flex items-center gap-1 transition-all shadow-2xs"
+                title="Download Receipt / Invoice"
+              >
+                <FileText className="w-3 h-3 text-amber-600" /> Invoice Receipt
+              </button>
+            )}
             {onNewOfflineSale && (
               <button
                 onClick={() => { onClose(); onNewOfflineSale(v); }}

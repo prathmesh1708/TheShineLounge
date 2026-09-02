@@ -100,7 +100,17 @@ export const AdminProvider = ({ children }) => {
     }
   }, [staffList]);
 
-  const [bookings, setBookings] = useState(initialBookings);
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
+        const offlineIds = new Set(cachedOffline.map(o => o.id || o.bookingId).filter(Boolean));
+        const filteredInitial = initialBookings.filter(b => !offlineIds.has(b.id) && !offlineIds.has(b.bookingId));
+        return [...cachedOffline, ...filteredInitial];
+      }
+    } catch (e) {}
+    return initialBookings;
+  });
   const [customers, setCustomers] = useState(initialCustomers);
   const [inventory, setInventory] = useState(initialInventory);
   const [coupons, setCoupons] = useState(initialCoupons);
@@ -292,10 +302,40 @@ export const AdminProvider = ({ children }) => {
             notes: b.notes || '',
             photos: b.photos || [],
             paymentMode: b.paymentMode || 'UPI',
+            isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
+            saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
+            vehicleModel: b.vehicleModel || b.vehicleType || '',
+            membershipName: b.membershipName || '',
+            membershipValidity: b.membershipValidity || '',
+            membershipExpiry: b.membershipExpiry || '',
             createdAt: b.createdAt || b.bookedAt || b.date,
             bookedAt: b.bookedAt || b.createdAt
           };
         });
+
+        // Bi-directional sync of offline sales between backend and localStorage
+        const backendOfflineSales = mapped.filter(b => b.isOfflineSale || (b.bookingId && String(b.bookingId).startsWith('OFS-')));
+        try {
+          const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+          const combinedOfflineMap = new Map();
+          // Include backend offline sales
+          backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
+          // Include locally cached offline sales if not already from backend
+          cachedOffline.forEach(s => {
+            const key = s.id || s.bookingId;
+            if (!combinedOfflineMap.has(key)) combinedOfflineMap.set(key, s);
+          });
+          const allOffline = Array.from(combinedOfflineMap.values());
+          localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
+
+          // Ensure all offline sales are in mapped list
+          allOffline.forEach(ofs => {
+            if (!mapped.some(m => m.id === ofs.id || m.bookingId === ofs.bookingId)) {
+              mapped.unshift(ofs);
+            }
+          });
+        } catch (e) {}
+
         setMemberships(deriveMembershipsFromBookings(mapped));
       } else {
         setMemberships(deriveMembershipsFromBookings([]));
@@ -348,8 +388,20 @@ export const AdminProvider = ({ children }) => {
 
       setBookings(combinedBookings.length > 0 ? combinedBookings : initialBookings);
     } catch (err) {
-      console.warn('Could not fetch bookings list:', err.message);
-      setMemberships(deriveMembershipsFromBookings([]));
+      console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
+      try {
+        const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+        if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
+          const offlineIds = new Set(cachedOffline.map(o => o.id || o.bookingId).filter(Boolean));
+          const filteredInitial = initialBookings.filter(b => !offlineIds.has(b.id) && !offlineIds.has(b.bookingId));
+          const fallback = [...cachedOffline, ...filteredInitial];
+          setBookings(fallback);
+          setMemberships(deriveMembershipsFromBookings(fallback));
+          return;
+        }
+      } catch (e) {}
+      setBookings(initialBookings);
+      setMemberships(deriveMembershipsFromBookings(initialBookings));
     }
   };
 
@@ -788,19 +840,22 @@ export const AdminProvider = ({ children }) => {
   // 5b. Offline Sales (manual counter POS)
   const addOfflineSale = async (formData) => {
     const newId = `OFS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const timeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const timeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : new Date();
+    const dateStr = !isNaN(saleDateObj.getTime())
+      ? saleDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const timeStart = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeEnd = new Date(Date.now() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     // Compute membership expiry if applicable
     let membershipExpiry = '';
     let membershipValidity = '';
     if (formData.saleType === 'membership') {
+      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : new Date();
       const days = formData.validityDays === 'custom'
-        ? Math.ceil((new Date(formData.customExpiryDate) - now) / (1000 * 60 * 60 * 24))
+        ? Math.ceil((new Date(formData.customExpiryDate) - baseDate) / (1000 * 60 * 60 * 24))
         : Number(formData.validityDays) || 30;
-      const expiryDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      const expiryDate = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
       membershipExpiry = expiryDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       membershipValidity = `${days} Days`;
     }
@@ -812,13 +867,22 @@ export const AdminProvider = ({ children }) => {
       packageName: formData.saleType === 'membership' ? formData.membershipName : formData.packageName,
       price: Number(formData.price) || 0,
       date: dateStr,
+      saleDate: formData.saleDate || new Date().toISOString().split('T')[0],
       timeSlot: `${timeStart} - ${timeEnd}`,
       customerName: formData.customerName,
       customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
       vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
       vehicleType: formData.vehicleModel || '',
       phone: formData.phone || '',
-      status: 'Completed'
+      status: 'Completed',
+      isOfflineSale: true,
+      saleType: formData.saleType,
+      vehicleModel: formData.vehicleModel || '',
+      membershipName: formData.saleType === 'membership' ? formData.membershipName : '',
+      membershipValidity,
+      membershipExpiry,
+      paymentMode: formData.paymentMode || 'Cash',
+      notes: formData.notes || ''
     };
 
     // Try saving to backend
@@ -829,24 +893,40 @@ export const AdminProvider = ({ children }) => {
       console.warn('Offline sale backend save error, using local fallback:', err.message);
     }
 
-    // Always update local state immediately
+    // Always update local state and localStorage cache
     const localRecord = {
       id: newId,
       ...bookingPayload,
-      isOfflineSale: true,
-      saleType: formData.saleType,
-      vehicleModel: formData.vehicleModel || '',
-      membershipName: formData.saleType === 'membership' ? formData.membershipName : '',
-      membershipValidity,
-      membershipExpiry,
-      paymentMode: formData.paymentMode || 'Cash',
-      notes: formData.notes || '',
       createdAt: now.toISOString(),
       bookedAt: now.toISOString()
     };
 
+    try {
+      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
+    } catch (e) {}
+
     setBookings(prev => [localRecord, ...prev]);
     showToast(`✅ Offline sale ${newId} recorded successfully!`);
+    return localRecord;
+  };
+
+  const deleteOfflineSale = async (saleId) => {
+    try {
+      await apiClient.delete(`/bookings/${saleId}`);
+    } catch (e) {
+      console.warn('Backend delete offline sale error:', e.message);
+    }
+
+    setBookings(prev => prev.filter(b => b.id !== saleId && b.bookingId !== saleId && b._id !== saleId));
+
+    try {
+      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      const filtered = cached.filter(s => s.id !== saleId && s.bookingId !== saleId && s._id !== saleId);
+      localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
+    } catch (e) {}
+
+    showToast('Offline sale removed');
   };
 
   // 6. Staff
@@ -1062,6 +1142,7 @@ export const AdminProvider = ({ children }) => {
       assignStaffToBooking,
       addBooking,
       addOfflineSale,
+      deleteOfflineSale,
       addStaff,
       updateStaff,
       deleteStaff,
