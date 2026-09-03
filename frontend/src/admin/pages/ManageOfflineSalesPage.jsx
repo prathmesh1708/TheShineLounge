@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Plus, ShoppingBag, Car, CreditCard, Users, Eye, Search, ChevronLeft, ChevronRight, FileText, Calendar, X, Trash2 } from 'lucide-react';
+import { Plus, ShoppingBag, Car, CreditCard, Users, Eye, Search, ChevronLeft, ChevronRight, FileText, Calendar, X, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import OfflineSaleModal from '../common/components/OfflineSaleModal';
 import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicleDetailModal';
@@ -14,9 +14,38 @@ export default function ManageOfflineSalesPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('all');
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' = calendar sequence (earliest first, e.g. Aug 20 then Sep 2), 'desc' = latest first
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
   const isSubmittingSaleRef = useRef(false);
+
+  // Helper to extract timestamp from the displayed calendar date for chronological sequence sorting
+  const getSaleTime = (sale) => {
+    if (!sale) return 0;
+    // 1. Prioritize displayed date string (e.g., "August 20, 2026" or "September 2, 2026")
+    if (sale.date) {
+      const d = new Date(sale.date);
+      if (!isNaN(d.getTime())) return d.getTime();
+
+      // Fallback for DD/MM/YYYY or DD-MM-YYYY format
+      const parts = String(sale.date).trim().split(/[-/]/);
+      if (parts.length === 3 && parts[2]?.length === 4) {
+        const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
+        if (!isNaN(parsed.getTime())) return parsed.getTime();
+      }
+    }
+    // 2. Check saleDate (YYYY-MM-DD)
+    if (sale.saleDate) {
+      const d = new Date(sale.saleDate.includes('T') ? sale.saleDate : `${sale.saleDate}T12:00:00`);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    // 3. Fallback to createdAt timestamp
+    if (sale.createdAt) {
+      const t = new Date(sale.createdAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    return 0;
+  };
 
   // Default seed matching the user's recorded sale
   const defaultOfflineSale = {
@@ -59,7 +88,13 @@ export default function ManageOfflineSalesPage() {
       map.set(defaultOfflineSale.id, defaultOfflineSale);
     }
 
-    return Array.from(map.values());
+    const list = Array.from(map.values());
+    return list.sort((a, b) => {
+      const timeA = getSaleTime(a);
+      const timeB = getSaleTime(b);
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || a.bookingId || '').localeCompare(String(b.id || b.bookingId || ''));
+    });
   }, [bookings]);
 
   // KPI Stats
@@ -101,12 +136,13 @@ export default function ManageOfflineSalesPage() {
 
   // Helper to extract date from sale record
   const getSaleDateObj = (sale) => {
-    if (sale.saleDate) {
-      const d = new Date(sale.saleDate + 'T00:00:00');
-      if (!isNaN(d.getTime())) return d;
-    }
+    if (!sale) return null;
     if (sale.date) {
       const d = new Date(sale.date);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (sale.saleDate) {
+      const d = new Date(sale.saleDate.includes('T') ? sale.saleDate : `${sale.saleDate}T00:00:00`);
       if (!isNaN(d.getTime())) return d;
     }
     if (sale.createdAt) {
@@ -116,40 +152,54 @@ export default function ManageOfflineSalesPage() {
     return null;
   };
 
-  // Search & Paginate with text and date range filtering
-  const filteredSales = offlineSales.filter(s => {
-    // 1. Text Search Filter
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      const matchesText = (
-        (s.customerName || '').toLowerCase().includes(term) ||
-        (s.vehicleNo || '').toLowerCase().includes(term) ||
-        (s.customerEmail || '').toLowerCase().includes(term) ||
-        (s.phone || '').toLowerCase().includes(term) ||
-        (s.packageName || '').toLowerCase().includes(term) ||
-        (s.membershipName || '').toLowerCase().includes(term) ||
-        (s.id || '').toLowerCase().includes(term)
-      );
-      if (!matchesText) return false;
-    }
-
-    // 2. Date Range Filter
-    if (startDate || endDate) {
-      const saleDate = getSaleDateObj(s);
-      if (!saleDate) return false;
-
-      if (startDate) {
-        const start = new Date(startDate + 'T00:00:00');
-        if (saleDate < start) return false;
+  // Search, Filter & Sequence Sort
+  const filteredSales = useMemo(() => {
+    const list = offlineSales.filter(s => {
+      // 1. Text Search Filter
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchesText = (
+          (s.customerName || '').toLowerCase().includes(term) ||
+          (s.vehicleNo || '').toLowerCase().includes(term) ||
+          (s.customerEmail || '').toLowerCase().includes(term) ||
+          (s.phone || '').toLowerCase().includes(term) ||
+          (s.packageName || '').toLowerCase().includes(term) ||
+          (s.membershipName || '').toLowerCase().includes(term) ||
+          (s.id || '').toLowerCase().includes(term)
+        );
+        if (!matchesText) return false;
       }
-      if (endDate) {
-        const end = new Date(endDate + 'T23:59:59');
-        if (saleDate > end) return false;
-      }
-    }
 
-    return true;
-  });
+      // 2. Date Range Filter
+      if (startDate || endDate) {
+        const saleDate = getSaleDateObj(s);
+        if (!saleDate) return false;
+
+        if (startDate) {
+          const start = new Date(startDate + 'T00:00:00');
+          if (saleDate < start) return false;
+        }
+        if (endDate) {
+          const end = new Date(endDate + 'T23:59:59');
+          if (saleDate > end) return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Sequence sorting by calendar date (earliest date first: 'asc')
+    return [...list].sort((a, b) => {
+      const timeA = getSaleTime(a);
+      const timeB = getSaleTime(b);
+      if (timeA !== timeB) {
+        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+      }
+      return sortOrder === 'asc'
+        ? String(a.id || a.bookingId || '').localeCompare(String(b.id || b.bookingId || ''))
+        : String(b.id || b.bookingId || '').localeCompare(String(a.id || a.bookingId || ''));
+    });
+  }, [offlineSales, searchTerm, startDate, endDate, sortOrder]);
 
   const totalPages = Math.ceil(filteredSales.length / pageSize) || 1;
   const paginatedSales = filteredSales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -362,7 +412,21 @@ export default function ManageOfflineSalesPage() {
                     <th className="text-left px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Service / Membership</th>
                     <th className="text-left px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Price</th>
                     <th className="text-left px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Payment</th>
-                    <th className="text-left px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Date</th>
+                    <th className="text-left px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="inline-flex items-center gap-1 font-bold text-gray-600 hover:text-amber-700 transition-colors uppercase tracking-wider text-[10px] group"
+                        title={sortOrder === 'asc' ? 'Sorted: Calendar sequence (earliest first). Click for newest first' : 'Sorted: Newest first. Click for calendar sequence'}
+                      >
+                        <span>Date</span>
+                        {sortOrder === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-amber-600 group-hover:scale-110 transition-transform" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-amber-600 group-hover:scale-110 transition-transform" />
+                        )}
+                      </button>
+                    </th>
                     <th className="text-center px-4 py-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Actions</th>
                   </tr>
                 </thead>
