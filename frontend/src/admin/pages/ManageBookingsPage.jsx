@@ -130,12 +130,17 @@ export default function ManageBookingsPage() {
     {
       header: 'Total Amount',
       accessorKey: 'total',
-      cell: (row) => (
-        <div>
-          <span className="font-black text-gray-900 block">₹{row.total.toFixed(0)}</span>
-          <span className="text-[10px] text-gray-400 font-semibold">{row.paymentMode}</span>
-        </div>
-      )
+      cell: (row) => {
+        const amt = Number(row?.total ?? row?.price ?? row?.amount ?? 0);
+        return (
+          <div>
+            <span className="font-black text-gray-900 block">
+              ₹{isNaN(amt) ? '0' : amt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-[10px] text-gray-400 font-semibold">{row?.paymentMode || 'Cash'}</span>
+          </div>
+        );
+      }
     },
     {
       header: 'Assigned Staff',
@@ -238,7 +243,9 @@ export default function ManageBookingsPage() {
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Total Amount (Inc GST)</span>
-                <span className="font-extrabold text-gray-900">₹{selectedBooking.total.toFixed(2)}</span>
+                <span className="font-extrabold text-gray-900">
+                  ₹{Number(selectedBooking?.total ?? selectedBooking?.price ?? selectedBooking?.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
             </div>
 

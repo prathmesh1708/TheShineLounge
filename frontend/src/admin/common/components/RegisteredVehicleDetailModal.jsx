@@ -1,14 +1,22 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, User, Car, CreditCard, Calendar, Clock, ShoppingBag, Phone, Mail, FileText, Plus } from 'lucide-react';
+import { X, User, Car, CreditCard, Calendar, Clock, ShoppingBag, Phone, Mail, FileText, Plus, Sparkles, CheckCircle2 } from 'lucide-react';
 
-export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle, bookingHistory = [], onNewOfflineSale, onDownloadInvoice }) {
+export default function RegisteredVehicleDetailModal({
+  isOpen,
+  onClose,
+  vehicle,
+  bookingHistory = [],
+  onNewOfflineSale,
+  onDownloadInvoice,
+  onWashDone
+}) {
   if (!isOpen || !vehicle) return null;
 
   const v = vehicle;
 
   // Compute membership validity info if present
-  const hasMembership = v.membershipName || v.membershipValidity || v.membershipExpiry;
+  const hasMembership = v.membershipName || v.membershipValidity || v.membershipExpiry || (v.packageName && v.packageName.toLowerCase().includes('membership'));
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-md">
@@ -29,6 +37,15 @@ export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle,
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onWashDone && (
+              <button
+                onClick={() => onWashDone(v)}
+                className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm transition-all hover:shadow-md active:scale-95"
+                title="Log a completed wash for this vehicle under active membership"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-200" /> Wash Done
+              </button>
+            )}
             {onDownloadInvoice && (
               <button
                 onClick={() => onDownloadInvoice(v)}
@@ -104,7 +121,7 @@ export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle,
               </div>
               <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
                 <span className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Total Services</span>
-                <span className="text-sm font-black text-gray-900">{v.totalWashes || v.totalBookings || 0}</span>
+                <span className="text-sm font-black text-gray-900">{v.washesUsed !== undefined ? v.washesUsed : (v.totalWashes || v.totalBookings || 0)}</span>
               </div>
               <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
                 <span className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Last Service</span>
@@ -120,38 +137,92 @@ export default function RegisteredVehicleDetailModal({ isOpen, onClose, vehicle,
               Membership & Package
             </h4>
             {hasMembership ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-gray-400">Membership:</span>
-                  <span className="font-bold text-amber-700">{v.membershipName}</span>
+                  <span className="text-gray-400 font-bold uppercase text-[10px]">Membership Plan:</span>
+                  <span className="font-extrabold text-amber-700 text-xs">{v.membershipName || v.packageName}</span>
                 </div>
-                {v.membershipValidity && (
+
+                {/* Washes Used Progress */}
+                <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100 space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-400">Validity:</span>
-                    <span className="font-semibold text-gray-700">{v.membershipValidity}</span>
+                    <span className="text-gray-500 font-bold text-[11px]">Washes Consumed</span>
+                    <span className="font-extrabold text-gray-900">
+                      {v.washesUsed !== undefined ? (
+                        (v.maxWashes === 999 || v.maxWashes === 'Unlimited')
+                          ? `${v.washesUsed} / ∞ Washes (Unlimited)`
+                          : `${v.washesUsed} / ${v.maxWashes || 4} Washes`
+                      ) : `${v.totalWashes || 1} Washes`}
+                    </span>
                   </div>
-                )}
-                {v.membershipExpiry && (
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-400">Expires:</span>
-                    <span className="font-semibold text-gray-700">{v.membershipExpiry}</span>
-                  </div>
-                )}
-                {v.membershipStatus && (
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-400">Status:</span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                      v.membershipStatus === 'Active'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-red-50 text-red-700 border-red-200'
-                    }`}>{v.membershipStatus}</span>
+                  {v.washesUsed !== undefined && v.maxWashes && (
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full transition-all"
+                        style={{
+                          width: (v.maxWashes === 999 || v.maxWashes === 'Unlimited')
+                            ? '100%'
+                            : `${Math.min(100, ((v.washesUsed || 0) / (v.maxWashes || 1)) * 100)}%`
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {v.membershipValidity && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Validity:</span>
+                      <span className="font-semibold text-gray-700">{v.membershipValidity}</span>
+                    </div>
+                  )}
+                  {v.membershipExpiry && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Expires:</span>
+                      <span className="font-semibold text-gray-700">{v.membershipExpiry}</span>
+                    </div>
+                  )}
+                  {v.membershipStatus && (
+                    <div className="flex justify-between items-center col-span-2">
+                      <span className="text-gray-400">Status:</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                        v.membershipStatus === 'Active'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                      }`}>{v.membershipStatus}</span>
+                    </div>
+                  )}
+                </div>
+
+                {onWashDone && (
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-[11px] text-gray-500 font-medium">Click when wash is completed:</span>
+                    <button
+                      onClick={() => onWashDone(v)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Wash Done
+                    </button>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="flex flex-col items-center py-3 text-gray-400">
-                <p className="text-xs font-semibold">Active Package: <span className="text-amber-700 font-bold">{v.packageName || 'Single Service'}</span></p>
-                {!v.packageName && <p className="text-[10px] mt-1">No active membership plan</p>}
+              <div className="space-y-3">
+                <div className="flex flex-col items-center py-2 text-gray-400">
+                  <p className="text-xs font-semibold">Active Package: <span className="text-amber-700 font-bold">{v.packageName || 'Single Service'}</span></p>
+                  {!v.packageName && <p className="text-[10px] mt-1">No active membership plan</p>}
+                </div>
+                {onWashDone && (
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-[11px] text-gray-500 font-medium">Log service wash:</span>
+                    <button
+                      onClick={() => onWashDone(v)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Wash Done
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

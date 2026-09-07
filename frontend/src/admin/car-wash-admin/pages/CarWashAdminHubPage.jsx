@@ -25,11 +25,14 @@ import {
   Calendar,
   Upload,
   X,
-  Search
+  Search,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import {
   buildMembershipSchedule,
-  formatShortDate
+  formatShortDate,
+  isMembershipPackage
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import {
@@ -77,7 +80,9 @@ export default function CarWashAdminHubPage() {
     addInventoryItem,
     updateStock,
     showToast,
-    addOfflineSale
+    addOfflineSale,
+    memberships,
+    logMembershipWash
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -122,6 +127,8 @@ export default function CarWashAdminHubPage() {
 
     const key = `${email || name}_${plate}`.toLowerCase();
 
+    const isWash = !isMembershipPackage(b.plan || b.packageName);
+
     if (!registeredVehiclesMap[key]) {
       registeredVehiclesMap[key] = {
         plate,
@@ -130,13 +137,61 @@ export default function CarWashAdminHubPage() {
         ownerEmail: email,
         ownerPhone: b.phone || b.mobile || '',
         packageName: b.packageName || '',
-        totalWashes: 1,
-        lastWashDate: b.date || ''
+        totalWashes: isWash ? 1 : 0,
+        lastWashDate: isWash ? (b.date || '') : ''
       };
     } else {
-      registeredVehiclesMap[key].totalWashes += 1;
-      if (b.date && !b.date.includes('July 18')) {
-        registeredVehiclesMap[key].lastWashDate = b.date;
+      if (isWash) {
+        registeredVehiclesMap[key].totalWashes += 1;
+        if (b.date && !b.date.includes('July 18')) {
+          registeredVehiclesMap[key].lastWashDate = b.date;
+        }
+      }
+    }
+  });
+
+  // Single source of truth: Ensure every Car Wash membership holder is present in the registered fleet
+  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  (memberships || []).forEach(m => {
+    if (!m.vehicleNo) return;
+    if (m.serviceKey && m.serviceKey !== serviceKey) return;
+    const cleanPlate = normalizePlate(m.vehicleNo);
+    const alreadyExists = Object.values(registeredVehiclesMap).some(v => normalizePlate(v.plate) === cleanPlate);
+    if (!alreadyExists) {
+      const key = `${m.email || m.customerName}_${cleanPlate}`.toLowerCase();
+      registeredVehiclesMap[key] = {
+        plate: m.vehicleNo,
+        model: m.vehicleModel || 'Car',
+        ownerName: m.customerName || 'Valued Member',
+        ownerEmail: m.email || '',
+        ownerPhone: m.phone || '',
+        packageName: m.planName || 'Monthly Membership',
+        totalWashes: m.washesUsed || 0,
+        lastWashDate: m.startDateLabel || m.startDate || '—'
+      };
+    }
+  });
+
+  // Attach live membership status and wash count if vehicle has an active plan
+  Object.values(registeredVehiclesMap).forEach((veh) => {
+    const cleanPlate = normalizePlate(veh.plate);
+    const activeMem = (memberships || []).find(m => {
+      if (cleanPlate && normalizePlate(m.vehicleNo) === cleanPlate) return true;
+      if (veh.ownerEmail && m.email && m.email.toLowerCase().trim() === veh.ownerEmail.toLowerCase().trim()) return true;
+      return false;
+    });
+    if (activeMem) {
+      veh.membershipName = activeMem.planName || veh.packageName;
+      veh.packageName = activeMem.planName || veh.packageName;
+      veh.membershipValidity = `${activeMem.startDateLabel || activeMem.startDate} → ${activeMem.expiryDateLabel || activeMem.expiryDate}`;
+      veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
+      veh.membershipStatus = activeMem.status;
+      veh.membershipId = activeMem.id;
+      veh.washesUsed = activeMem.washesUsed;
+      veh.maxWashes = activeMem.maxWashes;
+      // Single source of truth: synchronize totalWashes with washesUsed for active memberships
+      if (activeMem.washesUsed !== undefined) {
+        veh.totalWashes = activeMem.washesUsed;
       }
     }
   });
@@ -591,6 +646,36 @@ export default function CarWashAdminHubPage() {
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
+
+  const handleWashDone = async (vehicle) => {
+    if (!vehicle || !logMembershipWash) return;
+
+    const res = await logMembershipWash({
+      vehicleNo: vehicle.plate,
+      customerName: vehicle.ownerName,
+      customerEmail: vehicle.ownerEmail,
+      phone: vehicle.ownerPhone,
+      vehicleModel: vehicle.model,
+      membershipName: vehicle.membershipName || vehicle.packageName,
+      serviceKey: 'car-wash'
+    });
+
+    if (res) {
+      setSelectedVehicleDetail(prev => {
+        if (!prev) return prev;
+        const prevVeh = prev.vehicle || {};
+        return {
+          vehicle: {
+            ...prevVeh,
+            totalWashes: (Number(prevVeh.washesUsed !== undefined ? prevVeh.washesUsed : prevVeh.totalWashes) || 0) + 1,
+            washesUsed: (Number(prevVeh.washesUsed !== undefined ? prevVeh.washesUsed : prevVeh.totalWashes) || 0) + 1,
+            lastWashDate: res.date
+          },
+          history: [res, ...(prev.history || [])]
+        };
+      });
+    }
+  };
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1642,9 +1727,22 @@ export default function CarWashAdminHubPage() {
                       <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                    {v.totalWashes} {v.totalWashes === 1 ? 'Wash' : 'Washes'} Done
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                      {v.washesUsed !== undefined ? v.washesUsed : v.totalWashes} {((v.washesUsed !== undefined ? v.washesUsed : v.totalWashes) === 1) ? 'Wash' : 'Washes'} Done
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleWashDone(v);
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
+                      title="Quick mark wash done"
+                    >
+                      <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
@@ -1679,6 +1777,7 @@ export default function CarWashAdminHubPage() {
             onClose={() => setSelectedVehicleDetail(null)}
             vehicle={selectedVehicleDetail?.vehicle}
             bookingHistory={selectedVehicleDetail?.history || []}
+            onWashDone={handleWashDone}
             onNewOfflineSale={() => {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);

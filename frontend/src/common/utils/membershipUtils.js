@@ -78,9 +78,24 @@ export function toISODateString(date) {
 export function findMembershipMeta(packageName, catalog) {
   if (!packageName || !Array.isArray(catalog)) return null;
   const purchased = String(packageName).toLowerCase().trim();
+  
+  // 1. Direct equality or substring containment match
+  const directMatch = catalog.find(m => {
+    const configured = String(m.name || m.title || '').toLowerCase().trim();
+    return configured && (purchased === configured || purchased.includes(configured) || configured.includes(purchased));
+  });
+  if (directMatch) return directMatch;
+
+  // 2. Keyword-based matching for passes (e.g. 'annual/yearly' or 'monthly')
+  const isPurchasedYearly = isYearlyPass(purchased);
+  const isPurchasedMonthly = purchased.includes('monthly') || purchased.includes('month');
+
   return catalog.find(m => {
     const configured = String(m.name || m.title || '').toLowerCase().trim();
-    return configured && (purchased.includes(configured) || configured.includes(purchased));
+    if (!configured) return false;
+    if (isPurchasedYearly && isYearlyPass(configured)) return true;
+    if (isPurchasedMonthly && (configured.includes('monthly') || configured.includes('month') || configured.includes('30 day'))) return true;
+    return false;
   }) || null;
 }
 

@@ -1,7 +1,40 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2 } from 'lucide-react';
+import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
+
+const COUNTRY_CODES = [
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+  { code: '+1', country: 'USA / Canada', flag: '🇺🇸' },
+  { code: '+44', country: 'UK', flag: '🇬🇧' },
+  { code: '+971', country: 'UAE', flag: '🇦🇪' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦' },
+  { code: '+965', country: 'Kuwait', flag: '🇰🇼' },
+  { code: '+968', country: 'Oman', flag: '🇴🇲' },
+  { code: '+973', country: 'Bahrain', flag: '🇧🇭' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬' },
+  { code: '+60', country: 'Malaysia', flag: '🇲🇾' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+  { code: '+64', country: 'New Zealand', flag: '🇳🇿' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪' },
+  { code: '+33', country: 'France', flag: '🇫🇷' },
+  { code: '+39', country: 'Italy', flag: '🇮🇹' },
+  { code: '+34', country: 'Spain', flag: '🇪🇸' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+82', country: 'South Korea', flag: '🇰🇷' },
+  { code: '+977', country: 'Nepal', flag: '🇳🇵' },
+  { code: '+94', country: 'Sri Lanka', flag: '🇱🇰' },
+  { code: '+880', country: 'Bangladesh', flag: '🇧🇩' },
+  { code: '+27', country: 'South Africa', flag: '🇿🇦' },
+  { code: '+20', country: 'Egypt', flag: '🇪🇬' },
+  { code: '+234', country: 'Nigeria', flag: '🇳🇬' },
+  { code: '+254', country: 'Kenya', flag: '🇰🇪' },
+  { code: '+7', country: 'Russia', flag: '🇷🇺' },
+  { code: '+55', country: 'Brazil', flag: '🇧🇷' },
+  { code: '+52', country: 'Mexico', flag: '🇲🇽' }
+];
 
 const SERVICE_OPTIONS = [
   { key: 'car-wash', label: 'Car Wash', serviceName: 'Car Wash' },
@@ -116,17 +149,23 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const allServices = propsServices.length > 0 ? propsServices : contextServices;
 
   const [form, setForm] = useState({ ...initialFormState });
+  const [countryCode, setCountryCode] = useState('+91');
+  const [isCustomCountryCode, setIsCustomCountryCode] = useState(false);
+  const [customCountryCode, setCustomCountryCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isCustomPackage, setIsCustomPackage] = useState(false);
   const [isCustomMembership, setIsCustomMembership] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
 
-  // Reset submit lock when modal opens
+  // Reset submit lock and country code when modal opens
   useEffect(() => {
     if (isOpen) {
       isSubmittingRef.current = false;
       setSubmitting(false);
+      setCountryCode('+91');
+      setIsCustomCountryCode(false);
+      setCustomCountryCode('');
     }
   }, [isOpen]);
 
@@ -216,20 +255,46 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
     }));
   };
 
+  const handlePhoneChange = (e) => {
+    // Only allow digits
+    const raw = e.target.value.replace(/\D/g, '');
+    let clean = raw;
+    // If pasted e.g. with country code 91 or leading 0, cleanly trim to 10 digits
+    if (raw.length > 10) {
+      if (raw.startsWith('91') && raw.length === 12) {
+        clean = raw.slice(2);
+      } else if (raw.startsWith('0') && raw.length === 11) {
+        clean = raw.slice(1);
+      } else {
+        clean = raw.slice(-10);
+      }
+    }
+    handleChange('phone', clean.slice(0, 10));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     // Guard against multiple concurrent clicks
     if (isSubmittingRef.current || submitting) return;
-    if (!form.customerName || !form.phone || !form.vehicleNo || !form.price) return;
+    const trimmedPhone = (form.phone || '').trim();
+    if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || !form.vehicleNo || !form.price) return;
 
     isSubmittingRef.current = true;
     setSubmitting(true);
 
-    const payload = { ...form };
+    const activeCode = isCustomCountryCode
+      ? (customCountryCode.trim() ? (customCountryCode.trim().startsWith('+') ? customCountryCode.trim() : `+${customCountryCode.trim()}`) : '+91')
+      : countryCode;
+    const finalPhone = `${activeCode} ${trimmedPhone}`;
+
+    const payload = { ...form, phone: finalPhone };
 
     // Close the modal window IMMEDIATELY
     onClose();
     setForm({ ...initialFormState });
+    setCountryCode('+91');
+    setIsCustomCountryCode(false);
+    setCustomCountryCode('');
     setIsCustomPackage(false);
     setIsCustomMembership(false);
 
@@ -315,15 +380,81 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
                 />
               </div>
               <div>
-                <label className={labelClass}>Contact Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.phone}
-                  onChange={e => handleChange('phone', e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className={inputClass}
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className={labelClass}>Contact Number *</label>
+                  <span className={`text-[10px] font-bold ${form.phone.length === 10 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    {form.phone.length}/10 digits
+                  </span>
+                </div>
+                <div className="flex gap-1.5 sm:gap-2">
+                  {/* Country Code Dropdown */}
+                  <div className="relative flex-shrink-0">
+                    <select
+                      value={isCustomCountryCode ? '__custom__' : countryCode}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom__') {
+                          setIsCustomCountryCode(true);
+                          setCustomCountryCode('+');
+                        } else {
+                          setIsCustomCountryCode(false);
+                          setCountryCode(e.target.value);
+                        }
+                      }}
+                      className="h-full pl-2.5 pr-7 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none transition-all appearance-none cursor-pointer"
+                      title="Select country code extension"
+                    >
+                      {COUNTRY_CODES.map((c) => (
+                        <option key={`${c.code}-${c.country}`} value={c.code}>
+                          {c.flag} {c.code} ({c.country})
+                        </option>
+                      ))}
+                      <option value="__custom__">➕ Custom / Other...</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+
+                  {/* Custom Code Input (e.g. +103) */}
+                  {isCustomCountryCode && (
+                    <div className="w-20 flex-shrink-0">
+                      <input
+                        type="text"
+                        value={customCountryCode}
+                        onChange={(e) => {
+                          let val = e.target.value;
+                          if (!val.startsWith('+')) val = '+' + val.replace(/\D/g, '');
+                          else val = '+' + val.slice(1).replace(/\D/g, '');
+                          setCustomCountryCode(val.slice(0, 5));
+                        }}
+                        placeholder="+103"
+                        className="w-full p-2.5 border border-amber-400 rounded-xl text-xs font-bold text-gray-900 bg-amber-50/60 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center"
+                        title="Enter custom code e.g. +103"
+                      />
+                    </div>
+                  )}
+
+                  {/* 10-Digit Mobile Number */}
+                  <div className="relative flex-1">
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]{10}"
+                      maxLength={10}
+                      minLength={10}
+                      required
+                      value={form.phone}
+                      onChange={handlePhoneChange}
+                      placeholder="98765 43210"
+                      className={`${inputClass} font-mono tracking-wide`}
+                    />
+                  </div>
+                </div>
+                {form.phone && form.phone.length < 10 && (
+                  <p className="text-[10px] text-amber-600 font-medium mt-1">
+                    Requires 10 digits ({10 - form.phone.length} more)
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Email Address</label>

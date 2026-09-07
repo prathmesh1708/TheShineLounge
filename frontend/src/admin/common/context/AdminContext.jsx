@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import {
@@ -19,6 +19,7 @@ import {
 import {
   isMembershipPackage,
   buildMembershipSchedule,
+  findMembershipMeta,
   parseFlexibleDate,
   addPassDuration,
   startOfDay,
@@ -27,7 +28,7 @@ import {
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 
-export const formatBookingDateTime = (rawSlot, rawDate) => {
+const formatBookingDateTime = (rawSlot, rawDate) => {
   if (!rawSlot && !rawDate) return 'N/A';
   let text = String(rawSlot || '').trim();
 
@@ -116,6 +117,16 @@ export const AdminProvider = ({ children }) => {
   const [coupons, setCoupons] = useState(initialCoupons);
   const [notifications, setNotifications] = useState(initialNotifications);
 
+  const bookingsRef = useRef(bookings);
+  useEffect(() => {
+    bookingsRef.current = bookings;
+  }, [bookings]);
+
+  const servicesRef = useRef(services);
+  useEffect(() => {
+    servicesRef.current = services;
+  }, [services]);
+
   // Business Settings State
   const [settings, setSettings] = useState({
     businessName: 'The Shine Lounge',
@@ -145,7 +156,7 @@ export const AdminProvider = ({ children }) => {
    * earlier one is still running are queued behind it rather than replacing it,
    * so a customer who upgrades shows two rows on back-to-back date ranges.
    */
-  const deriveMembershipsFromBookings = (allBookings) => {
+  const deriveMembershipsFromBookings = (allBookings, servicesList) => {
     const bookingList = allBookings || [];
     const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
 
@@ -182,12 +193,39 @@ export const AdminProvider = ({ children }) => {
     });
     readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
 
-    // Plan durations and wash allowances configured by the admin.
-    let catalog = null;
-    try {
-      const cachedService = JSON.parse(localStorage.getItem('tsl_car_wash_service') || 'null');
-      catalog = cachedService?.memberships || null;
-    } catch (e) {}
+    // Plan durations and wash allowances configured by the admin across all services
+    const catalogMap = new Map();
+    const addCatalogItem = (m) => {
+      if (!m) return;
+      const key = String(m.name || m.title || '').toLowerCase().trim();
+      if (key) catalogMap.set(key, m);
+    };
+
+    const serviceListSource = servicesList || servicesRef.current || services || [];
+    serviceListSource.forEach(s => {
+      if (Array.isArray(s?.memberships)) {
+        s.memberships.forEach(addCatalogItem);
+      }
+    });
+
+    const serviceCacheKeys = [
+      'tsl_car_wash_service',
+      'tsl_car_detailing_service',
+      'tsl_dog_wash_service',
+      'tsl_salon_service',
+      'tsl_cafe_service',
+      'tsl_drive_through_cafe_service'
+    ];
+    serviceCacheKeys.forEach(k => {
+      try {
+        const item = JSON.parse(localStorage.getItem(k) || 'null');
+        if (Array.isArray(item?.memberships)) {
+          item.memberships.forEach(addCatalogItem);
+        }
+      } catch (e) {}
+    });
+
+    const catalog = Array.from(catalogMap.values());
 
     const schedule = buildMembershipSchedule([...membershipBookings, ...localPasses], { catalog });
 
@@ -196,21 +234,43 @@ export const AdminProvider = ({ children }) => {
     soonCutoff.setDate(soonCutoff.getDate() + 7);
 
     const derived = schedule.map((record, idx) => {
-      const isUnlimited = record.packageName.toLowerCase().includes('unlimited');
-      const maxWashes = typeof record.visitLimit === 'number'
-        ? record.visitLimit
-        : (isUnlimited ? 30 : (record.isYearly ? 48 : 4));
+      const meta = findMembershipMeta(record.packageName, catalog);
+      const configuredLimit = meta?.visitLimit !== undefined && meta?.visitLimit !== null
+        ? (Number(meta.visitLimit) === 999 ? 999 : Number(meta.visitLimit))
+        : null;
+
+      const isUnlimited = record.packageName.toLowerCase().includes('unlimited') || configuredLimit === 999 || record.visitLimit === 'Unlimited';
+      const maxWashes = (configuredLimit !== null && !isNaN(configuredLimit) && configuredLimit > 0)
+        ? configuredLimit
+        : (typeof record.visitLimit === 'number'
+            ? record.visitLimit
+            : (isUnlimited ? 999 : (record.isYearly ? 48 : 4)));
 
       // Washes taken inside this pass's own window, so a queued pass shows 0.
       const washesUsed = record.isQueued ? 0 : bookingList.filter(b => {
         const name = b.plan || b.packageName;
         if (isMembershipPackage(name)) return false;
         if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
+
         const passPlate = normalizePlate(record.vehicleNo);
         const washPlate = normalizePlate(b.vehicleNo);
-        if (passPlate && washPlate && passPlate !== washPlate) return false;
-        if (record.customerEmail && b.customerEmail
-          && b.customerEmail.toLowerCase().trim() !== record.customerEmail) return false;
+        const passEmail = (record.customerEmail || '').toLowerCase().trim();
+        const washEmail = (b.customerEmail || '').toLowerCase().trim();
+        const passPhone = String(record.phone || '').replace(/\D/g, '').slice(-10);
+        const washPhone = String(b.phone || b.mobile || '').replace(/\D/g, '').slice(-10);
+
+        let isMatch = false;
+        if (passPlate) {
+          // If membership is registered to a plate, the wash MUST match this plate
+          isMatch = Boolean(washPlate && washPlate === passPlate);
+        } else if (passEmail) {
+          isMatch = Boolean(washEmail && washEmail === passEmail);
+        } else if (passPhone) {
+          isMatch = Boolean(washPhone && washPhone === passPhone);
+        }
+
+        if (!isMatch) return false;
+
         const washedOn = parseFlexibleDate(b.date);
         if (!washedOn) return false;
         return washedOn >= record.startDate && washedOn < record.expiryDate;
@@ -250,7 +310,23 @@ export const AdminProvider = ({ children }) => {
     // Newest purchases first, then the seeded demo records.
     derived.reverse();
     const derivedIds = new Set(derived.map(d => d.id));
-    const uniqueMocks = initialMemberships.filter(m => !derivedIds.has(m.id));
+    const uniqueMocks = initialMemberships.filter(m => !derivedIds.has(m.id)).map(mock => {
+      const meta = findMembershipMeta(mock.planName || mock.name, catalog);
+      if (meta) {
+        const configuredLimit = meta.visitLimit !== undefined && meta.visitLimit !== null
+          ? (Number(meta.visitLimit) === 999 ? 999 : Number(meta.visitLimit))
+          : null;
+        const configuredPrice = Number(meta.price);
+        return {
+          ...mock,
+          maxWashes: (configuredLimit !== null && !isNaN(configuredLimit) && configuredLimit > 0)
+            ? configuredLimit
+            : mock.maxWashes,
+          amount: (!isNaN(configuredPrice) && configuredPrice > 0) ? configuredPrice : mock.amount
+        };
+      }
+      return mock;
+    });
     return [...derived, ...uniqueMocks];
   };
 
@@ -378,15 +454,18 @@ export const AdminProvider = ({ children }) => {
         }
       } catch (e) {}
 
-      const apiIds = new Set(mapped.flatMap(b => [b.id, b._id].filter(Boolean)));
-      const notAlreadyLive = (b) => !apiIds.has(b.id) && !apiIds.has(b._id);
+      const apiIds = new Set(mapped.flatMap(b => [b.id, b._id, b.bookingId].filter(Boolean)));
+      const notAlreadyLive = (b) => !apiIds.has(b.id) && !apiIds.has(b._id) && !apiIds.has(b.bookingId);
 
       const combinedBookings = [
         ...mapped,
-        ...localSalonBookings.filter(notAlreadyLive)
+        ...localSalonBookings.filter(notAlreadyLive),
+        ...initialBookings.filter(notAlreadyLive)
       ];
 
-      setBookings(combinedBookings.length > 0 ? combinedBookings : initialBookings);
+      const finalBookings = combinedBookings.length > 0 ? combinedBookings : initialBookings;
+      setBookings(finalBookings);
+      setMemberships(deriveMembershipsFromBookings(finalBookings));
     } catch (err) {
       console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
       try {
@@ -467,6 +546,7 @@ export const AdminProvider = ({ children }) => {
       const res = await serviceApi.getServices();
       if (res && res.services) {
         setServices(res.services);
+        setMemberships(deriveMembershipsFromBookings(bookingsRef.current, res.services));
       }
     } catch (err) {
       console.warn('Could not fetch services list:', err.message);
@@ -482,17 +562,66 @@ export const AdminProvider = ({ children }) => {
     // Poll for live booking updates from staff every 5 seconds
     const interval = setInterval(fetchBookingsList, 5000);
     const handleLiveBooking = () => fetchBookingsList();
-    window.addEventListener('storage', handleLiveBooking);
+
+    // Listen for live service/package updates from any admin hub
+    const handleServiceUpdated = (e) => {
+      const updated = e?.detail;
+      if (updated) {
+        setServices(prev => {
+          const list = Array.isArray(prev) ? prev : [];
+          const idx = list.findIndex(s => (s._id && updated._id && s._id === updated._id) || (s.slug && updated.slug && s.slug === updated.slug));
+          if (idx >= 0) {
+            const next = [...list];
+            next[idx] = { ...next[idx], ...updated };
+            return next;
+          }
+          return [...list, updated];
+        });
+      }
+      setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
+    };
+
+    const handleStorageChange = (e) => {
+      handleLiveBooking();
+      if (!e || !e.key || e.key.startsWith('tsl_')) {
+        setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
+      }
+    };
+
+    const handleExternalWashOrSale = (e) => {
+      const record = e?.detail;
+      if (record && !record.deleted) {
+        setBookings(prev => {
+          const key = record.id || record.bookingId;
+          if (prev.some(b => (b.id === key || b.bookingId === key))) return prev;
+          const next = [record, ...prev];
+          setMemberships(deriveMembershipsFromBookings(next));
+          return next;
+        });
+      } else {
+        handleLiveBooking();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('tsl_booking_created', handleLiveBooking);
     window.addEventListener('salonDataChanged', handleLiveBooking);
     window.addEventListener('bookingAdded', handleLiveBooking);
+    window.addEventListener('tsl_service_updated', handleServiceUpdated);
+    window.addEventListener('tsl_wash_logged', handleExternalWashOrSale);
+    window.addEventListener('tsl_wash_used', handleExternalWashOrSale);
+    window.addEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('storage', handleLiveBooking);
+      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('tsl_booking_created', handleLiveBooking);
       window.removeEventListener('salonDataChanged', handleLiveBooking);
       window.removeEventListener('bookingAdded', handleLiveBooking);
+      window.removeEventListener('tsl_service_updated', handleServiceUpdated);
+      window.removeEventListener('tsl_wash_logged', handleExternalWashOrSale);
+      window.removeEventListener('tsl_wash_used', handleExternalWashOrSale);
+      window.removeEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
     };
   }, []);
 
@@ -840,18 +969,19 @@ export const AdminProvider = ({ children }) => {
   // 5b. Offline Sales (manual counter POS)
   const addOfflineSale = async (formData) => {
     const newId = `OFS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : new Date();
+    const now = new Date();
+    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : now;
     const dateStr = !isNaN(saleDateObj.getTime())
       ? saleDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const timeStart = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const timeEnd = new Date(Date.now() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      : now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const timeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     // Compute membership expiry if applicable
     let membershipExpiry = '';
     let membershipValidity = '';
     if (formData.saleType === 'membership') {
-      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : new Date();
+      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : now;
       const days = formData.validityDays === 'custom'
         ? Math.ceil((new Date(formData.customExpiryDate) - baseDate) / (1000 * 60 * 60 * 24))
         : Number(formData.validityDays) || 30;
@@ -867,7 +997,7 @@ export const AdminProvider = ({ children }) => {
       packageName: formData.saleType === 'membership' ? formData.membershipName : formData.packageName,
       price: Number(formData.price) || 0,
       date: dateStr,
-      saleDate: formData.saleDate || new Date().toISOString().split('T')[0],
+      saleDate: formData.saleDate || now.toISOString().split('T')[0],
       timeSlot: `${timeStart} - ${timeEnd}`,
       customerName: formData.customerName,
       customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
@@ -906,7 +1036,18 @@ export const AdminProvider = ({ children }) => {
       localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
     } catch (e) {}
 
-    setBookings(prev => [localRecord, ...prev]);
+    setBookings(prev => {
+      const next = [localRecord, ...prev];
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
     showToast(`✅ Offline sale ${newId} recorded successfully!`);
     return localRecord;
   };
@@ -918,7 +1059,11 @@ export const AdminProvider = ({ children }) => {
       console.warn('Backend delete offline sale error:', e.message);
     }
 
-    setBookings(prev => prev.filter(b => b.id !== saleId && b.bookingId !== saleId && b._id !== saleId));
+    setBookings(prev => {
+      const next = prev.filter(b => b.id !== saleId && b.bookingId !== saleId && b._id !== saleId);
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
 
     try {
       const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
@@ -926,7 +1071,88 @@ export const AdminProvider = ({ children }) => {
       localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
     } catch (e) {}
 
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { id: saleId, deleted: true } }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
     showToast('Offline sale removed');
+  };
+
+  // 5c. Log Completed Wash under Membership (re-calculates washesUsed in real time)
+  const logMembershipWash = async ({
+    vehicleNo,
+    customerName,
+    customerEmail,
+    phone,
+    vehicleModel,
+    membershipName,
+    serviceKey = 'car-wash'
+  }) => {
+    const newId = `WASH-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const timeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const bookingPayload = {
+      bookingId: newId,
+      serviceKey: serviceKey || 'car-wash',
+      serviceName: 'Car Wash',
+      packageName: 'Express Wash (Redeemed)',
+      plan: 'Express Wash (Redeemed)',
+      price: 0,
+      date: dateStr,
+      saleDate: now.toISOString().split('T')[0],
+      timeSlot: `${timeStart} - ${timeEnd}`,
+      customerName: customerName || 'Valued Customer',
+      customerEmail: (customerEmail || '').toLowerCase().trim(),
+      vehicleNo: (vehicleNo || '').toUpperCase().trim(),
+      vehicleType: vehicleModel || 'Car',
+      vehicleModel: vehicleModel || 'Car',
+      phone: phone || '',
+      status: 'Completed',
+      isOfflineSale: true,
+      saleType: 'service',
+      paymentMode: 'Membership',
+      notes: `Wash completed and redeemed under active membership: ${membershipName || 'Pass'}`
+    };
+
+    // Try saving to backend
+    try {
+      await apiClient.post('/bookings', bookingPayload);
+      fetchBookingsList();
+    } catch (err) {
+      console.warn('Backend save error for membership wash, using local fallback:', err.message);
+    }
+
+    const localRecord = {
+      id: newId,
+      ...bookingPayload,
+      createdAt: now.toISOString(),
+      bookedAt: now.toISOString()
+    };
+
+    try {
+      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
+    } catch (e) {}
+
+    setBookings(prev => {
+      const next = [localRecord, ...prev];
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_wash_used', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
+    showToast(`🚿 Wash logged for ${bookingPayload.vehicleNo || 'vehicle'}! Membership updated.`);
+    return localRecord;
   };
 
   // 6. Staff
@@ -1143,6 +1369,7 @@ export const AdminProvider = ({ children }) => {
       addBooking,
       addOfflineSale,
       deleteOfflineSale,
+      logMembershipWash,
       addStaff,
       updateStaff,
       deleteStaff,
