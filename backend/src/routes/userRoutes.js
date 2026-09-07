@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const optionalAuth = require('../middleware/optionalAuth');
-const { adminOnly, staffOnly } = require('../middleware/roleMiddleware');
+const { adminOnly, staffOnly, canManageStaff } = require('../middleware/roleMiddleware');
 const {
   createStaff,
   getStaffList,
@@ -55,14 +55,14 @@ router.put('/admin/feedback/:id/reply', authMiddleware, staffOnly, replyToFeedba
 router.patch('/admin/feedback/:id/status', authMiddleware, staffOnly, updateFeedbackStatus);
 router.delete('/admin/feedback/:id', authMiddleware, adminOnly, deleteFeedback);
 
-// ─── Staff Management (Admin Only) ──────────────────────────
-router.post('/staff', authMiddleware, adminOnly, createStaff);
+// ─── Staff Management (Admin & Department Managers) ────────
+router.post('/staff', authMiddleware, canManageStaff, createStaff);
 router.get('/staff', authMiddleware, staffOnly, getStaffList);
-router.get('/staff/:id', authMiddleware, adminOnly, getStaffById);
-router.put('/staff/:id', authMiddleware, adminOnly, updateStaff);
-router.patch('/staff/:id/status', authMiddleware, adminOnly, toggleStaffStatus);
-router.patch('/staff/:id/reset-password', authMiddleware, adminOnly, resetStaffPassword);
-router.delete('/staff/:id', authMiddleware, adminOnly, deleteStaff);
+router.get('/staff/:id', authMiddleware, canManageStaff, getStaffById);
+router.put('/staff/:id', authMiddleware, canManageStaff, updateStaff);
+router.patch('/staff/:id/status', authMiddleware, canManageStaff, toggleStaffStatus);
+router.patch('/staff/:id/reset-password', authMiddleware, canManageStaff, resetStaffPassword);
+router.delete('/staff/:id', authMiddleware, canManageStaff, deleteStaff);
 
 // ─── Customer Management (Admin & Staff) ───────────────────────
 // These return the whole CRM, so they are gated on the staff role rather than

@@ -22,6 +22,7 @@ import RevenueReportsPage from '../../pages/RevenueReportsPage';
 import OffersCouponsPage from '../../pages/OffersCouponsPage';
 import AdminSettingsPage from '../../pages/AdminSettingsPage';
 import ManageOfflineSalesPage from '../../pages/ManageOfflineSalesPage';
+import AdminCalculationSettingsPage from '../../pages/AdminCalculationSettingsPage';
 
 export default function AdminLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -94,6 +95,7 @@ export default function AdminLayout() {
             <Route path="customers" element={<CustomerDatabasePage />} />
             <Route path="inventory" element={<InventoryManagementPage />} />
             <Route path="reports" element={<RevenueReportsPage />} />
+            <Route path="calculations" element={<AdminCalculationSettingsPage />} />
             <Route path="coupons" element={<OffersCouponsPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />

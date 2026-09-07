@@ -12,21 +12,24 @@ const apiClient = axios.create({
 // Request interceptor - attach JWT token
 apiClient.interceptors.request.use(
   (config) => {
-    const isPathAdminOrStaff = window.location.pathname.startsWith('/admin') || window.location.pathname.startsWith('/staff');
+    const isPathAdmin = window.location.pathname.startsWith('/admin');
+    const isPathStaff = window.location.pathname.startsWith('/staff');
     const adminToken = localStorage.getItem('tsl_admin_token');
+    const staffToken = localStorage.getItem('tsl_staff_token');
     const customerToken = localStorage.getItem('tsl_customer_token');
     const genericToken = localStorage.getItem('tsl_token');
 
-    // `tsl_token` is shared and gets rewritten by whichever panel loaded last,
-    // so only fall back to it when it isn't the other scope's token. Sending a
-    // customer token to an admin page 401s, and the response interceptor below
-    // turns that into a forced logout.
-    const genericIsCustomers = genericToken && genericToken === customerToken;
-    const genericIsAdmins = genericToken && genericToken === adminToken;
-
-    let token = isPathAdminOrStaff
-      ? (adminToken || (genericIsCustomers ? null : genericToken))
-      : (customerToken || (genericIsAdmins ? null : genericToken));
+    let token = null;
+    if (isPathAdmin) {
+      // Strictly use admin token on admin routes
+      token = adminToken || (genericToken !== customerToken && genericToken !== staffToken ? genericToken : null);
+    } else if (isPathStaff) {
+      // Prioritize staff token on staff routes, fallback to admin
+      token = staffToken || adminToken || genericToken;
+    } else {
+      // Customer routes
+      token = customerToken || (genericToken !== adminToken && genericToken !== staffToken ? genericToken : null);
+    }
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

@@ -27,6 +27,7 @@ import {
   toISODateString
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
+import { defaultCalculationSettings } from '../utils/calculationUtils';
 
 const formatBookingDateTime = (rawSlot, rawDate) => {
   if (!rawSlot && !rawDate) return 'N/A';
@@ -140,6 +141,29 @@ export const AdminProvider = ({ children }) => {
     invoicePrefix: 'TSL-INV-2026-',
     backupFrequency: 'Daily (02:00 AM IST)'
   });
+
+  // Financial Calculation Rules & CA Settings State
+  const [calculationSettings, setCalculationSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_calculation_settings');
+      if (saved) return { ...defaultCalculationSettings, ...JSON.parse(saved) };
+    } catch (e) {
+      console.warn('Error reading calculation settings:', e);
+    }
+    return defaultCalculationSettings;
+  });
+
+  const updateCalculationSettings = (newSettings) => {
+    setCalculationSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('tsl_calculation_settings', JSON.stringify(updated));
+      } catch (e) {}
+      window.dispatchEvent(new CustomEvent('tsl_calculation_settings_updated', { detail: updated }));
+      return updated;
+    });
+    showToast('Financial calculation rules & CA settings saved successfully!');
+  };
 
   // Simple Toast System
   const [toast, setToast] = useState(null);
@@ -1347,6 +1371,8 @@ export const AdminProvider = ({ children }) => {
       coupons,
       notifications,
       settings,
+      calculationSettings,
+      updateCalculationSettings,
       toast,
       showToast,
       // Actions

@@ -11,6 +11,7 @@ import {
   UserCheck,
   Package,
   BarChart3,
+  Calculator,
   Ticket,
   Settings,
   ChevronLeft,
@@ -48,7 +49,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
-    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback', 'offline-sales'].includes(location.pathname.replace('/admin/', ''))
+    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'calculations', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback', 'offline-sales'].includes(location.pathname.replace('/admin/', ''))
       ? location.pathname.replace('/admin/', '')
       : null;
 
@@ -75,6 +76,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     { label: 'All Staff Roster', path: '/admin/staff', icon: UserCheck },
     { label: 'Global Inventory', path: '/admin/inventory', icon: Package, badge: stats.lowStockItems, badgeColor: 'bg-amber-500' },
     { label: 'Revenue & Reports', path: '/admin/reports', icon: BarChart3 },
+    { label: 'Calculation Rules', path: '/admin/calculations', icon: Calculator },
     { label: 'Offers & Coupons', path: '/admin/coupons', icon: Ticket },
     { label: 'Settings', path: '/admin/settings', icon: Settings }
   ];
