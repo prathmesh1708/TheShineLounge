@@ -175,18 +175,30 @@ export function buildMembershipSchedule(bookings, options = {}) {
 
     const chainKey = membershipChainKey(booking);
     const previousEnd = chainEnds.get(chainKey);
-    const stacked = !!previousEnd && previousEnd > purchaseDate;
+
+    // Explicit active status or immediate passes must not be pushed into future years
+    const isExplicitlyActive = booking.status === 'Active' || booking.isActive === true;
+    const isExplicitlyQueued = booking.status === 'Queued' || booking.isQueued === true;
+
+    const stacked = !isExplicitlyActive && (isExplicitlyQueued || (Boolean(previousEnd) && previousEnd > purchaseDate));
     const startDate = stacked ? new Date(previousEnd) : purchaseDate;
     const expiryDate = addPassDuration(startDate, packageName, meta);
     chainEnds.set(chainKey, expiryDate);
 
     let status = 'Active';
-    if (expiryDate <= now) status = 'Expired';
-    else if (startDate > now) status = 'Queued';
+    if (booking.status === 'Cancelled') {
+      status = 'Cancelled';
+    } else if (expiryDate <= now) {
+      status = 'Expired';
+    } else if (isExplicitlyActive) {
+      status = 'Active';
+    } else if (startDate > now) {
+      status = 'Queued';
+    }
 
     const visitLimit = meta?.visitLimit !== undefined && meta.visitLimit !== null
       ? (Number(meta.visitLimit) === 999 ? 'Unlimited' : Number(meta.visitLimit))
-      : null;
+      : (booking.visitLimit !== undefined ? (Number(booking.visitLimit) === 999 ? 'Unlimited' : Number(booking.visitLimit)) : null);
 
     return {
       booking,

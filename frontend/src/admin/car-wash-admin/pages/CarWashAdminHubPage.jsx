@@ -191,7 +191,7 @@ export default function CarWashAdminHubPage() {
       veh.maxWashes = activeMem.maxWashes;
       // Single source of truth: synchronize totalWashes with washesUsed for active memberships
       if (activeMem.washesUsed !== undefined) {
-        veh.totalWashes = activeMem.washesUsed;
+        veh.totalWashes = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
       }
     }
   });
@@ -218,20 +218,9 @@ export default function CarWashAdminHubPage() {
     setIsLiveConnection(false);
     const cached = localStorage.getItem('tsl_car_wash_service');
     if (cached) {
-      setDbService(JSON.parse(cached));
-      setDbService({
-        _id: serviceMain?.id || 'srv-1',
-        pricing: [
-          { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
-        ],
-        plans: [
-          { _id: 'pw-1', name: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
-        ],
-        memberships: [
-          { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 4 },
-          { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE', duration: 365, visitLimit: 365 }
-        ]
-      });
+      try {
+        setDbService(JSON.parse(cached));
+      } catch (e) {}
     }
   };
 
@@ -286,7 +275,7 @@ export default function CarWashAdminHubPage() {
           { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
         ]));
 
-  const activeMemberships = (dbService?.memberships !== undefined)
+  const activeMemberships = (dbService?.memberships !== undefined && dbService.memberships.length > 0)
     ? dbService.memberships.map(m => ({
         _id: m._id || m.id || m.name,
         name: m.name || m.title,
@@ -294,12 +283,12 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits : [m.benefits || m.description || ''],
         badge: m.badge || 'PASS',
         duration: Number(m.duration) || 30,
-        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.washes ? Number(m.washes) : 4),
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.washes ? Number(m.washes) : (m.name?.toLowerCase().includes('year') ? 365 : 50)),
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false
       }))
     : (serviceMain?.memberships || [
-        { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 4 },
+        { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['50 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 50 },
         { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE', duration: 365, visitLimit: 365 }
       ]);
 
@@ -334,7 +323,7 @@ export default function CarWashAdminHubPage() {
   // Rich membership edit fields
   const [editBadge, setEditBadge] = useState('');
   const [editDuration, setEditDuration] = useState(30);
-  const [editVisitLimit, setEditVisitLimit] = useState(4);
+  const [editVisitLimit, setEditVisitLimit] = useState(50);
   const [editBenefits, setEditBenefits] = useState(['']);
   const [editIsPopular, setEditIsPopular] = useState(false);
   const [editRenewable, setEditRenewable] = useState(true);
@@ -348,7 +337,7 @@ export default function CarWashAdminHubPage() {
     type: 'pricing',
     badge: '',
     duration: 30,
-    visitLimit: 4,
+    visitLimit: 50,
     benefits: [''],
     isPopular: false,
     renewable: true
@@ -976,7 +965,7 @@ export default function CarWashAdminHubPage() {
     if (type === 'membership') {
       setEditBadge(item.badge || '');
       setEditDuration(item.duration || 30);
-      setEditVisitLimit(item.visitLimit !== undefined ? item.visitLimit : 4);
+      setEditVisitLimit(item.visitLimit !== undefined ? Number(item.visitLimit) : (item.name?.toLowerCase().includes('year') ? 365 : 50));
       setEditBenefits(Array.isArray(item.benefits) && item.benefits.length > 0 ? [...item.benefits] : ['']);
       setEditIsPopular(!!item.isPopular);
       setEditRenewable(item.renewable !== false);
@@ -1030,7 +1019,7 @@ export default function CarWashAdminHubPage() {
               benefits: editBenefits.filter(b => b.trim()),
               badge: editBadge.trim() || m.badge || '',
               duration: Number(editDuration) || 30,
-              visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : 4,
+              visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : (m.visitLimit !== undefined ? Number(m.visitLimit) : 50),
               isPopular: editIsPopular,
               renewable: editRenewable,
               upgradeAvailable: editRenewable
@@ -1060,7 +1049,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : 4,
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : 50,
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -1127,7 +1116,7 @@ export default function CarWashAdminHubPage() {
           benefits: newPkgForm.benefits.filter(b => b.trim()),
           badge: newPkgForm.badge.trim() || 'NEW PASS',
           duration: Number(newPkgForm.duration) || 30,
-          visitLimit: Number(newPkgForm.visitLimit) || 4,
+          visitLimit: Number(newPkgForm.visitLimit) || 50,
           isPopular: !!newPkgForm.isPopular,
           renewable: newPkgForm.renewable !== false,
           upgradeAvailable: newPkgForm.renewable !== false
@@ -1161,7 +1150,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: Number(m.visitLimit) || 4,
+        visitLimit: Number(m.visitLimit) || 50,
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,

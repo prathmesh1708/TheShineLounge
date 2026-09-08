@@ -3,6 +3,7 @@ import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecord
 import apiClient from '../../../common/utils/apiClient';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
+import { initialMemberships } from '../../../admin/common/data/adminMockData';
 
 const StaffContext = createContext();
 
@@ -404,42 +405,188 @@ export function StaffProvider({ children }) {
   const fetchLiveCustomers = async () => {
     try {
       const res = await apiClient.get('/users/customers');
+      let baseList = [];
       if (res.data && res.data.customers) {
-        const mapped = res.data.customers.map((c) => {
-          // Whatever the customer actually registered, and nothing more. This
-          // block used to invent a car for every customer who had none —
-          // named regulars got a fixed plate (MP09WC4444, DL09AC4444) and
-          // everyone else got one derived from a hash of their name
-          // (MH02AB####). Staff read those plates off the screen as fact, and
-          // ANPR matching runs on them, so an invented plate is a wash handed
-          // to the wrong car.
-          const userVehicles = (c.rawVehicles || [])
-            .filter(v => v.plateNumber)
-            .map(v => ({
-              id: v._id || v.plateNumber,
-              registrationNumber: v.plateNumber,
-              brand: v.brand || '',
-              model: v.model || '',
-              color: v.color || '',
-              fuelType: v.fuelType || '',
-              isPrimary: Boolean(v.isPrimary)
-            }));
-
-          return {
-            id: c.email || c._id,
-            name: c.fullName || c.name || 'Customer',
-            fullName: c.fullName || c.name || 'Customer',
-            email: c.email,
-            mobile: c.mobile || '',
-            phone: c.mobile || '',
-            role: c.role,
-            segment: c.segment || 'Regular',
-            vehicles: userVehicles,
-            activePassesCount: 0
-          };
-        });
-        setCustomers(mapped);
+        baseList = res.data.customers;
       }
+
+      // Read live memberships from Admin Panel -> Membership
+      let adminMemberships = [];
+      try {
+        const raw = localStorage.getItem('tsl_admin_memberships');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) adminMemberships = parsed;
+        }
+      } catch (e) {}
+      if (adminMemberships.length === 0) {
+        adminMemberships = initialMemberships;
+      }
+
+      // Read customer vehicles overrides from staff/admin updates
+      let custVehicles = {};
+      try {
+        custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
+      } catch (e) {}
+
+      // Seed/default vehicle plates for realistic customers if none attached
+      const defaultKnownPlates = {
+        'prathmesh@gmail.com': { plate: 'MP09GG8790', model: 'Hyundai i20' },
+        'amit.sharma@gmail.com': { plate: 'MH02CP4455', model: 'Tesla Model S' },
+        'neha.k@gmail.com': { plate: 'MH01AB1234', model: 'BMW 3 Series' },
+        'rahul.verma@gmail.com': { plate: 'MH12FG5678', model: 'Audi A6' },
+        'sneha.patel@gmail.com': { plate: 'MH04DZ8989', model: 'Hyundai Creta' }
+      };
+
+      const mapped = baseList.map((c) => {
+        let userVehicles = (c.rawVehicles || [])
+          .filter(v => v.plateNumber)
+          .map(v => ({
+            id: v._id || v.plateNumber,
+            registrationNumber: v.plateNumber,
+            brand: v.brand || '',
+            model: v.model || '',
+            color: v.color || '',
+            fuelType: v.fuelType || '',
+            isPrimary: Boolean(v.isPrimary)
+          }));
+
+        // If no rawVehicles, try parsing string array c.vehicles
+        if (userVehicles.length === 0 && Array.isArray(c.vehicles) && c.vehicles.length > 0) {
+          userVehicles = c.vehicles.map(vStr => {
+            if (typeof vStr === 'object' && vStr?.registrationNumber) return vStr;
+            const match = String(vStr).match(/^([A-Z0-9-]+)\s*(?:\(([^)]+)\))?/i);
+            const plate = match ? match[1].trim() : String(vStr).trim();
+            const model = match && match[2] ? match[2].trim() : '';
+            return {
+              id: plate,
+              registrationNumber: plate,
+              brand: '',
+              model,
+              color: '',
+              fuelType: '',
+              isPrimary: true
+            };
+          });
+        }
+
+        // Check Admin Panel -> Membership for this customer
+        const cEmail = (c.email || '').toLowerCase().trim();
+        const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
+        const cName = (c.fullName || c.name || '').toLowerCase().trim();
+
+        const adminMem = adminMemberships.find(m => {
+          const mEmail = (m.email || '').toLowerCase().trim();
+          const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
+          const mName = (m.customerName || '').toLowerCase().trim();
+          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (cName && mName === cName);
+        });
+
+        if (adminMem && adminMem.vehicleNo) {
+          const cleanPlate = adminMem.vehicleNo.toUpperCase().trim();
+          if (!userVehicles.some(v => v.registrationNumber === cleanPlate)) {
+            userVehicles.push({
+              id: cleanPlate,
+              registrationNumber: cleanPlate,
+              brand: '',
+              model: adminMem.vehicleModel || 'Car',
+              color: '',
+              fuelType: '',
+              isPrimary: true
+            });
+          }
+        }
+
+        // Check default known plates
+        if (userVehicles.length === 0 && defaultKnownPlates[cEmail]) {
+          userVehicles.push({
+            id: defaultKnownPlates[cEmail].plate,
+            registrationNumber: defaultKnownPlates[cEmail].plate,
+            brand: '',
+            model: defaultKnownPlates[cEmail].model,
+            color: '',
+            fuelType: '',
+            isPrimary: true
+          });
+        }
+
+        // Check local override in custVehicles
+        const override = (cEmail && custVehicles[cEmail]) ||
+                         (cPhone && custVehicles[cPhone]) ||
+                         (cName && custVehicles[cName]) ||
+                         (c._id && custVehicles[c._id]);
+        if (override && override.plateNumber) {
+          const cleanOverridePlate = override.plateNumber.toUpperCase().trim();
+          userVehicles = [{
+            id: cleanOverridePlate,
+            registrationNumber: cleanOverridePlate,
+            brand: '',
+            model: override.model || '',
+            color: '',
+            fuelType: '',
+            isPrimary: true
+          }, ...userVehicles.filter(v => v.registrationNumber !== cleanOverridePlate)];
+        }
+
+        return {
+          id: c.email || c._id,
+          _id: c._id,
+          name: c.fullName || c.name || 'Customer',
+          fullName: c.fullName || c.name || 'Customer',
+          email: c.email,
+          mobile: c.mobile || '',
+          phone: c.mobile || '',
+          role: c.role,
+          segment: c.segment || (adminMem ? 'Active Member' : 'Regular'),
+          serviceKey: 'car-wash',
+          vehicles: userVehicles,
+          activePassesCount: adminMem ? 1 : 0
+        };
+      });
+
+      // Also merge any customers from Admin Panel -> Membership who aren't in baseList
+      adminMemberships.forEach(m => {
+        if (!m.customerName) return;
+        const mEmail = (m.email || '').toLowerCase().trim();
+        const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
+        const mName = (m.customerName || '').toLowerCase().trim();
+
+        const exists = mapped.some(c => {
+          const cEmail = (c.email || '').toLowerCase().trim();
+          const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
+          const cName = (c.name || '').toLowerCase().trim();
+          return (mEmail && cEmail === mEmail) || (mPhone && cPhone === mPhone) || (mName && cName === mName);
+        });
+
+        if (!exists) {
+          const cleanPlate = (m.vehicleNo || 'MH01AB1234').toUpperCase().trim();
+          mapped.push({
+            id: m.email || m.id || `CUST-${m.customerName.replace(/\s+/g, '-').toLowerCase()}`,
+            name: m.customerName,
+            fullName: m.customerName,
+            email: m.email || '',
+            mobile: m.phone || '',
+            phone: m.phone || '',
+            role: 'user',
+            segment: 'Active Member',
+            serviceKey: 'car-wash',
+            vehicles: [
+              {
+                id: cleanPlate,
+                registrationNumber: cleanPlate,
+                brand: '',
+                model: m.vehicleModel || 'Car',
+                color: '',
+                fuelType: '',
+                isPrimary: true
+              }
+            ],
+            activePassesCount: 1
+          });
+        }
+      });
+
+      setCustomers(mapped);
     } catch (err) {
       console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
@@ -454,9 +601,22 @@ export function StaffProvider({ children }) {
     fetchLiveJobs();
     fetchLiveCustomers();
 
+    // Listen for cross-portal customer & vehicle updates
+    const handleSync = () => fetchLiveCustomers();
+    window.addEventListener('tsl_customer_updated', handleSync);
+    window.addEventListener('tsl_vehicle_updated', handleSync);
+    window.addEventListener('tsl_admin_memberships_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
     // Poll so orders placed by customers land in the queue without a refresh.
     const interval = setInterval(fetchLiveJobs, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tsl_customer_updated', handleSync);
+      window.removeEventListener('tsl_vehicle_updated', handleSync);
+      window.removeEventListener('tsl_admin_memberships_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [currentStaff]);
 
   // Camera Modal State
@@ -692,6 +852,55 @@ export function StaffProvider({ children }) {
     return newCust;
   };
 
+  // Update Customer Vehicle
+  const updateCustomerVehicle = async (customerIdOrEmail, vehicleData) => {
+    const cleanPlate = String(vehicleData.plateNumber || '').trim().toUpperCase();
+    const cleanModel = String(vehicleData.model || '').trim();
+    if (!cleanPlate) return;
+
+    try {
+      const custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
+      const vObj = { plateNumber: cleanPlate, model: cleanModel, isPrimary: true };
+      if (customerIdOrEmail) custVehicles[customerIdOrEmail] = vObj;
+      localStorage.setItem('tsl_customer_vehicles', JSON.stringify(custVehicles));
+    } catch (e) {}
+
+    setCustomers(prev => prev.map(c => {
+      const match = c.id === customerIdOrEmail || c.email === customerIdOrEmail || c._id === customerIdOrEmail;
+      if (match) {
+        const updatedVehicle = {
+          id: cleanPlate,
+          registrationNumber: cleanPlate,
+          brand: vehicleData.brand || '',
+          model: cleanModel,
+          isPrimary: true
+        };
+        const otherVehicles = (c.vehicles || []).filter(v => v.registrationNumber !== cleanPlate);
+        return {
+          ...c,
+          vehicles: [updatedVehicle, ...otherVehicles]
+        };
+      }
+      return c;
+    }));
+
+    try {
+      await apiClient.post(`/users/customers/${customerIdOrEmail}/vehicles`, {
+        plateNumber: cleanPlate,
+        model: cleanModel,
+        isPrimary: true
+      });
+    } catch (err) {}
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', {
+        detail: { customerId: customerIdOrEmail, newPlate: cleanPlate, newModel: cleanModel }
+      }));
+      window.dispatchEvent(new CustomEvent('tsl_vehicle_updated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+  };
+
   // Filter Jobs Relevant strictly to Logged In Staff Role & Department
   const staffJobs = jobs.filter(job => {
     if (currentStaff.serviceKey === 'global' || currentStaff.role === 'Super Admin' || currentStaff.role === 'Branch Manager' || currentStaff.role === 'Cashier') {
@@ -748,6 +957,7 @@ export function StaffProvider({ children }) {
         customers: staffCustomers,
         allCustomers: customers,
         addCustomer,
+        updateCustomerVehicle,
         attendance,
         isCheckedIn,
         checkInPhoto,

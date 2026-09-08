@@ -16,6 +16,7 @@ const {
   updateCustomerMembership,
   updateCustomerUsageRules,
   addCustomerVehicle,
+  deleteCustomer,
   updateProfile,
   getMyVehicles,
   addMyVehicle,
@@ -70,9 +71,10 @@ router.delete('/staff/:id', authMiddleware, canManageStaff, deleteStaff);
 // to page through every other customer's contact details and membership.
 router.get('/customers', authMiddleware, staffOnly, getCustomers);
 router.get('/customers/:id', authMiddleware, staffOnly, getCustomerById);
-router.put('/customers/:id/membership', authMiddleware, adminOnly, updateCustomerMembership);
+router.put('/customers/:id/membership', authMiddleware, staffOnly, updateCustomerMembership);
 router.put('/customers/:id/usage-rules', authMiddleware, adminOnly, updateCustomerUsageRules);
-router.post('/customers/:id/vehicles', authMiddleware, adminOnly, addCustomerVehicle);
+router.post('/customers/:id/vehicles', authMiddleware, staffOnly, addCustomerVehicle);
+router.delete('/customers/:id', authMiddleware, adminOnly, deleteCustomer);
 
 module.exports = router;
 

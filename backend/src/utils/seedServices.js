@@ -34,9 +34,9 @@ const initialServices = [
         price: 2499,
         duration: 30,
         durationType: 'days',
-        visitLimit: 4,
+        visitLimit: 50,
         oneVisitPerDay: true,
-        benefits: ['Up to 4 washes/month + interior car fragrance'],
+        benefits: ['50 washes/month + interior car fragrance'],
         renewable: true,
         upgradeAvailable: true,
         isPopular: false,
@@ -309,11 +309,23 @@ const seedServices = async () => {
   try {
     for (const serviceData of initialServices) {
       const existing = await Service.findOne({ slug: serviceData.slug, isDeleted: false });
-      if (existing) {
-        // Update the fields while keeping the document ID
-        await Service.updateOne({ slug: serviceData.slug }, { $set: serviceData });
-      } else {
+      if (!existing) {
         await Service.create(serviceData);
+      } else {
+        // Do NOT overwrite admin-customized memberships, packages, or pricing!
+        const updates = {};
+        if ((!existing.memberships || existing.memberships.length === 0) && serviceData.memberships?.length > 0) {
+          updates.memberships = serviceData.memberships;
+        }
+        if ((!existing.pricing || existing.pricing.length === 0) && serviceData.pricing?.length > 0) {
+          updates.pricing = serviceData.pricing;
+        }
+        if ((!existing.plans || existing.plans.length === 0) && serviceData.plans?.length > 0) {
+          updates.plans = serviceData.plans;
+        }
+        if (Object.keys(updates).length > 0) {
+          await Service.updateOne({ slug: serviceData.slug }, { $set: updates });
+        }
       }
     }
     console.log(`✅ Seeded & Synced ${initialServices.length} dynamic services successfully!`);

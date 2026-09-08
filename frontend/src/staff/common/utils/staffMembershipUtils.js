@@ -227,13 +227,29 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     }
   });
 
-  // 4. Pool of all memberships (initialMemberships + props + localStorage)
+  // 4. Pool of all memberships (initialMemberships + Admin Panel Memberships + props + localStorage)
   const combinedMembershipsMap = new Map();
   initialMemberships.forEach(m => {
     if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
       combinedMembershipsMap.set(m.id || m.vehicleNo, m);
     }
   });
+
+  // Pull live data from Admin Panel -> Membership
+  try {
+    const adminMemRaw = localStorage.getItem('tsl_admin_memberships');
+    if (adminMemRaw) {
+      const parsed = JSON.parse(adminMemRaw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(m => {
+          if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
+            combinedMembershipsMap.set(m.id || m.vehicleNo, m);
+          }
+        });
+      }
+    }
+  } catch (e) {}
+
   (memberships || []).forEach(m => {
     if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
       combinedMembershipsMap.set(m.id || m.vehicleNo, m);
@@ -243,6 +259,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   // Also include offline sales with saleType === 'membership'
   allOfflineSalesMap.forEach((s) => {
     if (s.saleType === 'membership') {
+      const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
       combinedMembershipsMap.set(s.id || s.bookingId, {
         id: s.id || s.bookingId,
         customerName: s.customerName,
@@ -250,17 +267,41 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
         email: s.customerEmail || '',
         vehicleNo: s.vehicleNo,
         vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
-        planName: s.membershipName || s.packageName || 'Monthly Membership',
+        planName: s.membershipName || s.packageName || s.planName || 'Monthly Membership',
         serviceKey: s.serviceKey || 'car-wash',
         startDate: s.date || s.saleDate,
         expiryDate: s.membershipExpiry || '',
         washesUsed: 0,
         maxWashes: catalogLimits['monthly membership'] || 30,
         status: 'Active',
-        amount: s.price || 2499
+        amount: priceVal,
+        price: priceVal,
+        total: priceVal
       });
     }
   });
+
+  // Apply any customer vehicle updates registered in staff/admin panels
+  try {
+    const custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
+    combinedMembershipsMap.forEach((m, key) => {
+      const emailKey = (m.email || '').toLowerCase().trim();
+      const phoneKey = String(m.phone || '').replace(/\D/g, '').slice(-10);
+      const plateKey = normalizePlate(m.vehicleNo);
+      const nameKey = (m.customerName || '').toLowerCase().trim();
+
+      const override = (emailKey && custVehicles[emailKey]) ||
+                       (phoneKey && custVehicles[phoneKey]) ||
+                       (plateKey && custVehicles[plateKey]) ||
+                       (nameKey && custVehicles[nameKey]) ||
+                       (m.id && custVehicles[m.id]);
+
+      if (override && override.plateNumber) {
+        m.vehicleNo = override.plateNumber;
+        if (override.model) m.vehicleModel = override.model;
+      }
+    });
+  } catch (e) {}
 
   // 5. Assemble unified passes list
   const passItems = [];
@@ -347,7 +388,10 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
       lastWashDate: washData.lastWashDate || startDateStr,
       status,
       washHistory: washData.washHistory,
-      rawAmount: mem.amount || 2499
+      rawAmount: Number(mem.amount !== undefined && mem.amount !== null ? mem.amount : (mem.price !== undefined && mem.price !== null ? mem.price : 2499)),
+      amount: Number(mem.amount !== undefined && mem.amount !== null ? mem.amount : (mem.price !== undefined && mem.price !== null ? mem.price : 2499)),
+      price: Number(mem.price !== undefined && mem.price !== null ? mem.price : (mem.amount !== undefined && mem.amount !== null ? mem.amount : 2499)),
+      total: Number(mem.amount !== undefined && mem.amount !== null ? mem.amount : (mem.price !== undefined && mem.price !== null ? mem.price : 2499))
     });
   });
 
@@ -427,7 +471,10 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
         lastWashDate: washData.lastWashDate || rec.date || '—',
         status: 'Active',
         washHistory: washData.washHistory,
-        rawAmount: rec.price || 2499
+        rawAmount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
+        amount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
+        price: Number(rec.price !== undefined && rec.price !== null ? rec.price : (rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.total || 2499))),
+        total: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499)))
       });
     } else {
       // Single Wash Booking / Counter Sale
@@ -467,7 +514,10 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
           time: rec.timeSlot || 'Counter Walk-in',
           notes: rec.notes || 'Single Wash Service'
         }] : [],
-        rawAmount: rec.price || 499
+        rawAmount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 499))),
+        amount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 499))),
+        price: Number(rec.price !== undefined && rec.price !== null ? rec.price : (rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.total || 499))),
+        total: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 499)))
       });
     }
   });
@@ -542,5 +592,131 @@ export async function recordStaffWashDone({
   } catch (e) {}
 
   return washRecord;
+}
+
+/**
+ * Reads memberships directly from Admin Panel -> Membership
+ */
+export function getAdminMemberships() {
+  try {
+    const raw = localStorage.getItem('tsl_admin_memberships');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return initialMemberships;
+}
+
+/**
+ * Updates a car number plate and model across the entire system:
+ * - Local offline sales (tsl_offline_sales)
+ * - Admin memberships (tsl_admin_memberships)
+ * - Customer vehicles registry (tsl_customer_vehicles)
+ * - Backend /api/users/customers/:id/vehicles
+ * - Fires window events to update Admin & Staff portals in real-time
+ */
+export async function updateCarNumberAcrossSystem({
+  passId,
+  customerId,
+  customerEmail,
+  customerPhone,
+  customerName,
+  oldPlate,
+  newPlate,
+  newModel
+}) {
+  const cleanNewPlate = String(newPlate || '').trim().toUpperCase();
+  const cleanNewModel = String(newModel || '').trim();
+  if (!cleanNewPlate) return false;
+
+  // 1. Update customer vehicles mapping in localStorage
+  try {
+    const customerVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
+    const vehicleObj = { plateNumber: cleanNewPlate, model: cleanNewModel, isPrimary: true };
+    if (customerEmail) customerVehicles[customerEmail.toLowerCase().trim()] = vehicleObj;
+    if (customerId) customerVehicles[customerId] = vehicleObj;
+    if (customerPhone) customerVehicles[String(customerPhone).replace(/\D/g, '').slice(-10)] = vehicleObj;
+    if (customerName) customerVehicles[customerName.toLowerCase().trim()] = vehicleObj;
+    if (oldPlate) customerVehicles[normalizePlate(oldPlate)] = vehicleObj;
+    customerVehicles[normalizePlate(cleanNewPlate)] = vehicleObj;
+    localStorage.setItem('tsl_customer_vehicles', JSON.stringify(customerVehicles));
+  } catch (e) {}
+
+  // 2. Update offline sales
+  try {
+    const offlineSales = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+    let modifiedSales = false;
+    const updatedSales = offlineSales.map(s => {
+      const matchesPass = passId && (s.id === passId || s.bookingId === passId);
+      const matchesPlate = oldPlate && normalizePlate(s.vehicleNo) === normalizePlate(oldPlate);
+      const matchesEmail = customerEmail && s.customerEmail && s.customerEmail.toLowerCase().trim() === customerEmail.toLowerCase().trim();
+      if (matchesPass || matchesPlate || matchesEmail) {
+        modifiedSales = true;
+        return {
+          ...s,
+          vehicleNo: cleanNewPlate,
+          vehicleModel: cleanNewModel || s.vehicleModel || s.vehicleType || 'Car',
+          vehicleType: cleanNewModel || s.vehicleType || 'Car'
+        };
+      }
+      return s;
+    });
+    if (modifiedSales) {
+      localStorage.setItem('tsl_offline_sales', JSON.stringify(updatedSales));
+    }
+  } catch (e) {}
+
+  // 3. Update Admin Panel -> Membership in localStorage
+  try {
+    const adminMemberships = JSON.parse(localStorage.getItem('tsl_admin_memberships') || 'null') || initialMemberships;
+    let modifiedAdmin = false;
+    const updatedAdmin = adminMemberships.map(m => {
+      const matchesPass = passId && (m.id === passId || m.bookingId === passId);
+      const matchesPlate = oldPlate && normalizePlate(m.vehicleNo) === normalizePlate(oldPlate);
+      const matchesEmail = customerEmail && m.email && m.email.toLowerCase().trim() === customerEmail.toLowerCase().trim();
+      if (matchesPass || matchesPlate || matchesEmail) {
+        modifiedAdmin = true;
+        return {
+          ...m,
+          vehicleNo: cleanNewPlate,
+          vehicleModel: cleanNewModel || m.vehicleModel || 'Car'
+        };
+      }
+      return m;
+    });
+    if (modifiedAdmin) {
+      localStorage.setItem('tsl_admin_memberships', JSON.stringify(updatedAdmin));
+    }
+  } catch (e) {}
+
+  // 4. Try updating backend if customer ID or email available
+  if (customerId || customerEmail) {
+    try {
+      const targetId = customerId || customerEmail;
+      await apiClient.post(`/users/customers/${targetId}/vehicles`, {
+        plateNumber: cleanNewPlate,
+        model: cleanNewModel,
+        isPrimary: true
+      });
+    } catch (err) {
+      console.warn('Backend customer vehicle update note:', err.message);
+    }
+  }
+
+  // 5. Fire dispatch events
+  try {
+    window.dispatchEvent(new CustomEvent('tsl_vehicle_updated', {
+      detail: { passId, customerId, oldPlate, newPlate: cleanNewPlate, newModel: cleanNewModel }
+    }));
+    window.dispatchEvent(new CustomEvent('tsl_customer_updated', {
+      detail: { customerId, customerEmail, newPlate: cleanNewPlate, newModel: cleanNewModel }
+    }));
+    window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated'));
+    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated'));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {}
+
+  return true;
 }
 

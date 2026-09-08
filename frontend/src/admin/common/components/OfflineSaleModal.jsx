@@ -87,8 +87,8 @@ const DEFAULT_CAR_WASH_PACKAGES = [
 ];
 
 const DEFAULT_CAR_WASH_MEMBERSHIPS = [
-  { id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, description: 'Up to 4 washes/month + interior car fragrance' },
-  { id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, description: 'Unlimited washes + ceramic coating & 5x car fragrance' }
+  { id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, visitLimit: 50, description: '50 washes/month + interior car fragrance' },
+  { id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, visitLimit: 365, description: 'Unlimited washes + ceramic coating & 5x car fragrance' }
 ];
 
 // Extract normalized plans/packages from a service object
@@ -133,6 +133,7 @@ const extractMemberships = (service, serviceKey) => {
     name: m.name || m.title || 'Membership',
     price: Number(m.price) || 0,
     duration: Number(m.duration) || 30,
+    visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.name?.toLowerCase().includes('year') ? 365 : 50),
     description: Array.isArray(m.benefits) ? m.benefits.join(', ') : (m.description || '')
   }));
 

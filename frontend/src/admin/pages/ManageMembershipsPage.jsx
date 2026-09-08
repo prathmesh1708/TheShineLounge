@@ -54,9 +54,14 @@ export default function ManageMembershipsPage() {
       header: 'Plan Tier',
       accessorKey: 'planName',
       cell: (row) => (
-        <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100">
-          {row.planName}
-        </span>
+        <div className="flex flex-col items-start gap-0.5">
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100">
+            {row.planName}
+          </span>
+          <span className="text-[11px] font-black text-emerald-700">
+            ₹{(Number(row.amount) || Number(row.price) || 0).toLocaleString('en-IN')}
+          </span>
+        </div>
       )
     },
     {
@@ -157,7 +162,7 @@ export default function ManageMembershipsPage() {
         const activeCount = memberships.filter(m => m.status === 'Active').length;
         const expiringCount = memberships.filter(m => m.status === 'Expiring Soon').length;
         const queuedCount = memberships.filter(m => m.status === 'Queued').length;
-        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || 2499), 0);
+        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 2499), 0);
         const mrrInLakhs = (totalAmount / 100000).toFixed(2);
 
         return (
@@ -234,8 +239,13 @@ export default function ManageMembershipsPage() {
                 <span className="font-extrabold text-gray-900">{selectedMember.vehicleNo} ({selectedMember.vehicleModel})</span>
               </div>
               <div>
-                <span className="text-gray-400 font-bold block">Plan Tier</span>
-                <span className="font-extrabold text-amber-600">{selectedMember.planName} (₹{selectedMember.amount})</span>
+                <span className="text-gray-400 font-bold block">Plan Tier & Price</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="font-extrabold text-amber-700">{selectedMember.planName}</span>
+                  <span className="font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md text-[10px]">
+                    ₹{(Number(selectedMember.amount) || Number(selectedMember.price) || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Washes Used</span>

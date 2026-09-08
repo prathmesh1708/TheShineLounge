@@ -84,7 +84,25 @@ export const AdminProvider = ({ children }) => {
       console.warn('Could not save banners to localStorage:', e);
     }
   }, [banners]);
-  const [memberships, setMemberships] = useState(initialMemberships);
+  const [memberships, setMemberships] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_admin_memberships');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialMemberships;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tsl_admin_memberships', JSON.stringify(memberships));
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: memberships }));
+    } catch (e) {
+      console.warn('Could not save memberships to localStorage:', e);
+    }
+  }, [memberships]);
   const [staffList, setStaffList] = useState(() => {
     try {
       const saved = localStorage.getItem('tsl_admin_staff_list');
@@ -188,26 +206,29 @@ export const AdminProvider = ({ children }) => {
     const knownIds = new Set(membershipBookings.map(b => b.bookingId || b.id).filter(Boolean));
     const localPasses = [];
     const addLocalPass = (pass) => {
-      if (!pass || !pass.packageName) return;
-      const passId = pass.bookingId || pass.id;
+      if (!pass || (!pass.packageName && !pass.planName && !pass.plan)) return;
+      const passId = pass.bookingId || pass.id || pass.passId;
       if (passId && knownIds.has(passId)) return;
       if (passId) knownIds.add(passId);
+      const pkg = pass.packageName || pass.planName || pass.plan;
+      const passPrice = Number(pass.amount !== undefined && pass.amount !== null ? pass.amount : (pass.price !== undefined && pass.price !== null ? pass.price : (pass.total || 0)));
       localPasses.push({
         id: passId,
         bookingId: passId,
         customerName: pass.customerName || 'Valued Passholder',
-        customerEmail: pass.customerEmail || '',
+        customerEmail: pass.customerEmail || pass.email || '',
         phone: pass.phone || pass.mobile || '',
         vehicleNo: pass.vehicleNo || '',
-        vehicleType: pass.vehicleType || '',
+        vehicleType: pass.vehicleModel || pass.vehicleType || 'Car',
         serviceKey: pass.serviceKey || 'car-wash',
         serviceName: pass.serviceName || 'Car Wash',
-        plan: pass.packageName,
-        packageName: pass.packageName,
-        price: pass.price,
-        total: pass.price,
+        plan: pkg,
+        packageName: pkg,
+        price: passPrice,
+        amount: passPrice,
+        total: passPrice,
         date: pass.date,
-        purchasedAt: pass.purchasedAt
+        purchasedAt: pass.purchasedAt || pass.date
       });
     };
 
@@ -216,6 +237,21 @@ export const AdminProvider = ({ children }) => {
       if (Array.isArray(value)) value.forEach(addLocalPass);
     });
     readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
+
+    // Offline sales and admin memberships
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        offline.filter(s => s.saleType === 'membership' || isMembershipPackage(s.packageName || s.planName || s.plan || '')).forEach(addLocalPass);
+      }
+    } catch (e) {}
+
+    try {
+      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+      if (Array.isArray(adminMems)) {
+        adminMems.forEach(addLocalPass);
+      }
+    } catch (e) {}
 
     // Plan durations and wash allowances configured by the admin across all services
     const catalogMap = new Map();
@@ -270,8 +306,8 @@ export const AdminProvider = ({ children }) => {
             ? record.visitLimit
             : (isUnlimited ? 999 : (record.isYearly ? 48 : 4)));
 
-      // Washes taken inside this pass's own window, so a queued pass shows 0.
-      const washesUsed = record.isQueued ? 0 : bookingList.filter(b => {
+      // Calculate washes used by matching vehicle plate or customer contact
+      const washesUsed = bookingList.filter(b => {
         const name = b.plan || b.packageName;
         if (isMembershipPackage(name)) return false;
         if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
@@ -284,20 +320,22 @@ export const AdminProvider = ({ children }) => {
         const washPhone = String(b.phone || b.mobile || '').replace(/\D/g, '').slice(-10);
 
         let isMatch = false;
-        if (passPlate) {
-          // If membership is registered to a plate, the wash MUST match this plate
-          isMatch = Boolean(washPlate && washPlate === passPlate);
-        } else if (passEmail) {
-          isMatch = Boolean(washEmail && washEmail === passEmail);
-        } else if (passPhone) {
-          isMatch = Boolean(washPhone && washPhone === passPhone);
+        if (passPlate && washPlate) {
+          // If membership is registered to a plate, matching plate is authoritative
+          isMatch = washPlate === passPlate;
+        } else if (passEmail && washEmail) {
+          isMatch = washEmail === passEmail;
+        } else if (passPhone && washPhone) {
+          isMatch = washPhone === passPhone;
         }
 
         if (!isMatch) return false;
 
-        const washedOn = parseFlexibleDate(b.date);
-        if (!washedOn) return false;
-        return washedOn >= record.startDate && washedOn < record.expiryDate;
+        const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt);
+        if (!washedOn) return true;
+        // Count washes on or after purchase date up to expiry
+        const effectiveStart = record.startDate <= new Date() ? record.startDate : (record.purchaseDate || record.startDate);
+        return washedOn >= effectiveStart && washedOn <= record.expiryDate;
       }).length;
 
       let status = record.status;
@@ -327,7 +365,8 @@ export const AdminProvider = ({ children }) => {
         statusLabel: record.statusLabel,
         isQueued: record.isQueued,
         isStacked: record.isStacked,
-        amount: record.price || 2499
+        amount: Number(record.amount !== undefined && record.amount !== null ? record.amount : (record.price || 2499)),
+        price: Number(record.price !== undefined && record.price !== null ? record.price : (record.amount || 2499))
       };
     });
 
@@ -535,13 +574,151 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  // Derives enriched customers combining backend CRM accounts, live bookings & offline sales
+  const deriveCustomers = (baseCustomers = [], bookingList = [], offlineSalesList = []) => {
+    const customerMap = new Map();
+
+    const normalizeKey = (email, phone, name) => {
+      const e = (email || '').toLowerCase().trim();
+      if (e) return `email:${e}`;
+      const p = String(phone || '').replace(/\D/g, '').slice(-10);
+      if (p) return `phone:${p}`;
+      const n = (name || '').toLowerCase().trim();
+      return n ? `name:${n}` : '';
+    };
+
+    // 1. Seed base customers
+    (baseCustomers || []).forEach(c => {
+      if (!c) return;
+      const key = normalizeKey(c.email, c.phone || c.mobile, c.name || c.fullName);
+      if (key) {
+        customerMap.set(key, {
+          ...c,
+          vehicles: Array.isArray(c.vehicles) ? [...c.vehicles] : [],
+          rawVehicles: Array.isArray(c.rawVehicles) ? [...c.rawVehicles] : []
+        });
+      }
+    });
+
+    // 2. Aggregate offline sales and bookings
+    const allTransactions = [...(bookingList || []), ...(offlineSalesList || [])];
+
+    // Local membership cache for segment verification
+    let adminMems = [];
+    try {
+      adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+    } catch (e) {}
+
+    allTransactions.forEach(t => {
+      if (!t) return;
+      const tName = (t.customerName || t.fullName || t.name || '').trim();
+      const tEmail = (t.customerEmail || t.email || '').toLowerCase().trim();
+      const tPhone = String(t.phone || t.mobile || '').trim();
+      const tPlate = (t.vehicleNo || t.vehiclePlate || '').toUpperCase().trim();
+      const tModel = t.vehicleType || t.vehicleModel || 'Car';
+      const tPrice = Number(t.price !== undefined ? t.price : (t.amount !== undefined ? t.amount : (t.total || 0))) || 0;
+      const tDate = t.date || (t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '');
+
+      const isMem = t.saleType === 'membership' || 
+        isMembershipPackage(t.packageName || t.plan || t.planName || t.membershipName);
+
+      const key = normalizeKey(tEmail, tPhone, tName);
+      if (!key) return;
+
+      if (customerMap.has(key)) {
+        const existing = customerMap.get(key);
+
+        // Update vehicle list
+        if (tPlate) {
+          const cleanPlate = tPlate.replace(/[^A-Z0-9]/g, '');
+          const hasPlate = existing.vehicles.some(v => v.replace(/[^A-Z0-9]/g, '').includes(cleanPlate));
+          if (!hasPlate) {
+            existing.vehicles.push(`${tPlate}${tModel ? ` (${tModel})` : ''}`);
+            existing.rawVehicles.push({ plateNumber: tPlate, model: tModel });
+          }
+        }
+
+        // Add to total lifetime spent for offline transactions
+        if (t.isOfflineSale) {
+          existing.totalSpent = Math.max(Number(existing.totalSpent) || 0, tPrice);
+          existing.loyaltyPoints = Math.max(existing.loyaltyPoints || 0, Math.floor(existing.totalSpent / 100));
+        }
+
+        if (isMem) {
+          existing.segment = 'Active Member';
+          if (!existing.membership || !existing.membership.planName) {
+            existing.membership = {
+              planName: t.membershipName || t.packageName || 'Monthly Membership',
+              status: 'Active',
+              startDate: tDate || new Date().toISOString(),
+              expiryDate: t.membershipExpiry || t.validUntil || ''
+            };
+          }
+        }
+
+        if (tDate) {
+          existing.lastVisit = tDate;
+        }
+      } else {
+        // Create new customer record for this offline sale / booking customer
+        const vehList = tPlate ? [`${tPlate}${tModel ? ` (${tModel})` : ''}`] : [];
+        const rawVehList = tPlate ? [{ plateNumber: tPlate, model: tModel }] : [];
+
+        customerMap.set(key, {
+          _id: t._id || `offline-cust-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          id: tEmail || tPhone || `CUST-${tName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'OFFLINE'}`,
+          name: tName || 'Valued Customer',
+          fullName: tName || 'Valued Customer',
+          email: tEmail || '',
+          phone: tPhone || '',
+          mobile: tPhone || '',
+          city: 'Mumbai',
+          segment: isMem ? 'Active Member' : 'Regular Customer',
+          totalSpent: tPrice,
+          loyaltyPoints: Math.floor(tPrice / 100),
+          vehicles: vehList,
+          rawVehicles: rawVehList,
+          membership: isMem ? {
+            planName: t.membershipName || t.packageName || 'Monthly Membership',
+            status: 'Active',
+            startDate: tDate || new Date().toISOString(),
+            expiryDate: t.membershipExpiry || t.validUntil || ''
+          } : null,
+          lastVisit: tDate || 'Just now',
+          createdAt: t.createdAt || new Date().toISOString()
+        });
+      }
+    });
+
+    // Also check if any customer holds an active membership from tsl_admin_memberships
+    (adminMems || []).forEach(m => {
+      if (!m) return;
+      const key = normalizeKey(m.customerEmail || m.email, m.phone || m.mobile, m.customerName || m.name);
+      if (key && customerMap.has(key)) {
+        const c = customerMap.get(key);
+        c.segment = 'Active Member';
+        if (!c.membership) {
+          c.membership = {
+            planName: m.planName || m.packageName || 'Monthly Membership',
+            status: 'Active',
+            startDate: m.startDate || m.date,
+            expiryDate: m.expiryDate || m.validUntil
+          };
+        }
+      }
+    });
+
+    return Array.from(customerMap.values());
+  };
+
   const fetchCustomersList = async () => {
     try {
       const res = await apiClient.get('/users/customers');
-      if (res.data && res.data.customers) {
-        const mapped = res.data.customers.map(c => ({
+      let base = [];
+      if (res.data && Array.isArray(res.data.customers)) {
+        base = res.data.customers.map(c => ({
           _id: c._id,
-          id: c.email || c._id,
+          id: c.email || c.phone || c._id,
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
           email: c.email,
@@ -549,19 +726,33 @@ export const AdminProvider = ({ children }) => {
           mobile: c.mobile || c.phone || '',
           city: c.city || '',
           segment: c.segment || 'Regular Customer',
-          totalSpent: c.totalSpent !== undefined ? c.totalSpent : 0,
-          loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : 0,
-          vehicles: c.vehicles || [],
-          rawVehicles: c.rawVehicles || [],
+          totalSpent: Number(c.totalSpent) || 0,
+          loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor((Number(c.totalSpent) || 0) / 100),
+          vehicles: Array.isArray(c.vehicles) ? c.vehicles : [],
+          rawVehicles: Array.isArray(c.rawVehicles) ? c.rawVehicles : [],
           membership: c.membership || null,
           lastVisit: c.lastVisit || null,
           role: c.role,
           createdAt: c.createdAt
         }));
-        setCustomers(mapped);
+      } else {
+        base = initialCustomers;
       }
+
+      let offline = [];
+      try {
+        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      } catch (e) {}
+
+      const merged = deriveCustomers(base, bookingsRef.current || [], offline);
+      setCustomers(merged);
     } catch (err) {
       console.warn('Could not fetch customers list:', err.message);
+      let offline = [];
+      try {
+        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      } catch (e) {}
+      setCustomers(prev => deriveCustomers(prev.length > 0 ? prev : initialCustomers, bookingsRef.current || [], offline));
     }
   };
 
@@ -622,9 +813,11 @@ export const AdminProvider = ({ children }) => {
           setMemberships(deriveMembershipsFromBookings(next));
           return next;
         });
+        setCustomers(prev => deriveCustomers(prev, [record], [record]));
       } else {
         handleLiveBooking();
       }
+      fetchCustomersList();
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -635,6 +828,9 @@ export const AdminProvider = ({ children }) => {
     window.addEventListener('tsl_wash_logged', handleExternalWashOrSale);
     window.addEventListener('tsl_wash_used', handleExternalWashOrSale);
     window.addEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
+    window.addEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
+    window.addEventListener('tsl_customer_updated', handleLiveBooking);
+    window.addEventListener('tsl_vehicle_updated', handleLiveBooking);
 
     return () => {
       clearInterval(interval);
@@ -646,6 +842,9 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener('tsl_wash_logged', handleExternalWashOrSale);
       window.removeEventListener('tsl_wash_used', handleExternalWashOrSale);
       window.removeEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
+      window.removeEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
+      window.removeEventListener('tsl_customer_updated', handleLiveBooking);
+      window.removeEventListener('tsl_vehicle_updated', handleLiveBooking);
     };
   }, []);
 
@@ -1066,8 +1265,11 @@ export const AdminProvider = ({ children }) => {
       return next;
     });
 
+    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+
     try {
       window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: localRecord }));
       window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
@@ -1168,9 +1370,12 @@ export const AdminProvider = ({ children }) => {
       return next;
     });
 
+    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+
     try {
       window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
       window.dispatchEvent(new CustomEvent('tsl_wash_used', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: localRecord }));
       window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}

@@ -211,8 +211,8 @@ export const initialServices = [
       { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
     ],
     memberships: [
-      { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, benefits: ['Up to 4 washes/month + interior car fragrance'], badge: 'PASS' },
-      { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE' }
+      { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, duration: 30, visitLimit: 50, benefits: ['50 washes/month + interior car fragrance'], badge: 'PASS' },
+      { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, duration: 365, visitLimit: 365, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE' }
     ]
   },
   {
@@ -401,7 +401,7 @@ export const initialMemberships = [
     startDate: '2026-06-01',
     expiryDate: '2026-07-31',
     washesUsed: 3,
-    maxWashes: 4,
+    maxWashes: 50,
     status: 'Active',
     amount: 2499
   },

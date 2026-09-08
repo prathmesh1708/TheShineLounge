@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
 const bcrypt = require('bcryptjs');
 const { isUsablePlate, normalizePlate } = require('../utils/plateNormalizer');
@@ -480,26 +481,44 @@ const getCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [rawCustomers, total] = await Promise.all([
+    const [rawCustomers, total, allBookings] = await Promise.all([
       User.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
-      User.countDocuments(query)
+      User.countDocuments(query),
+      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
     ]);
 
-    // Everything below reports what is actually stored. Placeholder vehicles and
-    // stand-in memberships used to be substituted here when a record was empty,
-    // which reads fine on a dashboard but is not survivable now that hardware
-    // acts on this data: an ANPR arrival would check in a car that does not
-    // exist, and a wash would be taken off a membership nobody bought. An empty
-    // field must look empty.
     const customers = rawCustomers.map(u => {
       const computedSegment = computeMembershipStatus(u);
       const ownedVehicles = sanitizeVehicles(u.vehicles);
       const vehicleList = ownedVehicles.map(v => {
         const label = [v.brand, v.model].filter(Boolean).join(' ');
         return `${v.plateNumber}${label ? ` (${label})` : ''}`;
+      });
+
+      // Find all bookings for this user to aggregate lifetime spent and vehicles
+      const uEmail = (u.email || '').toLowerCase().trim();
+      const uPhone = String(u.mobile || '').replace(/\D/g, '').slice(-10);
+      const userBookings = allBookings.filter(b => {
+        const bEmail = (b.customerEmail || '').toLowerCase().trim();
+        const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
+        return (uEmail && bEmail && uEmail === bEmail) || (uPhone && bPhone && uPhone === bPhone);
+      });
+
+      const bookingSpent = userBookings.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
+      const totalSpent = Math.max(u.totalSpent || 0, bookingSpent);
+
+      // Add any vehicles from bookings if not already present
+      userBookings.forEach(b => {
+        if (b.vehicleNo) {
+          const cleanPlate = b.vehicleNo.toUpperCase().trim();
+          const exists = vehicleList.some(v => v.toUpperCase().includes(cleanPlate));
+          if (!exists) {
+            vehicleList.push(`${cleanPlate}${b.vehicleType ? ` (${b.vehicleType})` : ''}`);
+          }
+        }
       });
 
       return {
@@ -512,8 +531,8 @@ const getCustomers = async (req, res) => {
         mobile: u.mobile || '',
         city: u.city || '',
         segment: computedSegment,
-        totalSpent: u.totalSpent || 0,
-        loyaltyPoints: u.loyaltyPoints || 0,
+        totalSpent,
+        loyaltyPoints: u.loyaltyPoints || Math.floor(totalSpent / 100),
         vehicles: vehicleList,
         rawVehicles: ownedVehicles,
         membership: u.membership || null,
@@ -522,14 +541,72 @@ const getCustomers = async (req, res) => {
       };
     });
 
+    // Also include any customer from offline sales or bookings who hasn't been created in User yet
+    const existingEmails = new Set(customers.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean));
+    const existingPhones = new Set(customers.map(c => String(c.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
+
+    const extraCustomersMap = new Map();
+    for (const b of allBookings) {
+      const bEmail = (b.customerEmail || '').toLowerCase().trim();
+      const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
+      const bName = (b.customerName || '').trim();
+
+      const alreadyInUsers = (bEmail && existingEmails.has(bEmail)) ||
+                             (bPhone && existingPhones.has(bPhone));
+      if (alreadyInUsers) continue;
+
+      const groupKey = bEmail || bPhone || bName.toLowerCase();
+      if (!groupKey) continue;
+
+      if (!extraCustomersMap.has(groupKey)) {
+        const isMem = b.saleType === 'membership' || (b.packageName && (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass')));
+        extraCustomersMap.set(groupKey, {
+          _id: b._id,
+          id: b.customerEmail || b.phone || b._id,
+          name: bName || 'Valued Customer',
+          fullName: bName || 'Valued Customer',
+          email: b.customerEmail || '',
+          phone: b.phone || '',
+          mobile: b.phone || '',
+          city: 'Mumbai',
+          segment: isMem ? 'Active Member' : 'Regular Customer',
+          totalSpent: Number(b.price) || 0,
+          loyaltyPoints: Math.floor((Number(b.price) || 0) / 100),
+          vehicles: b.vehicleNo ? [`${b.vehicleNo.toUpperCase().trim()}${b.vehicleType ? ` (${b.vehicleType})` : ''}`] : [],
+          rawVehicles: b.vehicleNo ? [{ plateNumber: b.vehicleNo.toUpperCase().trim(), model: b.vehicleType || 'Car' }] : [],
+          membership: isMem ? {
+            planName: b.membershipName || b.packageName,
+            status: 'Active',
+            startDate: b.date || b.createdAt,
+            expiryDate: b.membershipExpiry || null
+          } : null,
+          lastVisit: b.date || (b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : null),
+          createdAt: b.createdAt || new Date()
+        });
+      } else {
+        const item = extraCustomersMap.get(groupKey);
+        item.totalSpent += (Number(b.price) || 0);
+        item.loyaltyPoints = Math.floor(item.totalSpent / 100);
+        if (b.vehicleNo) {
+          const cleanPlate = b.vehicleNo.toUpperCase().trim();
+          const hasPlate = item.vehicles.some(v => v.toUpperCase().includes(cleanPlate));
+          if (!hasPlate) {
+            item.vehicles.push(`${cleanPlate}${b.vehicleType ? ` (${b.vehicleType})` : ''}`);
+          }
+        }
+      }
+    }
+
+    const combinedCustomers = [...customers, ...Array.from(extraCustomersMap.values())];
+
     res.status(200).json({
       success: true,
-      customers,
+      customers: combinedCustomers,
       pagination: {
-        total,
+        total: total + extraCustomersMap.size,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil((total + extraCustomersMap.size) / parseInt(limit))
       }
     });
   } catch (error) {
@@ -718,21 +795,40 @@ const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrim
 // @access  Admin
 const addCustomerVehicle = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const isObjId = mongoose.Types.ObjectId.isValid(req.params.id);
+    const user = await User.findOne(
+      isObjId ? { _id: req.params.id } : { email: req.params.id }
+    );
     if (!user) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    const { error } = attachVehicle(user, req.body, 'admin');
-    if (error) {
-      return res.status(400).json({ success: false, message: error });
+    const { plateNumber, brand, model, year, category, isPrimary } = req.body;
+    if (!plateNumber || !String(plateNumber).trim()) {
+      return res.status(400).json({ success: false, message: 'Plate number is required' });
+    }
+
+    const normalized = normalizePlate(plateNumber);
+    const existingIndex = (user.vehicles || []).findIndex(v => normalizePlate(v.plateNumber) === normalized);
+
+    if (existingIndex >= 0) {
+      if (brand) user.vehicles[existingIndex].brand = String(brand).trim();
+      if (model) user.vehicles[existingIndex].model = String(model).trim();
+      if (year) user.vehicles[existingIndex].year = String(year).trim();
+      if (category) user.vehicles[existingIndex].category = category;
+      if (isPrimary !== undefined) user.vehicles[existingIndex].isPrimary = Boolean(isPrimary);
+    } else {
+      const { error } = attachVehicle(user, req.body, req.user?.role || 'staff');
+      if (error) {
+        return res.status(400).json({ success: false, message: error });
+      }
     }
 
     await user.save({ validateBeforeSave: false });
 
     res.status(200).json({
       success: true,
-      message: 'Vehicle added successfully',
+      message: 'Vehicle saved successfully',
       vehicles: sanitizeVehicles(user.vehicles)
     });
   } catch (error) {
@@ -1182,6 +1278,35 @@ const deleteFeedback = async (req, res) => {
   }
 };
 
+// @desc    Delete customer record
+// @route   DELETE /api/users/customers/:id
+// @access  Admin
+const deleteCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findOne({ _id: id, role: 'user' });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer record not found'
+      });
+    }
+
+    user.isDeleted = true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Customer deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error deleting customer'
+    });
+  }
+};
+
 module.exports = {
   createStaff,
   getStaffList,
@@ -1195,6 +1320,7 @@ module.exports = {
   updateCustomerMembership,
   updateCustomerUsageRules,
   addCustomerVehicle,
+  deleteCustomer,
   updateProfile,
   getMyVehicles,
   addMyVehicle,

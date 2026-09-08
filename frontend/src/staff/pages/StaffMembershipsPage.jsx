@@ -20,18 +20,23 @@ import {
   X,
   History,
   Check,
-  AlertCircle
+  AlertCircle,
+  Edit2
 } from 'lucide-react';
 import {
   isCarWashStaff,
   getCarWashMembershipsList,
   recordStaffWashDone,
-  getLocalOfflineSales
+  getLocalOfflineSales,
+  getAdminMemberships,
+  updateCarNumberAcrossSystem,
+  normalizePlate
 } from '../common/utils/staffMembershipUtils';
+import apiClient from '../../common/utils/apiClient';
 
 export default function StaffMembershipsPage() {
   const navigate = useNavigate();
-  const { currentStaff, customers, allJobs, jobs, showToast } = useStaff();
+  const { currentStaff, customers, allJobs, jobs, showToast, updateCustomerVehicle } = useStaff();
 
   // 1. Strict Department Access Guard: Isolated to Car Wash Staff only
   const isCarWash = isCarWashStaff(currentStaff);
@@ -46,22 +51,85 @@ export default function StaffMembershipsPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isLoggingWash, setIsLoggingWash] = useState(false);
 
-  // New Pass Issuance State
+  // Edit Car Plate Modal State
+  const [editingCarPass, setEditingCarPass] = useState(null);
+  const [editPlateNumber, setEditPlateNumber] = useState('');
+  const [editCarModel, setEditCarModel] = useState('');
+  const [isUpdatingPlate, setIsUpdatingPlate] = useState(false);
+
+  // Customer List with car numbers from Admin Panel -> Membership & Profiles
+  const resolvedCustomers = useMemo(() => {
+    return (customers || []).map(c => {
+      const primaryPlate = c.vehicles?.[0]?.registrationNumber || c.vehicles?.[0]?.plateNumber || '';
+      const primaryModel = c.vehicles?.[0]?.model || c.vehicles?.[0]?.brand || '';
+      return {
+        ...c,
+        carPlate: primaryPlate,
+        carModel: primaryModel
+      };
+    });
+  }, [customers, refreshTrigger]);
+
+  // New Pass Issuance State (dynamically synced with Admin catalog)
+  const plans = useMemo(() => {
+    let monthlyPrice = 2499;
+    let annualPrice = 24999;
+    try {
+      const carWashSvc = JSON.parse(localStorage.getItem('tsl_car_wash_service') || 'null');
+      if (Array.isArray(carWashSvc?.memberships)) {
+        const mMonthly = carWashSvc.memberships.find(m => (m.name || m.title || '').toLowerCase().includes('monthly'));
+        if (mMonthly?.price) monthlyPrice = Number(mMonthly.price);
+        const mAnnual = carWashSvc.memberships.find(m => (m.name || m.title || '').toLowerCase().includes('annual') || (m.name || m.title || '').toLowerCase().includes('yearly'));
+        if (mAnnual?.price) annualPrice = Number(mAnnual.price);
+      }
+    } catch (e) {}
+
+    return [
+      { id: 'single', name: 'Single Wash', price: 499, duration: '1 Day', washes: '1 Wash' },
+      { id: 'monthly', name: 'Monthly Membership', price: monthlyPrice, duration: '30 Days', washes: '30 Washes + Detailing' },
+      { id: 'annual', name: 'Annual VIP Pass', price: annualPrice, duration: '365 Days', washes: 'Unlimited Washes' }
+    ];
+  }, [refreshTrigger]);
+
   const [selectedPlan, setSelectedPlan] = useState('monthly');
-  const [selectedCustomer, setSelectedCustomer] = useState(customers[0]?.id || '');
+  const [selectedCustomer, setSelectedCustomer] = useState(resolvedCustomers[0]?.id || '');
   const [customPlate, setCustomPlate] = useState('');
   const [customModel, setCustomModel] = useState('');
+  const [customPrice, setCustomPrice] = useState('2499');
   const [paymentMode, setPaymentMode] = useState('UPI');
   const [issuedPass, setIssuedPass] = useState(null);
 
-  const plans = [
-    { id: 'single', name: 'Single Wash', price: 499, duration: '1 Day', washes: '1 Wash' },
-    { id: 'monthly', name: 'Monthly Membership', price: 2499, duration: '30 Days', washes: '30 Washes + Detailing' },
-    { id: 'annual', name: 'Annual VIP Pass', price: 24999, duration: '365 Days', washes: 'Unlimited Washes' }
-  ];
+  // Auto-select first customer and initialize plate/model if empty
+  useEffect(() => {
+    if (resolvedCustomers.length > 0) {
+      if (!selectedCustomer || !resolvedCustomers.some(c => c.id === selectedCustomer)) {
+        const first = resolvedCustomers[0];
+        setSelectedCustomer(first.id);
+        if (!customPlate && first.carPlate) setCustomPlate(first.carPlate);
+        if (!customModel && first.carModel) setCustomModel(first.carModel);
+      }
+    }
+  }, [resolvedCustomers]);
+
+  const handleCustomerSelect = (custId) => {
+    setSelectedCustomer(custId);
+    const target = resolvedCustomers.find(c => c.id === custId);
+    if (target) {
+      setCustomPlate(target.carPlate || '');
+      setCustomModel(target.carModel || '');
+    }
+  };
+
+  const handleSelectPlan = (planId) => {
+    setSelectedPlan(planId);
+    const targetPlan = plans.find(p => p.id === planId);
+    if (targetPlan) {
+      setCustomPrice(String(targetPlan.price));
+    }
+  };
 
   const currentPlan = plans.find(p => p.id === selectedPlan) || plans[1];
-  const currentCust = customers.find(c => c.id === selectedCustomer) || customers[0] || {};
+  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || resolvedCustomers[0] || {};
 
   // Listen for real-time wash updates or storage changes
   useEffect(() => {
@@ -69,16 +137,22 @@ export default function StaffMembershipsPage() {
     window.addEventListener('tsl_wash_logged', handleSync);
     window.addEventListener('tsl_wash_used', handleSync);
     window.addEventListener('tsl_offline_sales_updated', handleSync);
+    window.addEventListener('tsl_customer_updated', handleSync);
+    window.addEventListener('tsl_vehicle_updated', handleSync);
+    window.addEventListener('tsl_admin_memberships_updated', handleSync);
     window.addEventListener('storage', handleSync);
     return () => {
       window.removeEventListener('tsl_wash_logged', handleSync);
       window.removeEventListener('tsl_wash_used', handleSync);
       window.removeEventListener('tsl_offline_sales_updated', handleSync);
+      window.removeEventListener('tsl_customer_updated', handleSync);
+      window.removeEventListener('tsl_vehicle_updated', handleSync);
+      window.removeEventListener('tsl_admin_memberships_updated', handleSync);
       window.removeEventListener('storage', handleSync);
     };
   }, []);
 
-  // Aggregate memberships, single washes, and offline sales
+  // Aggregate memberships, single washes, and offline sales (pulled live from Admin Panel -> Membership)
   const allMemberships = useMemo(() => {
     const rawBookings = allJobs && allJobs.length > 0 ? allJobs : (jobs || []);
     const offlineList = getLocalOfflineSales();
@@ -159,44 +233,160 @@ export default function StaffMembershipsPage() {
     }
   };
 
-  // Issue New Pass submit handler
-  const handleIssuePass = (e) => {
+  // Quick Edit Car Number Plate handlers
+  const handleOpenEditPlate = (passItem, e) => {
+    if (e) e.stopPropagation();
+    setEditingCarPass(passItem);
+    setEditPlateNumber(passItem.vehicleNo || '');
+    setEditCarModel(passItem.vehicleModel || '');
+  };
+
+  const handleSaveEditPlate = async (e) => {
     e.preventDefault();
-    const plate = customPlate.trim() || currentCust.vehicles?.[0]?.registrationNumber || 'MH01AB1234';
+    if (!editingCarPass || !editPlateNumber.trim()) return;
+    setIsUpdatingPlate(true);
+    const cleanPlate = editPlateNumber.trim().toUpperCase();
+    const cleanModel = editCarModel.trim();
+
+    try {
+      await updateCarNumberAcrossSystem({
+        passId: editingCarPass.id,
+        customerId: editingCarPass.customerId || editingCarPass.email,
+        customerEmail: editingCarPass.email,
+        customerPhone: editingCarPass.phone,
+        customerName: editingCarPass.customerName,
+        oldPlate: editingCarPass.vehicleNo,
+        newPlate: cleanPlate,
+        newModel: cleanModel
+      });
+
+      if (updateCustomerVehicle) {
+        updateCustomerVehicle(editingCarPass.email || editingCarPass.customerId, {
+          plateNumber: cleanPlate,
+          model: cleanModel
+        });
+      }
+
+      if (selectedMembership && (selectedMembership.id === editingCarPass.id || selectedMembership.vehicleNo === editingCarPass.vehicleNo)) {
+        setSelectedMembership(prev => ({
+          ...prev,
+          vehicleNo: cleanPlate,
+          vehicleModel: cleanModel || prev.vehicleModel
+        }));
+      }
+
+      setRefreshTrigger(prev => prev + 1);
+      showToast(`Car plate updated to ${cleanPlate}!`, 'success');
+      setEditingCarPass(null);
+    } catch (err) {
+      showToast(`Error updating car number: ${err.message}`, 'error');
+    } finally {
+      setIsUpdatingPlate(false);
+    }
+  };
+
+  // Issue New Pass submit handler
+  const handleIssuePass = async (e) => {
+    e.preventDefault();
+    const plate = (customPlate.trim() || currentCust.carPlate || 'MP09GG8790').toUpperCase();
+    const model = customModel.trim() || currentCust.carModel || 'Car';
+    const finalPrice = customPrice !== '' && !isNaN(Number(customPrice)) && Number(customPrice) >= 0
+      ? Number(customPrice)
+      : Number(currentPlan.price);
+
+    const isSingle = currentPlan.id === 'single';
+    const passId = `TSL-PASS-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newPass = {
-      passId: `TSL-PASS-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: passId,
+      passId,
+      bookingId: passId,
+      customerId: currentCust._id || currentCust.id,
       customerName: currentCust.name || 'Walk-in Customer',
-      phone: currentCust.mobile || '',
-      vehicleNo: plate.toUpperCase(),
-      vehicleModel: customModel.trim() || currentCust.vehicles?.[0]?.model || 'Car',
+      customerEmail: currentCust.email || '',
+      phone: currentCust.mobile || currentCust.phone || '',
+      vehicleNo: plate,
+      vehicleModel: model,
       packageName: currentPlan.name,
       planName: currentPlan.name,
-      amount: currentPlan.price,
-      price: currentPlan.price,
+      amount: finalPrice,
+      price: finalPrice,
+      total: finalPrice,
       date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
       validUntil: new Date(Date.now() + (currentPlan.id === 'annual' ? 365 : currentPlan.id === 'monthly' ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      membershipExpiry: new Date(Date.now() + (currentPlan.id === 'annual' ? 365 : currentPlan.id === 'monthly' ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       paymentMode,
       serviceKey: 'car-wash',
+      serviceName: 'Car Wash',
       isOfflineSale: true,
-      saleType: currentPlan.id === 'single' ? 'service' : 'membership'
+      saleType: isSingle ? 'service' : 'membership',
+      status: 'Active'
     };
 
-    // Save to local offline sales
+    // 1. Try sending to backend API so it persists in MongoDB & User CRM
+    try {
+      await apiClient.post('/bookings', {
+        ...newPass,
+        price: finalPrice,
+        customerName: newPass.customerName,
+        customerEmail: newPass.customerEmail,
+        phone: newPass.phone,
+        vehicleNo: newPass.vehicleNo,
+        vehicleType: newPass.vehicleModel,
+        serviceKey: 'car-wash',
+        serviceName: 'Car Wash',
+        packageName: newPass.packageName,
+        plan: newPass.packageName,
+        date: newPass.date,
+        timeSlot: 'Counter Offline Sale',
+        status: 'Completed',
+        isOfflineSale: true,
+        saleType: isSingle ? 'service' : 'membership'
+      });
+    } catch (err) {
+      console.warn('Backend booking save note for issued pass:', err.message);
+    }
+
+    // 2. Save to local offline sales (Admin Offline Sales & Revenue Reports)
     try {
       const existing = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
       localStorage.setItem('tsl_offline_sales', JSON.stringify([newPass, ...existing]));
-    } catch (e) {}
-
-    // Dispatch events across Admin and Staff portals
-    try {
       window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: newPass }));
-      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: newPass }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: newPass }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
+    // 3. If membership, also save to tsl_admin_memberships (Admin Memberships page)
+    if (!isSingle) {
+      try {
+        const existingMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+        localStorage.setItem('tsl_admin_memberships', JSON.stringify([newPass, ...existingMems]));
+        window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: newPass }));
+      } catch (e) {}
+    }
+
+    // 3. Save and sync vehicle plate across system and Admin Panel -> Membership
+    await updateCarNumberAcrossSystem({
+      passId: newPass.passId,
+      customerId: currentCust._id || currentCust.id,
+      customerEmail: currentCust.email,
+      customerPhone: currentCust.mobile || currentCust.phone,
+      customerName: currentCust.name,
+      oldPlate: currentCust.carPlate,
+      newPlate: plate,
+      newModel: model
+    });
+
+    if (updateCustomerVehicle) {
+      updateCustomerVehicle(currentCust._id || currentCust.id || currentCust.email, {
+        plateNumber: plate,
+        model
+      });
+    }
+
     setIssuedPass(newPass);
     setRefreshTrigger(prev => prev + 1);
-    showToast(`Pass ${newPass.passId} issued for ${plate}!`, 'success');
+    showToast(`Pass ${newPass.passId} issued for ${plate} (₹${finalPrice.toLocaleString('en-IN')})!`, 'success');
   };
 
   // -------------------------------------------------------------
@@ -361,7 +551,7 @@ export default function StaffMembershipsPage() {
                   >
                     {/* Top Row: Plate Number, Model & Status Badge */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-2 py-0.5 bg-slate-900 text-white font-mono font-black text-xs rounded-md tracking-wider shadow-2xs">
                           {item.vehicleNo}
                         </span>
@@ -370,6 +560,15 @@ export default function StaffMembershipsPage() {
                             {item.vehicleModel}
                           </span>
                         )}
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenEditPlate(item, e)}
+                          className="px-1.5 py-0.5 rounded-md text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 flex items-center gap-1 transition-all"
+                          title="Update Car Number"
+                        >
+                          <Edit2 className="w-2.5 h-2.5" />
+                          <span>Edit Plate</span>
+                        </button>
                       </div>
                       <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase border ${statusColor}`}>
                         {item.status}
@@ -384,7 +583,12 @@ export default function StaffMembershipsPage() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="font-bold text-purple-700 text-[11px] truncate">{item.packageName}</p>
-                        <span className="text-[9px] text-gray-400 font-semibold uppercase">{item.source}</span>
+                        <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                          <span className="text-[10px] font-black text-emerald-700">
+                            ₹{(Number(item.amount) || Number(item.price) || Number(item.rawAmount) || 0).toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[9px] text-gray-400 font-semibold uppercase">• {item.source}</span>
+                        </div>
                       </div>
                     </div>
 
@@ -472,7 +676,7 @@ export default function StaffMembershipsPage() {
               {plans.map(p => (
                 <div
                   key={p.id}
-                  onClick={() => setSelectedPlan(p.id)}
+                  onClick={() => handleSelectPlan(p.id)}
                   className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
                     selectedPlan === p.id
                       ? 'border-purple-500 bg-purple-50/50 shadow-xs'
@@ -484,23 +688,51 @@ export default function StaffMembershipsPage() {
                     <p className="text-[10px] text-gray-500">{p.duration} • {p.washes}</p>
                   </div>
                   <span className="font-black text-xs text-purple-700 flex items-center">
-                    ₹{p.price}
+                    ₹{p.price.toLocaleString('en-IN')}
                   </span>
                 </div>
               ))}
             </div>
 
-            {/* Customer Selection or Custom Entry */}
+            {/* Editable Amount Received Field */}
+            <div className="bg-purple-50/50 border border-purple-200 rounded-xl p-3 space-y-1.5">
+              <label className="text-xs font-bold text-gray-800 block">
+                Amount Received / Price (₹)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">₹</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={customPrice}
+                  onChange={(e) => setCustomPrice(e.target.value)}
+                  placeholder="0"
+                  className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-purple-300 text-xs font-black text-purple-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                />
+              </div>
+              <p className="text-[9px] text-gray-500">
+                Staff can enter any price agreed with the customer. There is no minimum amount.
+              </p>
+            </div>
+
+            {/* Customer Selection with Car Numbers */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Select Customer</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-gray-700">Select Customer</label>
+                {currentCust.carPlate && (
+                  <span className="text-[10px] font-extrabold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                    Car: {currentCust.carPlate}
+                  </span>
+                )}
+              </div>
               <select
                 value={selectedCustomer}
-                onChange={e => setSelectedCustomer(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                onChange={e => handleCustomerSelect(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 shadow-2xs"
               >
-                {customers.map(c => (
+                {resolvedCustomers.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.vehicles?.[0]?.registrationNumber || 'No plate'}) — {c.mobile}
+                    {c.name} ({c.carPlate || 'No plate'}) — {c.mobile || c.phone}
                   </option>
                 ))}
               </select>
@@ -513,8 +745,8 @@ export default function StaffMembershipsPage() {
                 <input
                   type="text"
                   value={customPlate}
-                  onChange={e => setCustomPlate(e.target.value)}
-                  placeholder={currentCust.vehicles?.[0]?.registrationNumber || 'e.g. MP09GG8790'}
+                  onChange={e => setCustomPlate(e.target.value.toUpperCase())}
+                  placeholder={currentCust.carPlate || 'e.g. MP09GG8790'}
                   className="w-full px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold uppercase focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
@@ -524,7 +756,7 @@ export default function StaffMembershipsPage() {
                   type="text"
                   value={customModel}
                   onChange={e => setCustomModel(e.target.value)}
-                  placeholder={currentCust.vehicles?.[0]?.model || 'e.g. Hyundai i20'}
+                  placeholder={currentCust.carModel || 'e.g. Hyundai i20'}
                   className="w-full px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
@@ -553,9 +785,9 @@ export default function StaffMembershipsPage() {
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md bg-purple-600 hover:bg-purple-700 active:scale-95 transition-transform"
+              className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md bg-purple-600 hover:bg-purple-700 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
             >
-              Issue Pass & Activate
+              <span>Issue Pass & Collect ₹{(customPrice !== '' && !isNaN(Number(customPrice)) ? Math.max(0, Number(customPrice)) : Number(currentPlan.price)).toLocaleString('en-IN')}</span>
             </button>
           </form>
 
@@ -575,7 +807,7 @@ export default function StaffMembershipsPage() {
                 <p className="text-xs text-amber-300 font-bold">{issuedPass.packageName}</p>
               </div>
 
-              <div className="bg-black/40 rounded-xl p-2.5 border border-purple-800/50 flex items-center justify-between text-xs font-mono">
+              <div className="bg-black/40 rounded-xl p-2.5 border border-purple-800/50 grid grid-cols-2 gap-2 text-xs font-mono">
                 <div>
                   <span className="text-[9px] text-gray-400 block uppercase">Vehicle Reg</span>
                   <span className="font-black text-white">{issuedPass.vehicleNo}</span>
@@ -583,6 +815,14 @@ export default function StaffMembershipsPage() {
                 <div className="text-right">
                   <span className="text-[9px] text-gray-400 block uppercase">Valid Until</span>
                   <span className="font-black text-emerald-400">{issuedPass.validUntil}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-gray-400 block uppercase">Amount Received</span>
+                  <span className="font-black text-amber-300">₹{Number(issuedPass.amount).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] text-gray-400 block uppercase">Payment Mode</span>
+                  <span className="font-bold text-purple-200">{issuedPass.paymentMode}</span>
                 </div>
               </div>
 
@@ -606,10 +846,19 @@ export default function StaffMembershipsPage() {
           <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
             {/* Modal Header */}
             <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-purple-900 to-indigo-900 text-white">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="px-2.5 py-1 bg-white text-gray-900 font-mono font-black text-sm rounded-lg shadow-sm">
                   {selectedMembership.vehicleNo}
                 </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenEditPlate(selectedMembership, e)}
+                  className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 border border-white/20"
+                  title="Update Car Number"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>Update Plate</span>
+                </button>
                 <div>
                   <h3 className="text-xs font-extrabold text-white leading-tight">
                     {selectedMembership.vehicleModel || 'Registered Car'}
@@ -691,6 +940,14 @@ export default function StaffMembershipsPage() {
                 </div>
               </div>
 
+              {/* Pricing & Received Amount Row */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase">Amount Received / Paid</span>
+                <span className="text-sm font-black text-emerald-700">
+                  ₹{(Number(selectedMembership.amount) || Number(selectedMembership.price) || Number(selectedMembership.rawAmount) || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+
               {/* Last Wash Date Banner */}
               <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3 flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center flex-shrink-0">
@@ -763,6 +1020,86 @@ export default function StaffMembershipsPage() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* QUICK UPDATE CAR NUMBER MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {editingCarPass && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="p-4 bg-gradient-to-r from-purple-900 to-indigo-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-white/20 text-white flex items-center justify-center">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-extrabold text-white">Update Car Number</h3>
+                  <p className="text-[10px] text-purple-200">{editingCarPass.customerName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCarPass(null)}
+                className="p-1 text-white/80 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPlate} className="p-4 space-y-3">
+              <div className="p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold text-gray-400 block uppercase">Passholder</span>
+                <p className="text-xs font-black text-gray-900">{editingCarPass.customerName} ({editingCarPass.phone || editingCarPass.email})</p>
+                <div className="flex items-center justify-between pt-1 text-[10px] text-gray-500 font-mono">
+                  <span>Current Plate:</span>
+                  <span className="font-black text-purple-700">{editingCarPass.vehicleNo}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">New Vehicle Registration Plate</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={editPlateNumber}
+                  onChange={e => setEditPlateNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. MP09GG8790"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-mono font-bold uppercase focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Car Model (Optional)</label>
+                <input
+                  type="text"
+                  value={editCarModel}
+                  onChange={e => setEditCarModel(e.target.value)}
+                  placeholder="e.g. Hyundai i20 / BMW 3 Series"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCarPass(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingPlate || !editPlateNumber.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {isUpdatingPlate ? 'Saving...' : 'Save Car Number'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

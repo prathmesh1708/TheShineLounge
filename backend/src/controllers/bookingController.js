@@ -52,7 +52,7 @@ const createBooking = async (req, res) => {
       phone
     } = req.body;
 
-    if (!serviceKey || !serviceName || !packageName || !price || !date || !timeSlot || !customerName) {
+    if (!serviceKey || !serviceName || !packageName || price === undefined || price === null || isNaN(Number(price)) || !date || !timeSlot || !customerName) {
       return res.status(400).json({
         success: false,
         message: 'Please provide all required fields.'
@@ -138,6 +138,83 @@ const createBooking = async (req, res) => {
 
     if (assignedStaff) {
       await notifyStaffOfBooking(assignedStaff, booking);
+    }
+
+    // Auto-sync / upsert customer profile into User collection so offline sale & booking customers appear in Admin -> Customers
+    try {
+      const cleanEmail = String(customerEmail || '').toLowerCase().trim();
+      const cleanPhone = String(phone || '').trim();
+      const cleanName = String(customerName || '').trim();
+      const cleanVehicle = String(vehicleNo || '').toUpperCase().trim();
+      const numPrice = Number(price) || 0;
+
+      const isMembership = req.body.saleType === 'membership' || 
+        (packageName && (packageName.toLowerCase().includes('membership') || packageName.toLowerCase().includes('pass') || packageName.toLowerCase().includes('vip')));
+
+      let userQuery = [];
+      if (cleanEmail) userQuery.push({ email: cleanEmail });
+      if (cleanPhone) userQuery.push({ mobile: cleanPhone });
+
+      let existingUser = userQuery.length > 0 ? await User.findOne({ $or: userQuery, isDeleted: { $ne: true } }) : null;
+
+      if (!existingUser && (cleanEmail || cleanPhone || cleanName)) {
+        const bcrypt = require('bcryptjs');
+        const fallbackEmail = cleanEmail || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'cust'}_${cleanPhone.replace(/\D/g, '').slice(-4) || Math.floor(1000 + Math.random() * 9000)}@theshinelounge.com`;
+        const tempPass = await bcrypt.hash('Welcome@123', 10);
+        await User.create({
+          fullName: cleanName || 'Valued Customer',
+          email: fallbackEmail,
+          password: tempPass,
+          mobile: cleanPhone,
+          role: 'user',
+          totalSpent: numPrice,
+          vehicles: cleanVehicle ? [{
+            plateNumber: cleanVehicle,
+            model: vehicleType || 'Car',
+            brand: vehicleType || 'Car',
+            addedVia: 'staff'
+          }] : [],
+          membership: isMembership ? {
+            planName: req.body.membershipName || packageName,
+            serviceKey: serviceKey || 'car-wash',
+            startDate: new Date(),
+            expiryDate: new Date(Date.now() + (req.body.membershipExpiry ? (new Date(req.body.membershipExpiry).getTime() - Date.now()) : 30 * 24 * 3600 * 1000)),
+            status: 'Active',
+            boundVehicles: cleanVehicle ? [cleanVehicle] : []
+          } : undefined
+        });
+      } else if (existingUser) {
+        const updateDoc = {
+          $inc: { totalSpent: numPrice },
+          $set: { updatedAt: new Date() }
+        };
+        if (cleanVehicle) {
+          const hasPlate = (existingUser.vehicles || []).some(v => v.plateNumber?.toUpperCase().trim() === cleanVehicle);
+          if (!hasPlate) {
+            updateDoc.$push = {
+              vehicles: {
+                plateNumber: cleanVehicle,
+                model: vehicleType || 'Car',
+                brand: vehicleType || 'Car',
+                addedVia: 'staff'
+              }
+            };
+          }
+        }
+        if (isMembership) {
+          updateDoc.$set['membership.planName'] = req.body.membershipName || packageName;
+          updateDoc.$set['membership.serviceKey'] = serviceKey || 'car-wash';
+          updateDoc.$set['membership.startDate'] = new Date();
+          updateDoc.$set['membership.expiryDate'] = new Date(Date.now() + (req.body.membershipExpiry ? (new Date(req.body.membershipExpiry).getTime() - Date.now()) : 30 * 24 * 3600 * 1000));
+          updateDoc.$set['membership.status'] = 'Active';
+          if (cleanVehicle) {
+            updateDoc.$addToSet = { 'membership.boundVehicles': cleanVehicle };
+          }
+        }
+        await User.updateOne({ _id: existingUser._id }, updateDoc);
+      }
+    } catch (syncErr) {
+      console.warn('Note: Could not auto-sync customer to User collection:', syncErr.message);
     }
 
     res.status(201).json({

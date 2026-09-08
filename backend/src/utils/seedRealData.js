@@ -127,35 +127,90 @@ const seedRealData = async () => {
         email: 'prathmesh@gmail.com',
         password: hashedPassword,
         mobile: '+91 98200 99999',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MP09GG8790',
+            plateNormalized: 'MP09GG8790',
+            brand: 'Hyundai',
+            model: 'i20',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Amit Sharma',
         email: 'amit.sharma@gmail.com',
         password: hashedPassword,
         mobile: '+91 98111 22222',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH02CP4455',
+            plateNormalized: 'MH02CP4455',
+            brand: 'Tesla',
+            model: 'Model S',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Neha Kapoor',
         email: 'neha.k@gmail.com',
         password: hashedPassword,
         mobile: '+91 98333 44444',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH01AB1234',
+            plateNormalized: 'MH01AB1234',
+            brand: 'BMW',
+            model: '3 Series',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Rahul Verma',
         email: 'rahul.verma@gmail.com',
         password: hashedPassword,
         mobile: '+91 98444 55555',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH12FG5678',
+            plateNormalized: 'MH12FG5678',
+            brand: 'Audi',
+            model: 'A6',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Sneha Patel',
         email: 'sneha.patel@gmail.com',
         password: hashedPassword,
         mobile: '+91 98555 66666',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH04DZ8989',
+            plateNormalized: 'MH04DZ8989',
+            brand: 'Hyundai',
+            model: 'Creta',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       }
     ];
 
