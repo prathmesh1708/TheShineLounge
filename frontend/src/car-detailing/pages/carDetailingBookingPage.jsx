@@ -178,7 +178,7 @@ export default function CarDetailingBookingPage() {
       customerEmail: customerEmail,
       phone: customerPhone,
       vehicle: `${processedData.vehicleBrand || ''} ${processedData.vehicleModel || ''}`.trim() || 'Vehicle',
-      vehicleNo: processedData.vehicleNumber || 'MP-09-AB-1234',
+      vehicleNo: processedData.vehicleNumber || '',
       vehicleType: processedData.vehicleType || 'Sedan',
       location: `${processedData.address || ''}, ${processedData.landmark || ''} (Pin: ${processedData.pincode || ''})`,
     };
@@ -194,7 +194,7 @@ export default function CarDetailingBookingPage() {
       price: totalFinal,
       customerName: customerName,
       customerEmail: customerEmail,
-      vehicleNo: processedData.vehicleNumber || 'MP-09-AB-1234',
+      vehicleNo: processedData.vehicleNumber || '',
       vehicleType: `${processedData.vehicleBrand || ''} ${processedData.vehicleModel || ''} (${processedData.vehicleType || 'Sedan'})`.trim(),
       location: `${processedData.address || ''}, ${processedData.landmark || ''} (Pin: ${processedData.pincode || ''})`,
       phone: customerPhone,

@@ -16,7 +16,7 @@ const required = (name, devFallback) => {
 
 module.exports = {
   PORT: process.env.PORT || 5005,
-  MONGO_URI: required('MONGO_URI', undefined),
+  MONGO_URI: process.env.MONGO_URI || '',
   JWT_SECRET: required('JWT_SECRET', 'dev-only-insecure-jwt-secret'),
   ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@gmail.com',
   ADMIN_PASSWORD: required('ADMIN_PASSWORD', 'Admin!@#123'),

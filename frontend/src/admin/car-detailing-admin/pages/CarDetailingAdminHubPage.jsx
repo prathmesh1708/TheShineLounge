@@ -51,8 +51,7 @@ import {
   deleteService as apiDeleteService,
   getVehicleTypes,
   saveVehicleType,
-  deleteVehicleType,
-  getBookingsSync
+  deleteVehicleType
 } from '../../../car-detailing/services/carDetailingApi';
 
 const CATEGORY_OPTIONS = [
@@ -71,6 +70,7 @@ export default function CarDetailingAdminHubPage() {
   const {
     services,
     bookings,
+    customers,
     staffList,
     banners,
     inventory,
@@ -98,7 +98,6 @@ export default function CarDetailingAdminHubPage() {
   const [detailingServices, setDetailingServices] = useState(getServicesSync());
   const [dbStaff, setDbStaff] = useState([]);
   const [adminVehicleTypes, setAdminVehicleTypes] = useState(getVehicleTypes());
-  const [localDetailingBookings, setLocalDetailingBookings] = useState(getBookingsSync());
   const [newVehicleTypeInput, setNewVehicleTypeInput] = useState('');
   const [showVehicleTypesSection, setShowVehicleTypesSection] = useState(true);
 
@@ -121,10 +120,13 @@ export default function CarDetailingAdminHubPage() {
 
   useEffect(() => {
     fetchLiveStaff();
+    try {
+      localStorage.removeItem('shine_car_detailing_bookings');
+    } catch (e) {}
+
     const syncData = () => {
       setDetailingServices(getServicesSync());
       setAdminVehicleTypes(getVehicleTypes());
-      setLocalDetailingBookings(getBookingsSync());
     };
     window.addEventListener('carDetailingDataChanged', syncData);
     window.addEventListener('carDetailingVehicleTypesChanged', syncData);
@@ -155,51 +157,34 @@ export default function CarDetailingAdminHubPage() {
   const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
-  const mappedLocal = localDetailingBookings.map(b => ({
-    id: b.id,
-    customerName: b.customerName || 'Car Owner',
-    customerEmail: b.customerEmail || b.email || '',
-    phone: b.phone || b.mobile || '',
-    vehicle: b.vehicle || b.vehicleNo || 'Vehicle',
-    vehicleNo: b.vehicleNo || b.vehicle || 'MP-09-AB-1234',
-    vehicleType: b.vehicleType || 'Sedan',
-    location: b.location || b.address || '',
-    plan: b.package || b.service || 'Paint Protection Film (PPF)',
-    service: b.package || b.service || 'Paint Protection Film (PPF)',
-    serviceKey: 'car-detailing',
-    serviceName: 'Car Detailing',
-    date: b.date || (b.timeSlot ? b.timeSlot.split('|')[0].trim() : new Date().toISOString().split('T')[0]),
-    total: b.price || b.amount || 1490,
-    amount: b.price || b.amount || 1490,
-    status: b.status || 'Confirmed'
-  }));
+  const normalizePlate = (plate) => (plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  const contextBookings = bookings.filter(b => b.serviceKey === 'car-detailing' || (b.serviceName && b.serviceName.toLowerCase().includes('detail')));
+  const findCustomerProfile = (rawPlate, rawEmail, rawPhone) => {
+    const cleanPlate = normalizePlate(rawPlate);
+    const normEmail = (rawEmail || '').toLowerCase().trim();
+    const normPhone = (rawPhone || '').replace(/[^0-9]/g, '');
 
-  const serviceBookings = [
-    ...mappedLocal,
-    ...contextBookings.filter(cb => !mappedLocal.some(lb => lb.id === cb.id))
-  ];
-
-  // Get active logged in user from localStorage if any, for fallback
-  let activeUserEmail = 'mohit1@gmail.com';
-  let activeUserName = 'Mohit singh';
-  let activeUserPhone = '+91 98200 54321';
-  try {
-    const stored = localStorage.getItem('tsl_customer_user') || localStorage.getItem('tsl_user');
-    if (stored) {
-      const u = JSON.parse(stored);
-      if (u.email && u.email !== 'admin@gmail.com') activeUserEmail = u.email;
-      if (u.fullName || u.name) {
-        const parsedName = u.fullName || u.name;
-        if (parsedName !== 'Super Admin') activeUserName = parsedName;
+    return (customers || []).find(c => {
+      const vehList = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+      if (cleanPlate && vehList.length > 0) {
+        if (vehList.some(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate)) return true;
       }
-      if (u.mobile || u.phone) {
-        const parsedPhone = u.mobile || u.phone;
-        if (parsedPhone !== '+91 00000 00000') activeUserPhone = parsedPhone;
-      }
-    }
-  } catch (e) {}
+      if (normEmail && (c.email || '').toLowerCase().trim() === normEmail) return true;
+      if (normPhone && (c.mobile || c.phone || '').replace(/[^0-9]/g, '') === normPhone) return true;
+      return false;
+    });
+  };
+
+  const serviceBookings = (bookings || []).filter(b => {
+    if (!b) return false;
+    const isDetailing = b.serviceKey === 'car-detailing' || (b.serviceName && b.serviceName.toLowerCase().includes('detail'));
+    if (!isDetailing) return false;
+    const id = (b.id || b.bookingId || '').toString().toUpperCase();
+    if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(id)) return false;
+    const cleanPlate = normalizePlate(b.vehicleNo || b.vehiclePlate || b.vehicle);
+    if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(cleanPlate)) return false;
+    return true;
+  });
 
   const registeredVehiclesMap = {};
   serviceBookings
@@ -208,56 +193,62 @@ export default function CarDetailingAdminHubPage() {
       if (pkg.includes('wash') && !pkg.includes('detail')) return false;
       return true;
     })
-    .forEach((b, idx) => {
-      const rawEmail = (b.customerEmail || b.email || '').toLowerCase().trim();
-      const email = !rawEmail || rawEmail === 'customer@shinelounge.com' || rawEmail === 'admin@gmail.com' ? activeUserEmail : rawEmail;
+    .forEach((b) => {
+      const rawPlate = (b.vehicleNo || b.vehiclePlate || '').trim();
+      const cleanPlate = normalizePlate(rawPlate);
+      if (!cleanPlate) return;
+      if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(cleanPlate)) return;
 
-      const rawName = b.customerName || '';
-      const name = !rawName || rawName === 'Car Owner' || rawName === 'Valued Customer' || rawName === 'Super Admin' ? activeUserName : rawName;
+      const email = (b.customerEmail || b.email || '').toLowerCase().trim();
+      const phone = b.phone || b.mobile || '';
+      const matchedCust = findCustomerProfile(cleanPlate, email, phone);
 
-      const rawPhone = b.phone || b.mobile || '';
-      const phone = !rawPhone || rawPhone === '+91 00000 00000' || rawPhone === '+91 98200 54321' ? activeUserPhone : rawPhone;
+      const name = b.customerName || matchedCust?.fullName || matchedCust?.name || 'Customer';
+      const custEmail = email || matchedCust?.email || '';
+      const custPhone = phone || matchedCust?.mobile || matchedCust?.phone || '';
 
-      const plate = (b.vehicleNo || 'MP-09-AB-1234').toUpperCase();
-      const model = b.vehicleType || b.vehicle || 'Premium Vehicle';
-      const key = `${email || name}_${plate}`.toLowerCase();
+      let model = b.vehicleType || b.vehicleModel || b.vehicle || '';
+      if (!model && matchedCust) {
+        const vehList = (Array.isArray(matchedCust.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust.vehicles) ? matchedCust.vehicles : []);
+        const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
+        if (matchedVeh && typeof matchedVeh === 'object') {
+          model = matchedVeh.model || matchedVeh.brand || '';
+        }
+      }
+      model = model || 'Vehicle';
+
+      const key = cleanPlate;
 
       if (!registeredVehiclesMap[key]) {
         registeredVehiclesMap[key] = {
-          plate: plate,
+          plate: rawPlate || cleanPlate,
           model: model,
           ownerName: name,
-          ownerEmail: email,
-          ownerPhone: phone,
-          packageName: b.plan || b.packageName || b.service || 'Paint Protection Film (PPF)',
-          address: b.location || b.address || 'Scheme No. 54, Vijay Nagar, Indore',
+          ownerEmail: custEmail,
+          ownerPhone: custPhone,
+          packageName: b.plan || b.packageName || b.service || 'Detailing Service',
+          address: b.location || b.address || '—',
           totalBookings: 1,
-          lastServiceDate: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          lastServiceDate: b.date || ''
         };
       } else {
         registeredVehiclesMap[key].totalBookings += 1;
-        if (b.date && !b.date.includes('July 18')) {
+        if (b.date) {
           registeredVehiclesMap[key].lastServiceDate = b.date;
+        }
+        if (!registeredVehiclesMap[key].ownerPhone && custPhone) {
+          registeredVehiclesMap[key].ownerPhone = custPhone;
+        }
+        if (!registeredVehiclesMap[key].ownerEmail && custEmail) {
+          registeredVehiclesMap[key].ownerEmail = custEmail;
+        }
+        if (registeredVehiclesMap[key].model === 'Vehicle' && model !== 'Vehicle') {
+          registeredVehiclesMap[key].model = model;
         }
       }
     });
 
-
-  const registeredVehiclesList = Object.values(registeredVehiclesMap).length > 0
-    ? Object.values(registeredVehiclesMap)
-    : [
-        {
-          plate: 'MP-09-AB-1234',
-          model: 'Tesla Model 3 (Sedan)',
-          ownerName: 'Car Owner',
-          ownerEmail: 'owner@shinelounge.com',
-          ownerPhone: '+91 98200 54321',
-          packageName: 'Paint Protection Film (PPF)',
-          address: 'Scheme No. 54, Vijay Nagar, Indore',
-          totalBookings: 1,
-          lastServiceDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-        }
-      ];
+  const registeredVehiclesList = Object.values(registeredVehiclesMap);
 
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
@@ -289,7 +280,7 @@ export default function CarDetailingAdminHubPage() {
       serviceName: 'Car Detailing',
       customerName: newBookingForm.customerName,
       phone: newBookingForm.phone,
-      vehicleNo: newBookingForm.vehicleNo || 'MH-01-AB-1234',
+      vehicleNo: newBookingForm.vehicleNo || '',
       vehicleType: newBookingForm.vehicleType || 'Sedan',
       plan: newBookingForm.plan,
       amount: Number(newBookingForm.amount),
@@ -1154,66 +1145,78 @@ export default function CarDetailingAdminHubPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {registeredVehiclesList.map((v, i) => (
-              <div
-                key={v.plate || i}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between cursor-pointer hover:shadow-md"
-                onClick={() => {
-                  const plate = (v.plate || '').toUpperCase().trim();
-                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
-                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
-                }}
-              >
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
-                        🚗
-                      </div>
-                      <div>
-                        <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
-                        <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                      {v.totalBookings} {v.totalBookings === 1 ? 'Booking' : 'Bookings'}
-                    </span>
-                  </div>
-
-                  <div className="pt-3 border-t border-gray-100 space-y-1.5 text-xs text-gray-600">
-                    <p className="flex justify-between">
-                      <span className="text-gray-400">Registered Owner:</span>
-                      <strong className="text-gray-800">{v.ownerName}</strong>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-gray-400">Detailing Treatment:</span>
-                      <span className="text-amber-700 font-bold text-right truncate max-w-[170px]" title={v.packageName}>{v.packageName}</span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-gray-400">Contact:</span>
-                      <span className="text-gray-700 font-semibold">{v.ownerPhone}</span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-gray-400">Email:</span>
-                      <span className="text-gray-600 truncate max-w-[185px]">{v.ownerEmail}</span>
-                    </p>
-                    {v.address && (
-                      <div className="flex flex-col gap-0.5 border-t border-gray-50 pt-2 mt-1">
-                        <span className="text-gray-400 text-[10px] uppercase font-bold">Address Detail:</span>
-                        <span className="text-gray-700 font-semibold leading-relaxed break-words">{v.address}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-2.5 border-t border-gray-50 flex justify-between items-center text-xs text-gray-500 mt-2">
-                  <span className="text-gray-400">Last Service:</span>
-                  <span className="text-amber-700 font-bold">{v.lastServiceDate}</span>
-                </div>
+          {registeredVehiclesList.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
+              <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-500 border border-amber-200/50 flex items-center justify-center mx-auto mb-3 text-2xl">
+                🚗
               </div>
-            ))}
-          </div>
+              <h4 className="text-base font-bold text-gray-800 mb-1">No Registered Detailing Vehicles</h4>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                Vehicles from verified detailing appointments, CRM customer profiles, and offline walk-in sales will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {registeredVehiclesList.map((v, i) => (
+                <div
+                  key={v.plate || i}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between cursor-pointer hover:shadow-md"
+                  onClick={() => {
+                    const cleanPlate = normalizePlate(v.plate || '');
+                    const vehicleBookings = serviceBookings.filter(b => normalizePlate(b.vehicleNo || b.vehiclePlate || '') === cleanPlate);
+                    setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                  }}
+                >
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
+                          🚗
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
+                          <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                        {v.totalBookings} {v.totalBookings === 1 ? 'Booking' : 'Bookings'}
+                      </span>
+                    </div>
+
+                    <div className="pt-3 border-t border-gray-100 space-y-1.5 text-xs text-gray-600">
+                      <p className="flex justify-between">
+                        <span className="text-gray-400">Registered Owner:</span>
+                        <strong className="text-gray-800">{v.ownerName}</strong>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-gray-400">Detailing Treatment:</span>
+                        <span className="text-amber-700 font-bold text-right truncate max-w-[170px]" title={v.packageName}>{v.packageName}</span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-gray-400">Contact:</span>
+                        <span className="text-gray-700 font-semibold">{v.ownerPhone || '—'}</span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-gray-400">Email:</span>
+                        <span className="text-gray-600 truncate max-w-[185px]">{v.ownerEmail || '—'}</span>
+                      </p>
+                      {v.address && v.address !== '—' && (
+                        <div className="flex flex-col gap-0.5 border-t border-gray-50 pt-2 mt-1">
+                          <span className="text-gray-400 text-[10px] uppercase font-bold">Address Detail:</span>
+                          <span className="text-gray-700 font-semibold leading-relaxed break-words">{v.address}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-gray-50 flex justify-between items-center text-xs text-gray-500 mt-2">
+                    <span className="text-gray-400">Last Service:</span>
+                    <span className="text-amber-700 font-bold">{v.lastServiceDate || '—'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Vehicle Detail Modal */}
           <RegisteredVehicleDetailModal

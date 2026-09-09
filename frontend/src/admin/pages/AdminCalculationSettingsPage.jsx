@@ -168,39 +168,7 @@ export default function AdminCalculationSettingsPage() {
                 </div>
               </div>
 
-              {/* Tax Split: Intra-State (CGST+SGST) vs Inter-State (IGST) */}
-              <div className="sm:col-span-2">
-                <label className="font-bold text-gray-700 block mb-1.5">
-                  Tax Jurisdiction Split Type
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, taxType: 'split' })}
-                    className={`p-3 text-left rounded-xl border transition-all ${
-                      form.taxType === 'split'
-                        ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-400'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="font-extrabold text-gray-900">Intra-State Supply (Maharashtra)</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">CGST 9% + SGST 9% (50:50 equal split)</div>
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, taxType: 'igst' })}
-                    className={`p-3 text-left rounded-xl border transition-all ${
-                      form.taxType === 'igst'
-                        ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-400'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="font-extrabold text-gray-900">Inter-State Supply (IGST)</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">Integrated GST 18% (single central tax)</div>
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Department Specific GST & SAC Codes */}

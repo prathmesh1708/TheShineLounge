@@ -127,9 +127,7 @@ export default function SalonAdminHubPage() {
   const serviceBookings = bookings.filter(b => 
     b.serviceKey === 'salon' || 
     (b.serviceName && b.serviceName.toLowerCase().includes('salon')) ||
-    (b.service && b.service.toLowerCase().includes('salon')) ||
-    (b.id && String(b.id).startsWith('BK-2026-')) ||
-    (b.id && String(b.id).startsWith('BK-'))
+    (b.service && b.service.toLowerCase().includes('salon'))
   );
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
 

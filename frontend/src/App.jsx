@@ -42,6 +42,7 @@ import SearchPage from './pages/SearchPage';
 import BookingsPage from './pages/BookingsPage';
 import ProfilePage from './pages/ProfilePage';
 import CustomerAuthPage from './pages/CustomerAuthPage';
+import CustomerReceiptPage from './pages/CustomerReceiptPage';
 
 import ErrorBoundary from './common/components/ErrorBoundary';
 
@@ -131,16 +132,19 @@ function MainAppContent() {
   }
 
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
+  const isReceiptRoute = location.pathname.startsWith('/receipt');
+  const isCleanLayout = isAuthRoute || isReceiptRoute;
 
   return (
     <div className="app-container">
-      {!isAuthRoute && <Navbar />}
+      {!isCleanLayout && <Navbar />}
       
-      <main className={isAuthRoute ? "w-full min-h-screen p-0 m-0" : "main-content"}>
+      <main className={isCleanLayout ? "w-full min-h-screen p-0 m-0" : "main-content"}>
         <ErrorBoundary>
           <PageTransition>
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/receipt/:id" element={<CustomerReceiptPage />} />
               <Route path="/cafe" element={<CafePage />} />
               <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
               <Route path="/car-wash" element={<CarWashPage />} />
@@ -158,7 +162,7 @@ function MainAppContent() {
         </ErrorBoundary>
       </main>
 
-      {!isAuthRoute && (
+      {!isCleanLayout && (
         <footer className="footer">
           <p className="footer-text">
             &copy; {new Date().getFullYear()} The Shine Lounge. All rights reserved. Premium multi-service booking platform.
@@ -166,9 +170,10 @@ function MainAppContent() {
         </footer>
       )}
 
-      <BottomNavbar />
+      {!isCleanLayout && <BottomNavbar />}
     </div>
   );
+
 }
 
 import { NotificationProvider } from './common/context/NotificationContext';

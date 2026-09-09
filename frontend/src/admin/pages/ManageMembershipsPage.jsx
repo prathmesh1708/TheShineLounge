@@ -203,7 +203,7 @@ export default function ManageMembershipsPage() {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase">MRR (Monthly Recurring)</p>
-                <p className="text-lg font-black text-blue-900">₹{mrrInLakhs > 0 ? `${mrrInLakhs} Lakhs` : '14.20 Lakhs'}</p>
+                <p className="text-lg font-black text-blue-900">₹{totalAmount > 0 ? `${totalAmount.toLocaleString('en-IN')}` : '0'}</p>
               </div>
             </div>
           </div>

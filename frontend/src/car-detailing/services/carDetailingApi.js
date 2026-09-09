@@ -429,73 +429,7 @@ export const getActiveDetailerName = () => {
   return 'suryansh';
 };
 
-export const MOCK_BOOKINGS = [
-  {
-    id: "BK-9831",
-    status: "Upcoming",
-    package: "Premium Detail",
-    price: 1490,
-    paymentType: "Deposit Paid",
-    depositAmount: 372,
-    remainingAmount: 1118,
-    paymentStatus: "Deposit Paid",
-    date: "2026-08-05",
-    time: "10:00 AM - 01:00 PM",
-    technician: "suryansh",
-    vehicle: "Hyundai Verna (White)",
-    vehicleNo: "MP-09-AB-1234",
-    location: "Home - Vijay Nagar, Indore",
-    eta: "30 mins",
-    timeline: [
-      { status: "Confirmed", time: "July 17, 11:30 AM", active: true },
-      { status: "Technician Assigned", time: "July 17, 11:45 AM", active: true },
-      { status: "En Route", time: "Pending", active: false },
-      { status: "In Progress", time: "Pending", active: false },
-      { status: "Completed", time: "Pending", active: false }
-    ]
-  },
-  {
-    id: "BK-8271",
-    status: "Completed",
-    package: "Basic Wash",
-    price: 490,
-    paymentType: "Fully Paid",
-    depositAmount: 490,
-    remainingAmount: 0,
-    paymentStatus: "Fully Paid",
-    date: "2026-07-12",
-    time: "03:00 PM - 03:45 PM",
-    technician: "Ramesh Kumar",
-    vehicle: "Maruti Swift",
-    vehicleNo: "MP-09-CD-5678",
-    location: "Home - Saket Colony, Indore",
-    timeline: [
-      { status: "Confirmed", time: "July 12, 02:00 PM", active: true },
-      { status: "Technician Arrived", time: "July 12, 02:50 PM", active: true },
-      { status: "In Progress", time: "July 12, 03:00 PM", active: true },
-      { status: "Completed", time: "July 12, 03:45 PM", active: true }
-    ]
-  },
-  {
-    id: "BK-5421",
-    status: "Cancelled",
-    package: "Ultimate Detail",
-    price: 2490,
-    paymentType: "Deposit Paid",
-    depositAmount: 622,
-    remainingAmount: 0,
-    paymentStatus: "Cancelled & Refunded",
-    date: "2026-06-30",
-    time: "09:00 AM - 01:30 PM",
-    technician: "None",
-    vehicle: "Kia Seltos",
-    vehicleNo: "MP-09-EF-9012",
-    location: "Home - Geeta Nagar, Indore",
-    timeline: [
-      { status: "Cancelled by User", time: "June 29, 05:00 PM", active: true }
-    ]
-  }
-];
+export const MOCK_BOOKINGS = [];
 
 export const TECHNICIAN = {
   name: "suryansh",
@@ -703,17 +637,27 @@ const STORAGE_KEY_BOOKINGS = 'shine_car_detailing_bookings';
 export const getBookingsSync = () => {
   const activeStaff = getActiveDetailerName();
   if (typeof window === 'undefined') {
-    return MOCK_BOOKINGS.map(b => ({
-      ...b,
-      technician: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : activeStaff
-    }));
+    return [];
   }
   try {
     const stored = localStorage.getItem(STORAGE_KEY_BOOKINGS);
-    let list = MOCK_BOOKINGS;
+    let list = [];
     if (stored) {
+      if (stored.includes('BK-9831') || stored.includes('BK-8271') || stored.includes('BK-5421') || stored.includes('MP-09-AB-1234') || stored.includes('MP09AB1234')) {
+        localStorage.removeItem(STORAGE_KEY_BOOKINGS);
+        return [];
+      }
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+      if (Array.isArray(parsed)) {
+        list = parsed.filter(b => {
+          if (!b) return false;
+          const bId = (b.id || '').toString().toUpperCase();
+          if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(bId)) return false;
+          const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(plate)) return false;
+          return true;
+        });
+      }
     }
     return list.map(b => ({
       ...b,
@@ -721,10 +665,7 @@ export const getBookingsSync = () => {
     }));
   } catch (err) {
     console.error('Error reading bookings from localStorage:', err);
-    return MOCK_BOOKINGS.map(b => ({
-      ...b,
-      technician: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : activeStaff
-    }));
+    return [];
   }
 };
 
@@ -805,7 +746,7 @@ export const addBooking = (bookingData) => {
     time: bookingData.time || '10:00 AM - 01:00 PM',
     technician: bookingData.technician || activeStaff,
     vehicle: bookingData.vehicle || 'Vehicle',
-    vehicleNo: bookingData.vehicleNo || 'MP-09-AB-1234',
+    vehicleNo: bookingData.vehicleNo || '',
     location: bookingData.location || bookingData.address || 'Indore Studio',
     eta: '30 mins',
     timeline: [

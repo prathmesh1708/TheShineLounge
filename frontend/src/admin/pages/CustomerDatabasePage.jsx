@@ -224,7 +224,7 @@ export default function CustomerDatabasePage() {
   };
 
   // Metrics
-  const activeCount = customers.filter(c => c.segment === 'Active Member' || c.segment === 'High-Value VIP').length;
+  const activeCount = customers.filter(c => c.segment === 'Active Member').length;
   const dueCount = customers.filter(c => c.segment === 'Due for Renewal').length;
   const suspendedCount = customers.filter(c => c.segment === 'Suspended Member').length;
   const expiredCount = customers.filter(c => c.segment === 'Expired Member').length;
@@ -257,7 +257,6 @@ export default function CustomerDatabasePage() {
         const seg = row.segment || 'Regular Customer';
         return (
           <span className={`px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
-            seg === 'High-Value VIP' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
             seg === 'Active Member' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
             seg === 'Due for Renewal' ? 'bg-amber-100 text-amber-800 border border-amber-300 font-extrabold animate-pulse' :
             seg === 'Expired Member' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
@@ -401,7 +400,7 @@ export default function CustomerDatabasePage() {
         searchPlaceholder="Search customer by name, phone, email, city..."
         searchKeys={['name', 'fullName', 'phone', 'mobile', 'email', 'city', 'id']}
         filterKey="segment"
-        filterOptions={['All', 'Active Member', 'Due for Renewal', 'Expired Member', 'Suspended Member', 'High-Value VIP', 'Regular Customer']}
+        filterOptions={['All', 'Active Member', 'Due for Renewal', 'Expired Member', 'Suspended Member', 'Regular Customer']}
       />
 
       {/* Modal: Customer Profile Drawer */}

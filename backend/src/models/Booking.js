@@ -164,7 +164,7 @@ const bookingSchema = new mongoose.Schema({
   },
   saleType: {
     type: String,
-    enum: ['service', 'membership'],
+    enum: ['service', 'membership', 'redemption', 'wash'],
     default: 'service'
   },
   paymentMode: {

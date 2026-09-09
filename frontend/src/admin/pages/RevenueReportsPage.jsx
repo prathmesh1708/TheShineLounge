@@ -42,7 +42,13 @@ export default function RevenueReportsPage() {
   const allTransactions = useMemo(() => {
     let localOffline = [];
     try {
-      localOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      const raw = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      localOffline = (Array.isArray(raw) ? raw : []).filter(s =>
+        s &&
+        s.id !== 'OFS-MTJX5GRW-3986' &&
+        s.bookingId !== 'OFS-MTJX5GRW-3986' &&
+        !String(s.id || s.bookingId || '').startsWith('WASH-')
+      );
     } catch (e) {}
 
     const list = [...(bookings || [])];

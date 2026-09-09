@@ -3,7 +3,6 @@ import { mockStaffMembers, mockAssignedJobs, mockCustomers, mockAttendanceRecord
 import apiClient from '../../../common/utils/apiClient';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
-import { initialMemberships } from '../../../admin/common/data/adminMockData';
 
 const StaffContext = createContext();
 
@@ -269,26 +268,35 @@ export function StaffProvider({ children }) {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          localDetailingJobs = parsed.map((b, idx) => ({
-            _id: b.id || `BK-DET-${idx}`,
-            id: b.id || `BK-${8000 + idx}`,
-            serviceKey: 'car-detailing',
-            serviceName: b.package || b.serviceName || 'Car Detailing Treatment',
-            planName: b.package || b.serviceName || 'Detailing Treatment',
-            vehicleNo: b.vehicleNo || 'MH02CD5678',
-            vehicleModel: b.vehicle || b.vehicleModel || 'BMW X5',
-            customerName: b.customerName || b.customer || 'Priya Patel',
-            phone: b.phone || '+91 98331 56789',
-            date: b.date || new Date().toISOString().split('T')[0],
-            timeSlot: b.time || '02:00 PM - 05:00 PM',
-            amount: b.price || 14999,
-            total: b.price || 14999,
-            status: b.status || 'Confirmed',
-            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-            notes: b.notes || 'Customer requested multi-stage ceramic gloss protection.',
-            staffId: b.staffId || currentStaff?.id || 'STF-05',
-            staffName: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : (currentStaff?.name || 'suryansh')
-          }));
+          localDetailingJobs = parsed
+            .filter(b => {
+              if (!b) return false;
+              const bId = (b.id || '').toString().toUpperCase();
+              if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(bId)) return false;
+              const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(plate)) return false;
+              return true;
+            })
+            .map((b, idx) => ({
+              _id: b.id || `BK-DET-${idx}`,
+              id: b.id || `BK-${8000 + idx}`,
+              serviceKey: 'car-detailing',
+              serviceName: b.package || b.serviceName || 'Car Detailing Treatment',
+              planName: b.package || b.serviceName || 'Detailing Treatment',
+              vehicleNo: b.vehicleNo || '',
+              vehicleModel: b.vehicle || b.vehicleModel || '',
+              customerName: b.customerName || b.customer || 'Customer',
+              phone: b.phone || '',
+              date: b.date || new Date().toISOString().split('T')[0],
+              timeSlot: b.time || '02:00 PM - 05:00 PM',
+              amount: Number(b.price || b.amount || 0),
+              total: Number(b.price || b.amount || 0),
+              status: b.status || 'Confirmed',
+              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+              notes: b.notes || '',
+              staffId: b.staffId || currentStaff?.id || '',
+              staffName: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : (currentStaff?.name || '')
+            }));
         }
       }
     } catch (e) {}
@@ -416,12 +424,9 @@ export function StaffProvider({ children }) {
         const raw = localStorage.getItem('tsl_admin_memberships');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) adminMemberships = parsed;
+          if (Array.isArray(parsed)) adminMemberships = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
         }
       } catch (e) {}
-      if (adminMemberships.length === 0) {
-        adminMemberships = initialMemberships;
-      }
 
       // Read customer vehicles overrides from staff/admin updates
       let custVehicles = {};

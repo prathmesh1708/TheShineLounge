@@ -1,6 +1,5 @@
 import { isMembershipPackage, parseFlexibleDate } from '../../../common/utils/membershipUtils';
 import apiClient from '../../../common/utils/apiClient';
-import { initialMemberships, initialBookings } from '../../../admin/common/data/adminMockData';
 
 /**
  * Normalizes vehicle number plate for reliable string comparison.
@@ -134,35 +133,10 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   const now = new Date();
 
   // 1. Gather all offline sales (localStorage + props)
-  const storageSales = getLocalOfflineSales();
+  const storageSales = getLocalOfflineSales().filter(s => s && s.id !== 'OFS-MTJX5GRW-3986' && s.bookingId !== 'OFS-MTJX5GRW-3986');
   const allOfflineSalesMap = new Map();
   storageSales.forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
-  (offlineSales || []).forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
-
-  // Ensure default offline POS sale exists (Prathmesh Jawade MP09GG8790)
-  if (!allOfflineSalesMap.has('OFS-MTJX5GRW-3986')) {
-    const defaultOfs = initialBookings.find(b => b.id === 'OFS-MTJX5GRW-3986') || {
-      id: 'OFS-MTJX5GRW-3986',
-      bookingId: 'OFS-MTJX5GRW-3986',
-      customerName: 'Prathmesh Jawade',
-      customerEmail: 'prathmesh@gmail.com',
-      phone: '98098090',
-      serviceKey: 'car-wash',
-      serviceName: 'Car Wash',
-      plan: 'Single Wash',
-      packageName: 'Single Wash',
-      price: 499,
-      total: 499,
-      date: 'September 2, 2026',
-      status: 'Completed',
-      paymentMode: 'Cash',
-      vehicleNo: 'MP09GG8790',
-      vehicleModel: 'HYUNDAI i20',
-      isOfflineSale: true,
-      saleType: 'service'
-    };
-    allOfflineSalesMap.set('OFS-MTJX5GRW-3986', defaultOfs);
-  }
+  (offlineSales || []).filter(s => s && s.id !== 'OFS-MTJX5GRW-3986' && s.bookingId !== 'OFS-MTJX5GRW-3986').forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
 
   // 2. Identify all completed wash records (e.g., WASH-...)
   const allWashLogs = [];
@@ -188,17 +162,9 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   Array.from(allOfflineSalesMap.values()).forEach(checkAndAddWash);
   (bookings || []).forEach(checkAndAddWash);
 
-  // 3. Pool of all bookings (including initial seed bookings)
+  // 3. Pool of all bookings
   const combinedBookings = [...(bookings || [])];
   const knownBookingIds = new Set(combinedBookings.map(b => b.id || b.bookingId).filter(Boolean));
-
-  initialBookings.forEach(b => {
-    const key = b.id || b.bookingId;
-    if (key && !knownBookingIds.has(key)) {
-      knownBookingIds.add(key);
-      combinedBookings.push(b);
-    }
-  });
 
   allOfflineSalesMap.forEach((sale, key) => {
     if (key && !knownBookingIds.has(key)) {
@@ -227,13 +193,8 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     }
   });
 
-  // 4. Pool of all memberships (initialMemberships + Admin Panel Memberships + props + localStorage)
+  // 4. Pool of all memberships (Admin Panel Memberships + props + localStorage, no mock data)
   const combinedMembershipsMap = new Map();
-  initialMemberships.forEach(m => {
-    if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
-      combinedMembershipsMap.set(m.id || m.vehicleNo, m);
-    }
-  });
 
   // Pull live data from Admin Panel -> Membership
   try {
@@ -241,7 +202,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     if (adminMemRaw) {
       const parsed = JSON.parse(adminMemRaw);
       if (Array.isArray(parsed)) {
-        parsed.forEach(m => {
+        parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100')).forEach(m => {
           if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
             combinedMembershipsMap.set(m.id || m.vehicleNo, m);
           }
@@ -602,10 +563,10 @@ export function getAdminMemberships() {
     const raw = localStorage.getItem('tsl_admin_memberships');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
     }
   } catch (e) {}
-  return initialMemberships;
+  return [];
 }
 
 /**
@@ -669,7 +630,8 @@ export async function updateCarNumberAcrossSystem({
 
   // 3. Update Admin Panel -> Membership in localStorage
   try {
-    const adminMemberships = JSON.parse(localStorage.getItem('tsl_admin_memberships') || 'null') || initialMemberships;
+    const adminRaw = localStorage.getItem('tsl_admin_memberships');
+    const adminMemberships = adminRaw ? (JSON.parse(adminRaw) || []).filter(m => m && !String(m.id || '').startsWith('MEM-100')) : [];
     let modifiedAdmin = false;
     const updatedAdmin = adminMemberships.map(m => {
       const matchesPass = passId && (m.id === passId || m.bookingId === passId);

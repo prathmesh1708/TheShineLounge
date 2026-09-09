@@ -106,70 +106,136 @@ export default function CarWashAdminHubPage() {
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
-  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
+  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey || i.department === 'Car Wash');
 
-  // The fleet is whatever plates actually appear on this service's bookings.
-  //
-  // This block used to manufacture the list it was reporting: a plate was
-  // generated from the row index when a booking had none (MH-01-TS-###), one
-  // named customer's plate was rewritten to a fixed value, and an empty result
-  // was replaced wholesale by a fictional owner. Operators read this panel as
-  // the register of cars entitled to enter, so every one of those was a car
-  // that would be waved through on the strength of a display bug.
+  // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
+  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const findCustomerProfile = (plate, email, phone) => {
+    const cleanPlate = normalizePlate(plate);
+    const normEmail = (email || '').toLowerCase().trim();
+    const normPhone = (phone || '').replace(/[^0-9]/g, '');
+
+    return (customers || []).find(c => {
+      const vehList = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+      if (cleanPlate && vehList.length > 0) {
+        if (vehList.some(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate)) return true;
+      }
+      if (normEmail && (c.email || '').toLowerCase().trim() === normEmail) return true;
+      if (normPhone && (c.mobile || c.phone || '').replace(/[^0-9]/g, '') === normPhone) return true;
+      return false;
+    });
+  };
+
   const registeredVehiclesMap = {};
-  serviceBookings.forEach((b) => {
-    const email = (b.customerEmail || '').toLowerCase().trim();
-    const name = b.customerName || 'Valued Customer';
 
+  serviceBookings.forEach((b) => {
     const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
-    // A booking with no plate on it contributes no vehicle.
     if (!plate) return;
 
-    const key = `${email || name}_${plate}`.toLowerCase();
+    const cleanPlate = normalizePlate(plate);
+    if (!cleanPlate) return;
+
+    const email = (b.customerEmail || '').toLowerCase().trim();
+    const matchedCust = findCustomerProfile(plate, email, b.phone || b.mobile);
+    const vehList = (Array.isArray(matchedCust?.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust?.vehicles) ? matchedCust.vehicles : []);
+    const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
+
+    const name = b.customerName || matchedCust?.fullName || matchedCust?.name || 'Customer';
+    const phone = b.phone || b.mobile || matchedCust?.mobile || matchedCust?.phone || '';
+    let model = (b.vehicleType || b.vehicleModel || '').trim();
+    if (!model && typeof matchedVeh === 'object') {
+      model = (matchedVeh.model || matchedVeh.brand || matchedVeh.category || '').trim();
+    } else if (!model && typeof matchedVeh === 'string' && matchedVeh.includes('(')) {
+      const match = matchedVeh.match(/\((.*?)\)/);
+      if (match && match[1]) model = match[1].trim();
+    }
+    model = model || 'Vehicle';
 
     const isWash = !isMembershipPackage(b.plan || b.packageName);
 
-    if (!registeredVehiclesMap[key]) {
-      registeredVehiclesMap[key] = {
+    if (!registeredVehiclesMap[cleanPlate]) {
+      registeredVehiclesMap[cleanPlate] = {
         plate,
-        model: b.vehicleType || b.vehicleModel || '',
+        model,
         ownerName: name,
-        ownerEmail: email,
-        ownerPhone: b.phone || b.mobile || '',
-        packageName: b.packageName || '',
+        ownerEmail: email || matchedCust?.email || '',
+        ownerPhone: phone,
+        packageName: b.packageName || b.plan || 'Car Wash',
         totalWashes: isWash ? 1 : 0,
         lastWashDate: isWash ? (b.date || '') : ''
       };
     } else {
       if (isWash) {
-        registeredVehiclesMap[key].totalWashes += 1;
-        if (b.date && !b.date.includes('July 18')) {
-          registeredVehiclesMap[key].lastWashDate = b.date;
+        registeredVehiclesMap[cleanPlate].totalWashes += 1;
+        if (b.date) {
+          registeredVehiclesMap[cleanPlate].lastWashDate = b.date;
         }
+      }
+      if (!registeredVehiclesMap[cleanPlate].ownerPhone && phone) registeredVehiclesMap[cleanPlate].ownerPhone = phone;
+      if ((!registeredVehiclesMap[cleanPlate].model || registeredVehiclesMap[cleanPlate].model === 'Vehicle') && model !== 'Vehicle') {
+        registeredVehiclesMap[cleanPlate].model = model;
       }
     }
   });
 
   // Single source of truth: Ensure every Car Wash membership holder is present in the registered fleet
-  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   (memberships || []).forEach(m => {
     if (!m.vehicleNo) return;
     if (m.serviceKey && m.serviceKey !== serviceKey) return;
     const cleanPlate = normalizePlate(m.vehicleNo);
-    const alreadyExists = Object.values(registeredVehiclesMap).some(v => normalizePlate(v.plate) === cleanPlate);
-    if (!alreadyExists) {
-      const key = `${m.email || m.customerName}_${cleanPlate}`.toLowerCase();
-      registeredVehiclesMap[key] = {
+    if (!cleanPlate) return;
+
+    if (!registeredVehiclesMap[cleanPlate]) {
+      const matchedCust = findCustomerProfile(m.vehicleNo, m.email, m.phone);
+      const vehList = (Array.isArray(matchedCust?.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust?.vehicles) ? matchedCust.vehicles : []);
+      const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
+      let model = (m.vehicleModel || '').trim();
+      if (!model && typeof matchedVeh === 'object') {
+        model = (matchedVeh.model || matchedVeh.brand || '').trim();
+      }
+      model = model || 'Vehicle';
+      registeredVehiclesMap[cleanPlate] = {
         plate: m.vehicleNo,
-        model: m.vehicleModel || 'Car',
-        ownerName: m.customerName || 'Valued Member',
-        ownerEmail: m.email || '',
-        ownerPhone: m.phone || '',
+        model,
+        ownerName: m.customerName || matchedCust?.fullName || matchedCust?.name || 'Member',
+        ownerEmail: m.email || matchedCust?.email || '',
+        ownerPhone: m.phone || matchedCust?.mobile || '',
         packageName: m.planName || 'Monthly Membership',
         totalWashes: m.washesUsed || 0,
         lastWashDate: m.startDateLabel || m.startDate || '—'
       };
     }
+  });
+
+  // Also include vehicles registered under customer profiles
+  (customers || []).forEach(c => {
+    const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+    custVehicles.forEach(cv => {
+      const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
+      const cleanPlate = normalizePlate(p);
+      if (!cleanPlate) return;
+
+      if (!registeredVehiclesMap[cleanPlate]) {
+        let modelName = 'Vehicle';
+        if (typeof cv === 'object') {
+          modelName = (cv.model || cv.brand || cv.category || 'Vehicle').trim();
+        } else if (typeof cv === 'string' && cv.includes('(')) {
+          const match = cv.match(/\((.*?)\)/);
+          if (match && match[1]) modelName = match[1].trim();
+        }
+        registeredVehiclesMap[cleanPlate] = {
+          plate: p.toUpperCase().trim(),
+          model: modelName,
+          ownerName: c.fullName || c.name || 'Customer',
+          ownerEmail: (c.email || '').toLowerCase().trim(),
+          ownerPhone: c.mobile || c.phone || '',
+          packageName: c.membership?.planName || 'Registered Account',
+          totalWashes: 0,
+          lastWashDate: c.lastVisit || '—'
+        };
+      }
+    });
   });
 
   // Attach live membership status and wash count if vehicle has an active plan
@@ -187,12 +253,11 @@ export default function CarWashAdminHubPage() {
       veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
       veh.membershipStatus = activeMem.status;
       veh.membershipId = activeMem.id;
-      veh.washesUsed = activeMem.washesUsed;
       veh.maxWashes = activeMem.maxWashes;
       // Single source of truth: synchronize totalWashes with washesUsed for active memberships
-      if (activeMem.washesUsed !== undefined) {
-        veh.totalWashes = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
-      }
+      const synced = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
+      veh.totalWashes = synced;
+      veh.washesUsed = synced;
     }
   });
 
@@ -430,68 +495,32 @@ export default function CarWashAdminHubPage() {
         );
 
         const mappedSubs = memberBookings.map(b => {
-          const userMobile = b.mobile || b.phone || (customers.find(c => (c.email || '').toLowerCase() === (b.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321';
+          const userMobile = b.mobile || b.phone || (customers.find(c => (c.email || '').toLowerCase() === (b.customerEmail || '').toLowerCase())?.mobile) || '';
           return {
             _id: b._id,
             id: b.bookingId,
             bookingId: b.bookingId,
-            customerName: b.customerName || 'prabhat',
-            customerEmail: (b.customerEmail || 'prabhat@gmail.com').toLowerCase().trim(),
+            customerName: b.customerName || 'Customer',
+            customerEmail: (b.customerEmail || '').toLowerCase().trim(),
             mobile: userMobile,
             phone: userMobile,
             packageName: b.packageName,
             serviceKey: b.serviceKey || 'car-wash',
             serviceName: b.serviceName || 'Car Wash',
-            vehicleNo: b.vehicleNo || 'MP09WC4444',
-            vehicleType: b.vehicleType || 'Hyundai Elite i20',
+            vehicleNo: b.vehicleNo || '',
+            vehicleType: b.vehicleType || '',
             price: b.price,
-            // Purchase date — the pass period itself is derived from it, since a
-            // pass bought during a running one starts when that one expires.
             date: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
             createdAt: b.createdAt,
             status: b.status || 'Active'
           };
         });
 
-        if (mappedSubs.length > 0) {
-          setMembershipSubscribers(mergeLocalPasses(mappedSubs));
-        } else {
-          setMembershipSubscribers(mergeLocalPasses([
-            {
-              _id: 'sub-1',
-              id: 'B-2026-9028',
-              customerName: 'prabhat',
-              customerEmail: 'prabhat@gmail.com',
-              mobile: '+91 98200 54321',
-              phone: '+91 98200 54321',
-              packageName: 'Monthly Membership',
-              vehicleNo: 'MP09WC4444',
-              vehicleType: 'Hyundai Elite i20',
-              price: 2499,
-              date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-              status: 'Active'
-            }
-          ]));
-        }
+        setMembershipSubscribers(mergeLocalPasses(mappedSubs));
       }
     } catch (err) {
       console.warn('Could not fetch membership subscribers:', err.message);
-      setMembershipSubscribers(mergeLocalPasses([
-        {
-          _id: 'sub-1',
-          id: 'B-2026-9028',
-          customerName: 'prabhat',
-          customerEmail: 'prabhat@gmail.com',
-          mobile: '+91 98200 54321',
-          phone: '+91 98200 54321',
-          packageName: 'Monthly Membership',
-          vehicleNo: 'MP09WC4444',
-          vehicleType: 'Hyundai Elite i20',
-          price: 2499,
-          date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-          status: 'Active'
-        }
-      ]));
+      setMembershipSubscribers(mergeLocalPasses([]));
     }
   };
 
@@ -705,6 +734,40 @@ export default function CarWashAdminHubPage() {
     actionLink: '/car-wash',
     status: 'active'
   });
+
+  // Inventory Stock Item States
+  const [addInventoryModal, setAddInventoryModal] = useState(false);
+  const [adjustStockModal, setAdjustStockModal] = useState(false);
+  const [selectedItemForStock, setSelectedItemForStock] = useState(null);
+  const [stockAdjustQty, setStockAdjustQty] = useState(5);
+  const [newInventoryForm, setNewInventoryForm] = useState({
+    name: '',
+    category: 'Chemicals',
+    purchasePrice: 1200,
+    currentStock: 10,
+    minStock: 5,
+    unit: 'Units'
+  });
+
+  const handleCreateInventoryItem = (e) => {
+    e.preventDefault();
+    if (!newInventoryForm.name) return;
+    addInventoryItem({
+      ...newInventoryForm,
+      serviceKey: 'car-wash',
+      department: 'Car Wash'
+    });
+    setAddInventoryModal(false);
+    setNewInventoryForm({
+      name: '',
+      category: 'Chemicals',
+      purchasePrice: 1200,
+      currentStock: 10,
+      minStock: 5,
+      unit: 'Units'
+    });
+    if (showToast) showToast('Inventory stock item registered successfully!', 'success');
+  };
 
   const handleGeneratePassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
@@ -1610,7 +1673,7 @@ export default function CarWashAdminHubPage() {
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
                       </p>
                     </div>
                   </div>
@@ -1619,12 +1682,12 @@ export default function CarWashAdminHubPage() {
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
                       <span className="font-bold text-gray-800 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
                       </span>
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
                     </div>
                   </div>
 
@@ -1710,70 +1773,80 @@ export default function CarWashAdminHubPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {registeredVehiclesList.map((v, i) => (
-              <div
-                key={v.plate || i}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
-                onClick={() => {
-                  const plate = (v.plate || '').toUpperCase().trim();
-                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
-                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
-                }}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
-                      🚗
+          {registeredVehiclesList.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {registeredVehiclesList.map((v, i) => (
+                <div
+                  key={v.plate || i}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
+                  onClick={() => {
+                    const plate = (v.plate || '').toUpperCase().trim();
+                    const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                    setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
+                        🚗
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-gray-900">{v.model || 'Vehicle'}</h4>
+                        <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
-                      <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                        {Math.max(Number(v.totalWashes) || 0, Number(v.washesUsed) || 0)} {Math.max(Number(v.totalWashes) || 0, Number(v.washesUsed) || 0) === 1 ? 'Wash' : 'Washes'} Done
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWashDone(v);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
+                        title="Quick mark wash done"
+                      >
+                        <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                      {v.washesUsed !== undefined ? v.washesUsed : v.totalWashes} {((v.washesUsed !== undefined ? v.washesUsed : v.totalWashes) === 1) ? 'Wash' : 'Washes'} Done
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleWashDone(v);
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
-                      title="Quick mark wash done"
-                    >
-                      <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
-                    </button>
-                  </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Registered Owner:</span>
-                    <strong className="text-gray-800">{v.ownerName}</strong>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Active Membership:</span>
-                    <span className="text-amber-700 font-bold">{v.packageName}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Contact:</span>
-                    <span className="text-gray-700 font-semibold">{v.ownerPhone}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Email:</span>
-                    <span className="text-gray-600 truncate max-w-[180px]">{v.ownerEmail}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Last Service Date:</span>
-                    <span className="text-amber-700 font-bold">{v.lastWashDate}</span>
-                  </p>
+                  <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Registered Owner:</span>
+                      <strong className="text-gray-800">{v.ownerName || '—'}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">{v.membershipName ? 'Active Membership:' : 'Package:'}</span>
+                      <span className="text-amber-700 font-bold">{v.membershipName || v.packageName || 'Standard Wash'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Contact:</span>
+                      <span className="text-gray-700 font-semibold">{v.ownerPhone || '—'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Email:</span>
+                      <span className="text-gray-600 truncate max-w-[180px]">{v.ownerEmail || '—'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Last Service Date:</span>
+                      <span className="text-amber-700 font-bold">{v.lastWashDate || '—'}</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-xs">
+              <div className="w-16 h-16 mx-auto mb-3 bg-amber-50 rounded-2xl flex items-center justify-center text-3xl">🚗</div>
+              <h4 className="text-sm font-bold text-gray-900 mb-1">No Registered Vehicles Found</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                Customer vehicles will automatically appear here when bookings or membership passes are created.
+              </p>
+            </div>
+          )}
 
           {/* Vehicle Detail Modal */}
           <RegisteredVehicleDetailModal
@@ -2000,16 +2073,226 @@ export default function CarWashAdminHubPage() {
       )}
 
       {activeTab === 'inventory' && (
-        <DataTable
-          columns={[
-            { header: 'Product Item', accessorKey: 'name' },
-            { header: 'Category', accessorKey: 'category' },
-            { header: 'Stock Level', accessorKey: 'currentStock' },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceInventory}
-        />
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                📦 Car Wash Supplies & Inventory ({serviceInventory.length})
+              </h3>
+              <p className="text-xs text-gray-500">Live inventory of shampoos, waxes, detailing tools, and microfiber supplies</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddInventoryModal(true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shadow-sm transition-all hover:shadow-md bg-amber-600 hover:bg-amber-700"
+            >
+              <Plus className="w-4 h-4" /> Add Stock Item
+            </button>
+          </div>
+
+          <DataTable
+            columns={[
+              {
+                header: 'Product Item',
+                accessorKey: 'name',
+                cell: (row) => (
+                  <div>
+                    <p className="font-bold text-gray-900">{row.name}</p>
+                    <p className="text-[10px] text-gray-400 font-medium">{row.id || 'INV'} · {row.category || 'Supplies'}</p>
+                  </div>
+                )
+              },
+              {
+                header: 'Category',
+                accessorKey: 'category',
+                cell: (row) => <span className="font-semibold text-gray-700">{row.category}</span>
+              },
+              {
+                header: 'Stock Level',
+                accessorKey: 'currentStock',
+                cell: (row) => (
+                  <div className="flex items-center gap-2">
+                    <span className={`font-black text-sm ${row.currentStock <= (row.minStock || 5) ? 'text-rose-600' : 'text-gray-900'}`}>
+                      {row.currentStock} {row.unit || 'Units'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-medium">(Min: {row.minStock || 5})</span>
+                  </div>
+                )
+              },
+              {
+                header: 'Purchase Price',
+                accessorKey: 'purchasePrice',
+                cell: (row) => <span className="font-bold text-gray-900">₹{row.purchasePrice || 0}</span>
+              },
+              {
+                header: 'Status',
+                accessorKey: 'status',
+                cell: (row) => (
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                    row.currentStock <= (row.minStock || 5) ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {row.currentStock <= (row.minStock || 5) ? 'Low Stock' : 'In Stock'}
+                  </span>
+                )
+              },
+              {
+                header: 'Actions',
+                cell: (row) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItemForStock(row);
+                      setStockAdjustQty(5);
+                      setAdjustStockModal(true);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs bg-[#e07b2a] hover:bg-[#c8691e]"
+                  >
+                    Adjust Stock
+                  </button>
+                )
+              }
+            ]}
+            data={serviceInventory}
+            searchPlaceholder="Search inventory supplies..."
+          />
+        </div>
       )}
+
+      {/* Modal: Add Stock Item */}
+      <AdminModal isOpen={addInventoryModal} onClose={() => setAddInventoryModal(false)} title="Add Car Wash Stock Item">
+        <form onSubmit={handleCreateInventoryItem} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Product / Item Name *</label>
+            <input
+              type="text"
+              required
+              value={newInventoryForm.name}
+              onChange={e => setNewInventoryForm(p => ({ ...p, name: e.target.value }))}
+              placeholder="e.g. pH Neutral Snow Foam Shampoo"
+              className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Category</label>
+              <select
+                value={newInventoryForm.category}
+                onChange={e => setNewInventoryForm(p => ({ ...p, category: e.target.value }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="Chemicals">Chemicals & Soaps</option>
+                <option value="Towels">Towels & Microfibers</option>
+                <option value="Tools">Equipment & Tools</option>
+                <option value="Accessories">Accessories</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Unit Type</label>
+              <select
+                value={newInventoryForm.unit}
+                onChange={e => setNewInventoryForm(p => ({ ...p, unit: e.target.value }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="Units">Units</option>
+                <option value="Cans">Cans</option>
+                <option value="Bottles">Bottles</option>
+                <option value="Litres">Litres</option>
+                <option value="Packs">Packs</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Purchase Price (₹)</label>
+              <input
+                type="number"
+                min="0"
+                value={newInventoryForm.purchasePrice}
+                onChange={e => setNewInventoryForm(p => ({ ...p, purchasePrice: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Current Stock *</label>
+              <input
+                type="number"
+                min="0"
+                required
+                value={newInventoryForm.currentStock}
+                onChange={e => setNewInventoryForm(p => ({ ...p, currentStock: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Min Stock Alert</label>
+              <input
+                type="number"
+                min="1"
+                value={newInventoryForm.minStock}
+                onChange={e => setNewInventoryForm(p => ({ ...p, minStock: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <button
+              type="button"
+              onClick={() => setAddInventoryModal(false)}
+              className="px-4 py-2 border rounded-xl font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl font-bold text-white bg-amber-600 hover:bg-amber-700"
+            >
+              Add Item
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Adjust Stock Level */}
+      <AdminModal isOpen={adjustStockModal} onClose={() => setAdjustStockModal(false)} title={`Adjust Stock: ${selectedItemForStock?.name || 'Item'}`}>
+        <div className="space-y-4 text-xs">
+          <p className="text-gray-600">
+            Current Stock: <span className="font-bold text-gray-900">{selectedItemForStock?.currentStock} {selectedItemForStock?.unit || 'Units'}</span>
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedItemForStock) {
+                  updateStock(selectedItemForStock.id, -Math.abs(stockAdjustQty));
+                  setAdjustStockModal(false);
+                }
+              }}
+              className="flex-1 py-2 rounded-xl font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100"
+            >
+              - Decrease ({stockAdjustQty})
+            </button>
+            <input
+              type="number"
+              min="1"
+              value={stockAdjustQty}
+              onChange={e => setStockAdjustQty(Number(e.target.value))}
+              className="w-20 p-2 text-center border rounded-xl font-black text-gray-800"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedItemForStock) {
+                  updateStock(selectedItemForStock.id, Math.abs(stockAdjustQty));
+                  setAdjustStockModal(false);
+                }
+              }}
+              className="flex-1 py-2 rounded-xl font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
+            >
+              + Increase ({stockAdjustQty})
+            </button>
+          </div>
+        </div>
+      </AdminModal>
 
       {/* Modal: Edit Package Title, Price & Details */}
       <AdminModal isOpen={editingPriceModal} onClose={() => setEditingPriceModal(false)} title={`Edit ${editingItem?.title || 'Package'}`}>
@@ -2326,7 +2609,7 @@ export default function CarWashAdminHubPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Vally Guest'}</h5>
+                        <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Customer'}</h5>
                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
                           sub.isQueued ? 'bg-blue-100 text-blue-800' :
                           sub.isExpired ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
@@ -2336,11 +2619,11 @@ export default function CarWashAdminHubPage() {
                       </div>
                       <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
                         <span className="flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || 'customer@shinelounge.com'}
+                          <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || '—'}
                         </span>
                         <span>•</span>
                         <span className="flex items-center gap-1 font-semibold text-gray-700">
-                          <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321'}
+                          <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '—'}
                         </span>
                       </p>
                     </div>
@@ -2348,7 +2631,7 @@ export default function CarWashAdminHubPage() {
 
                   <div className="text-right">
                     <span className="text-sm font-black text-amber-600 block">₹{Number(sub.price || 0).toLocaleString()}</span>
-                    <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || 'B-9028'}</span>
+                    <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || sub.id || '—'}</span>
                   </div>
                 </div>
 
@@ -2362,11 +2645,17 @@ export default function CarWashAdminHubPage() {
                   <div className="p-2 bg-gray-50 rounded-xl">
                     <span className="text-gray-400 font-semibold block text-[9px]">VEHICLE INFO</span>
                     <span className="font-bold text-gray-800 truncate block">
-                      🚗 {sub.vehicleType || 'Tesla Model 3'}
+                      🚗 {sub.vehicleType || sub.vehicleModel || 'Vehicle'}
                     </span>
-                    <span className="text-[10px] text-amber-700 font-black block">
-                      {sub.vehicleNo || 'MH-01-AB-1234'}
-                    </span>
+                    {sub.vehicleNo ? (
+                      <span className="text-[10px] text-amber-700 font-black block font-mono">
+                        {sub.vehicleNo}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-semibold block">
+                        No Plate Registered
+                      </span>
+                    )}
                   </div>
 
                   <div className="p-2 bg-gray-50 rounded-xl">
@@ -2457,7 +2746,7 @@ export default function CarWashAdminHubPage() {
                 required
                 value={staffForm.email}
                 onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
-                placeholder="rohan@theshinelounge.com"
+                placeholder="staff@example.com"
                 className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -2491,7 +2780,7 @@ export default function CarWashAdminHubPage() {
                 type="text"
                 value={staffForm.mobile}
                 onChange={e => setStaffForm({ ...staffForm, mobile: e.target.value })}
-                placeholder="+91 98200 11223"
+                placeholder="+91 98765 43210"
                 className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>

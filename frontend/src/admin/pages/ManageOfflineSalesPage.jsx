@@ -28,7 +28,7 @@ import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicle
 import OfflineSaleInvoiceModal from '../common/components/OfflineSaleInvoiceModal';
 
 export default function ManageOfflineSalesPage() {
-  const { bookings, addOfflineSale, deleteOfflineSale, showToast, services } = useAdmin();
+  const { bookings, addOfflineSale, deleteOfflineSale, clearAllOfflineSales, showToast, services } = useAdmin();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
@@ -92,34 +92,44 @@ export default function ManageOfflineSalesPage() {
     return 0;
   };
 
-  // Default seed matching the user's recorded sale
-  const defaultOfflineSale = {
-    id: 'OFS-MTJX5GRW-3986',
-    bookingId: 'OFS-MTJX5GRW-3986',
-    customerName: 'Prathmesh Jawade',
-    customerEmail: 'prathmesh@gmail.com',
-    phone: '98098090',
-    vehicleNo: 'MP09GG8790',
-    vehicleModel: 'HYUNDAI i20',
-    packageName: 'Single Wash',
-    saleType: 'service',
-    price: 499,
-    total: 499,
-    paymentMode: 'Cash',
-    date: 'September 2, 2026',
-    isOfflineSale: true
-  };
+  // Clear legacy mock offline sale from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      const cleaned = raw.filter(s =>
+        s &&
+        s.id !== 'OFS-MTJX5GRW-3986' &&
+        s.bookingId !== 'OFS-MTJX5GRW-3986' &&
+        !String(s.id || s.bookingId || '').startsWith('WASH-')
+      );
+      if (cleaned.length !== raw.length) {
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(cleaned));
+      }
+    } catch (e) {}
+  }, []);
 
-  // Filter offline sales from bookings and localStorage seamlessly
+  // Filter offline sales from bookings and localStorage seamlessly (no mock data)
   const offlineSales = useMemo(() => {
     const fromBookings = bookings.filter(b =>
-      b.isOfflineSale ||
-      (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-      (b.id && String(b.id).startsWith('OFS-'))
+      !b.isDeleted &&
+      !String(b.bookingId || b.id || '').startsWith('WASH-') &&
+      b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+      b.id !== 'OFS-MTJX5GRW-3986' &&
+      (
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-')) ||
+        (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-') && (Number(b.price) > 0 || Number(b.total) > 0 || b.paymentMode === 'Cash' || b.paymentMode === 'UPI' || b.paymentMode === 'Card' || b.paymentMode === 'Net Banking'))
+      )
     );
     let fromStorage = [];
     try {
-      fromStorage = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      const raw = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      fromStorage = raw.filter(s =>
+        s &&
+        s.id !== 'OFS-MTJX5GRW-3986' &&
+        s.bookingId !== 'OFS-MTJX5GRW-3986' &&
+        !String(s.id || s.bookingId || '').startsWith('WASH-')
+      );
     } catch (e) {}
 
     const map = new Map();
@@ -128,10 +138,6 @@ export default function ManageOfflineSalesPage() {
       const key = s.id || s.bookingId;
       if (!map.has(key)) map.set(key, s);
     });
-
-    if (map.size === 0) {
-      map.set(defaultOfflineSale.id, defaultOfflineSale);
-    }
 
     const list = Array.from(map.values());
     return list.sort((a, b) => {
@@ -586,6 +592,19 @@ export default function ManageOfflineSalesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
+          {offlineSales.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all offline sales?')) {
+                  clearAllOfflineSales?.();
+                }
+              }}
+              className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Clear All</span>
+            </button>
+          )}
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex-1 sm:flex-initial px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1326,11 +1345,22 @@ export default function ManageOfflineSalesPage() {
                           <button
                             onClick={() => setSelectedInvoiceSale(sale)}
                             className="px-2.5 py-1 rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 font-bold text-[10px] transition-all flex items-center gap-1 shadow-2xs"
-                            title="Generate & Download Receipt"
+                            title="Generate & View Receipt"
                           >
                             <FileText className="w-3.5 h-3.5 text-amber-600" />
                             <span>Invoice</span>
                           </button>
+                          <button
+                            onClick={() => setSelectedInvoiceSale({ ...sale, autoOpenWhatsApp: true })}
+                            className="px-2.5 py-1 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-[10px] transition-all flex items-center gap-1 shadow-2xs"
+                            title="Send Receipt via WhatsApp with PDF"
+                          >
+                            <svg className="w-3.5 h-3.5 fill-current text-emerald-600" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
+                            </svg>
+                            <span>WhatsApp</span>
+                          </button>
+
                           <button
                             onClick={() => openVehicleDetail(sale)}
                             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"

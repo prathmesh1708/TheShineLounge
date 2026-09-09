@@ -444,10 +444,53 @@ const deleteBooking = async (req, res) => {
   }
 };
 
+// @desc    Get public receipt for booking / offline sale
+// @route   GET /api/bookings/receipt/:id
+// @access  Public
+const getPublicReceipt = async (req, res) => {
+  try {
+    const booking = await findBookingByAnyId(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+    res.json({
+      success: true,
+      data: {
+        id: booking.bookingId || booking._id,
+        bookingId: booking.bookingId,
+        serviceKey: booking.serviceKey,
+        serviceName: booking.serviceName,
+        packageName: booking.packageName,
+        price: booking.price,
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        phone: booking.phone,
+        vehicleNo: booking.vehicleNo,
+        vehicleType: booking.vehicleType,
+        vehicleModel: booking.vehicleModel,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paymentMode: booking.paymentMode,
+        isOfflineSale: booking.isOfflineSale,
+        saleType: booking.saleType,
+        membershipExpiry: booking.membershipExpiry,
+        membershipValidity: booking.membershipValidity
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching public receipt:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch receipt' });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookings,
   getMyBookings,
   updateBooking,
-  deleteBooking
+  deleteBooking,
+  getPublicReceipt
 };
+

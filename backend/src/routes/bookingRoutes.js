@@ -7,11 +7,16 @@ const {
   getBookings,
   getMyBookings,
   updateBooking,
-  deleteBooking
+  deleteBooking,
+  getPublicReceipt
 } = require('../controllers/bookingController');
 
 // Create booking (Public — walk-ins and guests book without an account)
 router.post('/', createBooking);
+
+// Public digital receipt endpoint
+router.get('/receipt/:id', getPublicReceipt);
+
 
 // Customer self-service. Declared before '/:id'-shaped routes so 'my-bookings'
 // is never read as a booking id.

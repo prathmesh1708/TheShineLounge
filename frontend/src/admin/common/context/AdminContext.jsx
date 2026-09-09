@@ -3,19 +3,12 @@ import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import {
   initialDashboardStats,
-  revenueTrendData,
-  serviceRevenueData,
-  paymentModeData,
   initialServices,
   initialBanners,
-  initialMemberships,
-  initialStaff,
-  initialBookings,
-  initialCustomers,
-  initialInventory,
   initialCoupons,
   initialNotifications
 } from '../data/adminMockData';
+
 import {
   isMembershipPackage,
   buildMembershipSchedule,
@@ -89,16 +82,19 @@ export const AdminProvider = ({ children }) => {
       const saved = localStorage.getItem('tsl_admin_memberships');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+        }
       }
     } catch (e) {}
-    return initialMemberships;
+    return [];
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem('tsl_admin_memberships', JSON.stringify(memberships));
-      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: memberships }));
+      const clean = memberships.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+      localStorage.setItem('tsl_admin_memberships', JSON.stringify(clean));
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: clean }));
     } catch (e) {
       console.warn('Could not save memberships to localStorage:', e);
     }
@@ -106,10 +102,14 @@ export const AdminProvider = ({ children }) => {
   const [staffList, setStaffList] = useState(() => {
     try {
       const saved = localStorage.getItem('tsl_admin_staff_list');
-      return saved ? JSON.parse(saved) : initialStaff;
-    } catch (e) {
-      return initialStaff;
-    }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(s => !String(s.id || '').startsWith('STF-0'));
+        }
+      }
+    } catch (e) {}
+    return [];
   });
 
   useEffect(() => {
@@ -124,15 +124,51 @@ export const AdminProvider = ({ children }) => {
     try {
       const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
       if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-        const offlineIds = new Set(cachedOffline.map(o => o.id || o.bookingId).filter(Boolean));
-        const filteredInitial = initialBookings.filter(b => !offlineIds.has(b.id) && !offlineIds.has(b.bookingId));
-        return [...cachedOffline, ...filteredInitial];
+        return cachedOffline.filter(b =>
+          b &&
+          b.id !== 'OFS-MTJX5GRW-3986' &&
+          b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+          !String(b.id || '').startsWith('BK-90') &&
+          !String(b.id || '').startsWith('B-2026-88') &&
+          !String(b.id || '').startsWith('BK-SAL-') &&
+          !String(b.id || '').startsWith('BK-70') &&
+          !String(b.id || '').startsWith('BK-80')
+        );
       }
     } catch (e) {}
-    return initialBookings;
+    return [];
   });
-  const [customers, setCustomers] = useState(initialCustomers);
-  const [inventory, setInventory] = useState(initialInventory);
+  const [customers, setCustomers] = useState([]);
+  const [inventory, setInventory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_admin_inventory');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(i =>
+            i &&
+            !String(i.id || '').startsWith('INV-10') &&
+            !String(i.id || '').startsWith('INV-20') &&
+            !String(i.id || '').startsWith('INV-30') &&
+            !String(i.id || '').startsWith('INV-40') &&
+            !String(i.id || '').startsWith('INV-50') &&
+            !String(i.id || '').startsWith('INV-60') &&
+            !String(i.id || '').startsWith('INV-0')
+          );
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tsl_admin_inventory', JSON.stringify(inventory));
+    } catch (e) {
+      console.warn('Could not save inventory to localStorage:', e);
+    }
+  }, [inventory]);
+
   const [coupons, setCoupons] = useState(initialCoupons);
   const [notifications, setNotifications] = useState(initialNotifications);
 
@@ -140,6 +176,7 @@ export const AdminProvider = ({ children }) => {
   useEffect(() => {
     bookingsRef.current = bookings;
   }, [bookings]);
+
 
   const servicesRef = useRef(services);
   useEffect(() => {
@@ -345,10 +382,10 @@ export const AdminProvider = ({ children }) => {
       return {
         id: rawId
           ? (rawId.startsWith('MEM-') ? rawId : `MEM-${rawId.replace('B-2026-', '')}`)
-          : `MEM-${1005 + idx}`,
-        customerName: record.customerName,
-        phone: record.phone || record.customerEmail || '+91 98200 99887',
-        email: record.customerEmail,
+          : (record._id ? `MEM-${String(record._id).slice(-6)}` : `MEM-${idx + 1}`),
+        customerName: record.customerName || 'Valued Member',
+        phone: record.phone || record.mobile || '',
+        email: record.customerEmail || '',
         // Empty, not a sample plate. This row is a membership card an operator
         // checks a car against at the gate.
         vehicleNo: record.vehicleNo || '',
@@ -370,27 +407,9 @@ export const AdminProvider = ({ children }) => {
       };
     });
 
-    // Newest purchases first, then the seeded demo records.
+    // Newest purchases first (no mock data appended)
     derived.reverse();
-    const derivedIds = new Set(derived.map(d => d.id));
-    const uniqueMocks = initialMemberships.filter(m => !derivedIds.has(m.id)).map(mock => {
-      const meta = findMembershipMeta(mock.planName || mock.name, catalog);
-      if (meta) {
-        const configuredLimit = meta.visitLimit !== undefined && meta.visitLimit !== null
-          ? (Number(meta.visitLimit) === 999 ? 999 : Number(meta.visitLimit))
-          : null;
-        const configuredPrice = Number(meta.price);
-        return {
-          ...mock,
-          maxWashes: (configuredLimit !== null && !isNaN(configuredLimit) && configuredLimit > 0)
-            ? configuredLimit
-            : mock.maxWashes,
-          amount: (!isNaN(configuredPrice) && configuredPrice > 0) ? configuredPrice : mock.amount
-        };
-      }
-      return mock;
-    });
-    return [...derived, ...uniqueMocks];
+    return derived;
   };
 
   const fetchBookingsList = async () => {
@@ -452,10 +471,36 @@ export const AdminProvider = ({ children }) => {
           };
         });
 
-        // Bi-directional sync of offline sales between backend and localStorage
-        const backendOfflineSales = mapped.filter(b => b.isOfflineSale || (b.bookingId && String(b.bookingId).startsWith('OFS-')));
+        // Bi-directional sync of genuine offline sales between backend and localStorage
+        const backendOfflineSales = mapped.filter(b =>
+          !b.isDeleted &&
+          b.id !== 'OFS-MTJX5GRW-3986' &&
+          b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+          !String(b.bookingId || b.id || '').startsWith('WASH-') &&
+          !String(b.bookingId || b.id || '').startsWith('BK-90') &&
+          !String(b.bookingId || b.id || '').startsWith('B-2026-88') &&
+          !String(b.bookingId || b.id || '').startsWith('BK-SAL-') &&
+          !String(b.bookingId || b.id || '').startsWith('BK-70') &&
+          !String(b.bookingId || b.id || '').startsWith('BK-80') &&
+          (
+            (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+            (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
+          )
+        );
         try {
-          const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+          const rawCached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+          const cachedOffline = Array.isArray(rawCached) ? rawCached.filter(s =>
+            s &&
+            s.id !== 'OFS-MTJX5GRW-3986' &&
+            s.bookingId !== 'OFS-MTJX5GRW-3986' &&
+            !String(s.id || s.bookingId || '').startsWith('WASH-') &&
+            !String(s.id || s.bookingId || '').startsWith('BK-90') &&
+            !String(s.id || s.bookingId || '').startsWith('B-2026-88') &&
+            !String(s.id || s.bookingId || '').startsWith('BK-SAL-') &&
+            !String(s.id || s.bookingId || '').startsWith('BK-70') &&
+            !String(s.id || s.bookingId || '').startsWith('BK-80')
+          ) : [];
+
           const combinedOfflineMap = new Map();
           // Include backend offline sales
           backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
@@ -475,77 +520,49 @@ export const AdminProvider = ({ children }) => {
           });
         } catch (e) {}
 
-        setMemberships(deriveMembershipsFromBookings(mapped));
+        // Rely EXCLUSIVELY on live database bookings + genuine offline sales (no mock salon bookings or fake fallbacks)
+        const cleanBookings = mapped.filter(b =>
+          b &&
+          !String(b.id || b.bookingId || '').startsWith('BK-90') &&
+          !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
+          !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
+          !String(b.id || b.bookingId || '').startsWith('BK-70') &&
+          !String(b.id || b.bookingId || '').startsWith('BK-80') &&
+          b.id !== 'OFS-MTJX5GRW-3986' &&
+          b.bookingId !== 'OFS-MTJX5GRW-3986'
+        );
+
+        setBookings(cleanBookings);
+        setMemberships(deriveMembershipsFromBookings(cleanBookings));
       } else {
+        setBookings([]);
         setMemberships(deriveMembershipsFromBookings([]));
       }
-
-      // Merge client-side salon bookings from localStorage if available
-      let localSalonBookings = [];
-      try {
-        const storedSalon = localStorage.getItem('salon_bookings') || localStorage.getItem('shine_salon_bookings');
-        if (storedSalon) {
-          const parsedSalon = JSON.parse(storedSalon);
-          if (Array.isArray(parsedSalon)) {
-            localSalonBookings = parsedSalon.map((b, idx) => {
-              const bDate = b.date || new Date().toISOString().split('T')[0];
-              const bTime = b.timeSlot || b.time || '01:30 PM';
-              const formattedSlot = formatBookingDateTime(bTime, bDate);
-              return {
-                _id: b.id || b.bookingId || `BK-SAL-${idx}`,
-                id: b.bookingId || b.id || `BK-${7000 + idx}`,
-                customerName: b.customerName || b.user || 'Salon Client',
-                customerEmail: b.customerEmail || b.email || '',
-                vehicleNo: b.vehicleNo || (b.stylist ? `Stylist: ${b.stylist}` : 'Any Specialist'),
-                vehicleType: b.vehicleType || 'Salon Client',
-                location: b.location || 'Shine Lounge Salon',
-                phone: b.phone || b.mobile || '',
-                serviceKey: 'salon',
-                serviceName: b.serviceName || 'Men\'s Salon',
-                plan: b.packageName || b.package || b.service || 'Executive Haircut',
-                date: bDate,
-                timeSlot: formattedSlot,
-                total: b.price || b.total || b.amount || 0,
-                status: b.status === 'Upcoming' ? 'Confirmed' : (b.status || 'Confirmed'),
-                staffAssigned: b.stylist || b.staffAssigned || 'Not Assigned',
-                notes: b.notes || '',
-                createdAt: b.createdAt || b.bookedAt || bDate,
-                bookedAt: b.bookedAt || b.createdAt
-              };
-            });
-          }
-        }
-      } catch (e) {}
-
-      const apiIds = new Set(mapped.flatMap(b => [b.id, b._id, b.bookingId].filter(Boolean)));
-      const notAlreadyLive = (b) => !apiIds.has(b.id) && !apiIds.has(b._id) && !apiIds.has(b.bookingId);
-
-      const combinedBookings = [
-        ...mapped,
-        ...localSalonBookings.filter(notAlreadyLive),
-        ...initialBookings.filter(notAlreadyLive)
-      ];
-
-      const finalBookings = combinedBookings.length > 0 ? combinedBookings : initialBookings;
-      setBookings(finalBookings);
-      setMemberships(deriveMembershipsFromBookings(finalBookings));
     } catch (err) {
       console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
       try {
         const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
         if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-          const offlineIds = new Set(cachedOffline.map(o => o.id || o.bookingId).filter(Boolean));
-          const filteredInitial = initialBookings.filter(b => !offlineIds.has(b.id) && !offlineIds.has(b.bookingId));
-          const fallback = [...cachedOffline, ...filteredInitial];
-          setBookings(fallback);
-          setMemberships(deriveMembershipsFromBookings(fallback));
+          const cleanOffline = cachedOffline.filter(b =>
+            b &&
+            b.id !== 'OFS-MTJX5GRW-3986' &&
+            b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+            !String(b.id || b.bookingId || '').startsWith('BK-90') &&
+            !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
+            !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
+            !String(b.id || b.bookingId || '').startsWith('BK-70') &&
+            !String(b.id || b.bookingId || '').startsWith('BK-80')
+          );
+          setBookings(cleanOffline);
+          setMemberships(deriveMembershipsFromBookings(cleanOffline));
           return;
         }
       } catch (e) {}
-      setBookings(initialBookings);
-      setMemberships(deriveMembershipsFromBookings(initialBookings));
+      setBookings([]);
+      setMemberships([]);
     }
   };
+
 
   const fetchStaffList = async () => {
     try {
@@ -736,7 +753,7 @@ export const AdminProvider = ({ children }) => {
           createdAt: c.createdAt
         }));
       } else {
-        base = initialCustomers;
+        base = [];
       }
 
       let offline = [];
@@ -752,9 +769,10 @@ export const AdminProvider = ({ children }) => {
       try {
         offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
       } catch (e) {}
-      setCustomers(prev => deriveCustomers(prev.length > 0 ? prev : initialCustomers, bookingsRef.current || [], offline));
+      setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], offline));
     }
   };
+
 
   const fetchServicesList = async () => {
     try {
@@ -848,27 +866,256 @@ export const AdminProvider = ({ children }) => {
     };
   }, []);
 
-  // Compute dynamic stats based on database records
+  // Clean up any stale mock keys in localStorage on initial boot
   useEffect(() => {
-    const pending = bookings.filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
-    const lowStock = inventory.filter(i => {
-      const qty = parseInt(i.quantity) || 0;
+    try {
+      // 1. Remove obsolete mock bookings storage
+      const oldB = localStorage.getItem('tsl_admin_bookings');
+      if (oldB) {
+        localStorage.removeItem('tsl_admin_bookings');
+      }
+
+      // 2. Clean offline sales of any fake or test bookings
+      const rawOffline = localStorage.getItem('tsl_offline_sales');
+      if (rawOffline) {
+        try {
+          const parsed = JSON.parse(rawOffline);
+          if (Array.isArray(parsed)) {
+            const cleanOffline = parsed.filter(b =>
+              b &&
+              b.id !== 'OFS-MTJX5GRW-3986' &&
+              b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+              !String(b.id || b.bookingId || '').startsWith('BK-90') &&
+              !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-70') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-80')
+            );
+            if (cleanOffline.length !== parsed.length) {
+              localStorage.setItem('tsl_offline_sales', JSON.stringify(cleanOffline));
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 3. Clean mock inventory
+      const oldInv = localStorage.getItem('tsl_admin_inventory');
+      if (oldInv && (oldInv.includes('INV-10') || oldInv.includes('INV-20') || oldInv.includes('INV-0') || oldInv.includes('INV-30') || oldInv.includes('INV-40') || oldInv.includes('INV-50') || oldInv.includes('INV-60'))) {
+        try {
+          const parsed = JSON.parse(oldInv);
+          if (Array.isArray(parsed)) {
+            const cleanInv = parsed.filter(i =>
+              i &&
+              !String(i.id || '').startsWith('INV-10') &&
+              !String(i.id || '').startsWith('INV-20') &&
+              !String(i.id || '').startsWith('INV-30') &&
+              !String(i.id || '').startsWith('INV-40') &&
+              !String(i.id || '').startsWith('INV-50') &&
+              !String(i.id || '').startsWith('INV-60') &&
+              !String(i.id || '').startsWith('INV-0')
+            );
+            localStorage.setItem('tsl_admin_inventory', JSON.stringify(cleanInv));
+          }
+        } catch (e) {
+          localStorage.removeItem('tsl_admin_inventory');
+        }
+      }
+
+      // 4. Clean mock staff
+      const oldStaff = localStorage.getItem('tsl_admin_staff_list');
+      if (oldStaff && oldStaff.includes('STF-0')) {
+        localStorage.removeItem('tsl_admin_staff_list');
+      }
+
+      // 5. Clean mock customers
+      const oldCust = localStorage.getItem('tsl_admin_customers');
+      if (oldCust && oldCust.includes('CUST-0')) {
+        localStorage.removeItem('tsl_admin_customers');
+      }
+
+      // 6. Clean mock memberships
+      const oldMem = localStorage.getItem('tsl_admin_memberships');
+      if (oldMem && oldMem.includes('MEM-100')) {
+        try {
+          const parsed = JSON.parse(oldMem);
+          if (Array.isArray(parsed)) {
+            const cleanMem = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+            localStorage.setItem('tsl_admin_memberships', JSON.stringify(cleanMem));
+          }
+        } catch (e) {
+          localStorage.removeItem('tsl_admin_memberships');
+        }
+      }
+
+      // 7. Clean mock car detailing bookings
+      const oldDet = localStorage.getItem('shine_car_detailing_bookings');
+      if (oldDet) {
+        try {
+          const parsed = JSON.parse(oldDet);
+          if (Array.isArray(parsed)) {
+            const cleanDet = parsed.filter(b => {
+              if (!b) return false;
+              const bId = (b.id || '').toString().toUpperCase();
+              if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(bId)) return false;
+              const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(plate)) return false;
+              return true;
+            });
+            if (cleanDet.length !== parsed.length) {
+              localStorage.setItem('shine_car_detailing_bookings', JSON.stringify(cleanDet));
+            }
+          }
+        } catch (e) {
+          localStorage.removeItem('shine_car_detailing_bookings');
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  // Compute dynamic stats based on live database records
+  useEffect(() => {
+    const pending = (bookings || []).filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
+    const lowStock = (inventory || []).filter(i => {
+      const qty = parseInt(i.currentStock ?? i.quantity) || 0;
       const min = parseInt(i.minStock) || 5;
       return qty <= min;
     }).length;
 
-    // Calculate dynamic revenue stats
-    const totalRev = bookings.reduce((sum, b) => b.status === 'Completed' ? sum + b.total : sum, 0);
+    // Calculate dynamic revenue stats from real paid or completed bookings
+    const totalRev = (bookings || []).reduce((sum, b) => {
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return isPaid ? sum + amt : sum;
+    }, 0);
 
-    setStats(prev => ({
-      ...prev,
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaySales = (bookings || []).reduce((sum, b) => {
+      const raw = b.date || b.createdAt || b.bookedAt || '';
+      const matchesToday = typeof raw === 'string' && raw.startsWith(todayStr);
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return (matchesToday && isPaid) ? sum + amt : sum;
+    }, 0);
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthlySales = (bookings || []).reduce((sum, b) => {
+      const raw = b.date || b.createdAt || b.bookedAt || '';
+      const d = new Date(raw);
+      const isCurrentMonth = !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return (isCurrentMonth && isPaid) ? sum + amt : sum;
+    }, 0);
+
+    const activeMembersCount = (memberships || []).filter(m => m.status === 'active' || m.status === 'Active').length;
+
+    setStats({
+      totalRevenue: totalRev,
+      revenueGrowth: 0,
+      todaySales,
+      todayGrowth: 0,
+      monthlySales,
+      monthlyGrowth: 0,
+      annualSales: totalRev,
+      annualGrowth: 0,
+      activeMembers: activeMembersCount,
+      totalCustomers: (customers || []).length,
+      activeCustomers: (customers || []).length,
       pendingBookings: pending,
       lowStockItems: lowStock,
-      totalRevenue: totalRev,
-      activeCustomers: customers.length,
-      activeStaff: staffList.filter(s => s.isActive).length
-    }));
-  }, [bookings, inventory, customers, staffList]);
+      activeStaff: (staffList || []).filter(s => s.isActive !== false).length
+    });
+  }, [bookings, inventory, customers, staffList, memberships]);
+
+  // Dynamic 12-Month Revenue Trend calculated from real bookings
+  const dynamicRevenueTrendData = React.useMemo(() => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentYear = new Date().getFullYear();
+    const map = {};
+    monthNames.forEach(m => {
+      map[m] = { month: m, revenue: 0, bookings: 0 };
+    });
+
+    (bookings || []).forEach(b => {
+      const rawDate = b.date || b.createdAt || b.bookedAt;
+      if (!rawDate) return;
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return;
+      if (d.getFullYear() === currentYear) {
+        const mName = monthNames[d.getMonth()];
+        if (map[mName]) {
+          const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+          map[mName].revenue += amt;
+          map[mName].bookings += 1;
+        }
+      }
+    });
+
+    return Object.values(map);
+  }, [bookings]);
+
+  // Dynamic Service-wise Revenue Distribution
+  const dynamicServiceRevenueData = React.useMemo(() => {
+    const colorMap = {
+      'car-wash': '#e07b2a',
+      'car-detailing': '#1e4a7e',
+      'cafe': '#f59e0b',
+      'drive-through-cafe': '#3b82f6',
+      'dog-wash': '#10b981',
+      'salon': '#8b5cf6'
+    };
+    const titleMap = {
+      'car-wash': 'Car Wash',
+      'car-detailing': 'Car Detailing',
+      'cafe': 'Café',
+      'drive-through-cafe': 'Drive-Through Café',
+      'dog-wash': 'Dog Bath',
+      'salon': "Men's Salon"
+    };
+
+    const map = {};
+    (bookings || []).forEach(b => {
+      const key = b.serviceKey || 'car-wash';
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      if (!map[key]) {
+        map[key] = {
+          name: titleMap[key] || b.service || key,
+          value: 0,
+          color: colorMap[key] || '#6366f1'
+        };
+      }
+      map[key].value += amt;
+    });
+
+    const activeList = Object.values(map).filter(item => item.value > 0);
+    return activeList.length > 0 ? activeList : [
+      { name: 'Car Wash', value: 0, color: '#e07b2a' },
+      { name: 'Car Detailing', value: 0, color: '#1e4a7e' }
+    ];
+  }, [bookings]);
+
+  // Dynamic Payment Mode Distribution
+  const dynamicPaymentModeData = React.useMemo(() => {
+    const map = {};
+    (bookings || []).forEach(b => {
+      const mode = b.paymentMode || 'Cash';
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      if (!map[mode]) {
+        map[mode] = { mode, amount: 0, count: 0 };
+      }
+      map[mode].amount += amt;
+      map[mode].count += 1;
+    });
+
+    const result = Object.values(map);
+    return result.length > 0 ? result : [
+      { mode: 'UPI', amount: 0, count: 0 },
+      { mode: 'Cash', amount: 0, count: 0 }
+    ];
+  }, [bookings]);
+
 
   // --- CRUD ACTIONS ---
 
@@ -1160,7 +1407,7 @@ export const AdminProvider = ({ children }) => {
         timeSlot: bookingData.timeSlot || `${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(Date.now() + 30*60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
         customerName: bookingData.customerName,
         customerEmail: bookingData.customerEmail || 'customer@example.com',
-        vehicleNo: bookingData.vehicleNo || 'MH-01-AB-1234',
+        vehicleNo: bookingData.vehicleNo || '',
         vehicleType: bookingData.vehicleType || 'SUV'
       };
 
@@ -1305,6 +1552,46 @@ export const AdminProvider = ({ children }) => {
     showToast('Offline sale removed');
   };
 
+  const clearAllOfflineSales = async () => {
+    try {
+      localStorage.removeItem('tsl_offline_sales');
+      // Delete any offline sale bookings from backend
+      try {
+        const res = await apiClient.get('/bookings');
+        if (res.data?.success && Array.isArray(res.data?.bookings)) {
+          const ofsList = res.data.bookings.filter(b =>
+            !String(b.bookingId || b.id || '').startsWith('WASH-') &&
+            ((b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+             (b.id && String(b.id).startsWith('OFS-')) ||
+             (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-')))
+          );
+          for (const s of ofsList) {
+            try {
+              await apiClient.delete(`/bookings/${s._id || s.id || s.bookingId}`);
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Backend clear offline sales error:', err.message);
+      }
+
+      setBookings(prev => {
+        const next = prev.filter(b =>
+          !String(b.bookingId || b.id || '').startsWith('OFS-') &&
+          !(b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
+        );
+        setMemberships(deriveMembershipsFromBookings(next));
+        return next;
+      });
+
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { cleared: true } }));
+      window.dispatchEvent(new Event('storage'));
+      showToast('All offline sales cleared');
+    } catch (e) {
+      console.error('Failed to clear offline sales:', e);
+    }
+  };
+
   // 5c. Log Completed Wash under Membership (re-calculates washesUsed in real time)
   const logMembershipWash = async ({
     vehicleNo,
@@ -1338,39 +1625,46 @@ export const AdminProvider = ({ children }) => {
       vehicleModel: vehicleModel || 'Car',
       phone: phone || '',
       status: 'Completed',
-      isOfflineSale: true,
-      saleType: 'service',
+      isOfflineSale: false,
+      saleType: 'redemption',
       paymentMode: 'Membership',
       notes: `Wash completed and redeemed under active membership: ${membershipName || 'Pass'}`
     };
 
-    // Try saving to backend
+    let savedRecord = null;
+    // Save to backend database
     try {
-      await apiClient.post('/bookings', bookingPayload);
-      fetchBookingsList();
+      const res = await apiClient.post('/bookings', bookingPayload);
+      if (res.data && res.data.booking) {
+        savedRecord = res.data.booking;
+      }
+      await fetchBookingsList();
     } catch (err) {
       console.warn('Backend save error for membership wash, using local fallback:', err.message);
     }
 
-    const localRecord = {
+    const localRecord = savedRecord ? {
+      id: savedRecord.bookingId || savedRecord._id,
+      _id: savedRecord._id,
+      ...savedRecord,
+      createdAt: savedRecord.createdAt || now.toISOString(),
+      bookedAt: savedRecord.createdAt || now.toISOString()
+    } : {
       id: newId,
+      _id: newId,
       ...bookingPayload,
       createdAt: now.toISOString(),
       bookedAt: now.toISOString()
     };
 
-    try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
-    } catch (e) {}
-
     setBookings(prev => {
-      const next = [localRecord, ...prev];
+      const exists = prev.some(b => b.bookingId === localRecord.bookingId || b.id === localRecord.id);
+      const next = exists ? prev : [localRecord, ...prev];
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
 
-    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+    setCustomers(prev => deriveCustomers(prev, [localRecord], []));
 
     try {
       window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
@@ -1563,9 +1857,9 @@ export const AdminProvider = ({ children }) => {
   return (
     <AdminContext.Provider value={{
       stats,
-      revenueTrendData,
-      serviceRevenueData,
-      paymentModeData,
+      revenueTrendData: dynamicRevenueTrendData,
+      serviceRevenueData: dynamicServiceRevenueData,
+      paymentModeData: dynamicPaymentModeData,
       services,
       banners,
       memberships,
@@ -1600,6 +1894,7 @@ export const AdminProvider = ({ children }) => {
       addBooking,
       addOfflineSale,
       deleteOfflineSale,
+      clearAllOfflineSales,
       logMembershipWash,
       addStaff,
       updateStaff,

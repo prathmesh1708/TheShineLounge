@@ -119,14 +119,14 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-zinc-50/70 p-4 rounded-2xl border border-zinc-200/80 text-xs">
               <div className="space-y-1">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Billed To Customer</span>
-                <p className="font-bold text-sm text-zinc-900">{booking.customerName || 'Car Owner'}</p>
+                <p className="font-bold text-sm text-zinc-900">{booking.customerName || 'Customer'}</p>
                 <p className="text-zinc-500">{booking.location || booking.address || 'Indore Studio Service'}</p>
               </div>
               <div className="space-y-1 sm:text-right">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Vehicle Specification</span>
-                <p className="font-bold text-sm text-zinc-900">{booking.vehicle || 'Tesla Model 3'}</p>
+                <p className="font-bold text-sm text-zinc-900">{booking.vehicle || 'Vehicle'}</p>
                 <p className="font-mono text-xs font-bold text-luxury-emerald bg-luxury-emerald/10 inline-block px-2 py-0.5 rounded border border-luxury-emerald/20 mt-0.5">
-                  Reg No: {booking.vehicleNo || 'MP-09-AB-1234'}
+                  Reg No: {booking.vehicleNo || 'N/A'}
                 </p>
               </div>
             </div>

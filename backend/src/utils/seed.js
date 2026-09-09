@@ -11,7 +11,6 @@ const mongoose = require('mongoose');
 const { MONGO_URI } = require('../common/config/env');
 const seedAdmin = require('./seedAdmin');
 const seedServices = require('./seedServices');
-const seedRealData = require('./seedRealData');
 
 (async () => {
   try {
@@ -20,9 +19,8 @@ const seedRealData = require('./seedRealData');
 
     await seedAdmin();
     await seedServices();
-    await seedRealData();
 
-    console.log('✅ Seed complete');
+    console.log('✅ Seed complete (Admin & Services synced)');
   } catch (error) {
     console.error('❌ Seed failed:', error.message);
     process.exitCode = 1;
