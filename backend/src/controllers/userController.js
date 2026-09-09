@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
@@ -512,7 +513,7 @@ const getCustomers = async (req, res) => {
 
       // Add any vehicles from bookings if not already present
       userBookings.forEach(b => {
-        if (b.vehicleNo) {
+        if (b.vehicleNo && !b.vehicleDeregistered) {
           const cleanPlate = b.vehicleNo.toUpperCase().trim();
           const exists = vehicleList.some(v => v.toUpperCase().includes(cleanPlate));
           if (!exists) {
@@ -572,8 +573,8 @@ const getCustomers = async (req, res) => {
           segment: isMem ? 'Active Member' : 'Regular Customer',
           totalSpent: Number(b.price) || 0,
           loyaltyPoints: Math.floor((Number(b.price) || 0) / 100),
-          vehicles: b.vehicleNo ? [`${b.vehicleNo.toUpperCase().trim()}${b.vehicleType ? ` (${b.vehicleType})` : ''}`] : [],
-          rawVehicles: b.vehicleNo ? [{ plateNumber: b.vehicleNo.toUpperCase().trim(), model: b.vehicleType || 'Car' }] : [],
+          vehicles: (b.vehicleNo && !b.vehicleDeregistered) ? [`${b.vehicleNo.toUpperCase().trim()}${b.vehicleType ? ` (${b.vehicleType})` : ''}`] : [],
+          rawVehicles: (b.vehicleNo && !b.vehicleDeregistered) ? [{ plateNumber: b.vehicleNo.toUpperCase().trim(), model: b.vehicleType || 'Car' }] : [],
           membership: isMem ? {
             planName: b.membershipName || b.packageName,
             status: 'Active',
@@ -587,7 +588,7 @@ const getCustomers = async (req, res) => {
         const item = extraCustomersMap.get(groupKey);
         item.totalSpent += (Number(b.price) || 0);
         item.loyaltyPoints = Math.floor(item.totalSpent / 100);
-        if (b.vehicleNo) {
+        if (b.vehicleNo && !b.vehicleDeregistered) {
           const cleanPlate = b.vehicleNo.toUpperCase().trim();
           const hasPlate = item.vehicles.some(v => v.toUpperCase().includes(cleanPlate));
           if (!hasPlate) {
@@ -833,6 +834,82 @@ const addCustomerVehicle = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message || 'Server error adding vehicle' });
+  }
+};
+
+// @desc    Admin / Staff deregister or delete a vehicle from fleet and customer profile
+// @route   DELETE /api/users/vehicles/deregister/:plate or DELETE /api/users/customers/:id/vehicles/:plate
+// @access  Staff / Admin
+const deregisterVehicle = async (req, res) => {
+  try {
+    const rawPlate = req.params.plate || req.body?.plateNumber || req.body?.plate;
+    if (!rawPlate) {
+      return res.status(400).json({ success: false, message: 'Plate number is required' });
+    }
+    const cleanPlate = normalizePlate(rawPlate);
+    const customerId = req.params.id;
+
+    const plateRegexStr = cleanPlate.split('').join('[\\s-]*');
+    const plateRegex = new RegExp(plateRegexStr, 'i');
+
+    // 1. Remove from all matching user profiles (or specific customer if provided)
+    let userQuery = {
+      $or: [
+        { 'vehicles.plateNormalized': cleanPlate },
+        { 'vehicles.plateNumber': { $regex: plateRegex } },
+        { 'membership.boundVehicles': { $regex: plateRegex } }
+      ]
+    };
+
+    if (customerId && customerId !== 'any' && customerId !== 'all') {
+      const isObjId = mongoose.Types.ObjectId.isValid(customerId);
+      userQuery = {
+        $and: [
+          isObjId ? { _id: customerId } : { email: customerId },
+          userQuery
+        ]
+      };
+    }
+
+    const usersWithVeh = await User.find(userQuery);
+
+    for (const u of usersWithVeh) {
+      if (Array.isArray(u.vehicles)) {
+        u.vehicles = u.vehicles.filter(v => {
+          const vPlate = normalizePlate(v.plateNormalized || v.plateNumber);
+          return vPlate !== cleanPlate;
+        });
+        if (u.vehicles.length > 0 && !u.vehicles.some(v => v.isPrimary)) {
+          u.vehicles[0].isPrimary = true;
+        }
+      }
+      if (u.membership && Array.isArray(u.membership.boundVehicles)) {
+        u.membership.boundVehicles = u.membership.boundVehicles.filter(
+          entry => normalizePlate(String(entry).split('(')[0]) !== cleanPlate
+        );
+      }
+      await u.save({ validateBeforeSave: false });
+    }
+
+    // 2. Mark matching service bookings as vehicleDeregistered
+    await Booking.updateMany(
+      {
+        $or: [
+          { vehicleNoNormalized: cleanPlate },
+          { vehicleNo: { $regex: plateRegex } }
+        ]
+      },
+      { $set: { vehicleDeregistered: true } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Vehicle ${rawPlate.toUpperCase()} successfully removed from fleet and records`,
+      plate: cleanPlate
+    });
+  } catch (error) {
+    console.error('Error deregistering vehicle:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error deregistering vehicle' });
   }
 };
 
@@ -1320,6 +1397,7 @@ module.exports = {
   updateCustomerMembership,
   updateCustomerUsageRules,
   addCustomerVehicle,
+  deregisterVehicle,
   deleteCustomer,
   updateProfile,
   getMyVehicles,

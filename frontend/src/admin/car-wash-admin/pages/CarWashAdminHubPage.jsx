@@ -82,7 +82,8 @@ export default function CarWashAdminHubPage() {
     showToast,
     addOfflineSale,
     memberships,
-    logMembershipWash
+    logMembershipWash,
+    deleteCustomerVehicle
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -111,6 +112,15 @@ export default function CarWashAdminHubPage() {
   // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
   const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+  const getDeregisteredPlates = () => {
+    try {
+      return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+    } catch (e) {
+      return [];
+    }
+  };
+  const deregisteredPlates = getDeregisteredPlates();
+
   const findCustomerProfile = (plate, email, phone) => {
     const cleanPlate = normalizePlate(plate);
     const normEmail = (email || '').toLowerCase().trim();
@@ -130,11 +140,12 @@ export default function CarWashAdminHubPage() {
   const registeredVehiclesMap = {};
 
   serviceBookings.forEach((b) => {
+    if (b.vehicleDeregistered) return;
     const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
     if (!plate) return;
 
     const cleanPlate = normalizePlate(plate);
-    if (!cleanPlate) return;
+    if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
     const email = (b.customerEmail || '').toLowerCase().trim();
     const matchedCust = findCustomerProfile(plate, email, b.phone || b.mobile);
@@ -158,6 +169,7 @@ export default function CarWashAdminHubPage() {
       registeredVehiclesMap[cleanPlate] = {
         plate,
         model,
+        customerId: matchedCust?._id || matchedCust?.id || null,
         ownerName: name,
         ownerEmail: email || matchedCust?.email || '',
         ownerPhone: phone,
@@ -184,7 +196,7 @@ export default function CarWashAdminHubPage() {
     if (!m.vehicleNo) return;
     if (m.serviceKey && m.serviceKey !== serviceKey) return;
     const cleanPlate = normalizePlate(m.vehicleNo);
-    if (!cleanPlate) return;
+    if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
     if (!registeredVehiclesMap[cleanPlate]) {
       const matchedCust = findCustomerProfile(m.vehicleNo, m.email, m.phone);
@@ -198,6 +210,7 @@ export default function CarWashAdminHubPage() {
       registeredVehiclesMap[cleanPlate] = {
         plate: m.vehicleNo,
         model,
+        customerId: matchedCust?._id || matchedCust?.id || null,
         ownerName: m.customerName || matchedCust?.fullName || matchedCust?.name || 'Member',
         ownerEmail: m.email || matchedCust?.email || '',
         ownerPhone: m.phone || matchedCust?.mobile || '',
@@ -214,7 +227,7 @@ export default function CarWashAdminHubPage() {
     custVehicles.forEach(cv => {
       const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
       const cleanPlate = normalizePlate(p);
-      if (!cleanPlate) return;
+      if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
       if (!registeredVehiclesMap[cleanPlate]) {
         let modelName = 'Vehicle';
@@ -227,6 +240,7 @@ export default function CarWashAdminHubPage() {
         registeredVehiclesMap[cleanPlate] = {
           plate: p.toUpperCase().trim(),
           model: modelName,
+          customerId: c._id || c.id || null,
           ownerName: c.fullName || c.name || 'Customer',
           ownerEmail: (c.email || '').toLowerCase().trim(),
           ownerPhone: c.mobile || c.phone || '',
@@ -662,6 +676,8 @@ export default function CarWashAdminHubPage() {
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [vehicleToDelete, setVehicleToDelete] = useState(null);
+  const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
 
@@ -692,6 +708,23 @@ export default function CarWashAdminHubPage() {
           history: [res, ...(prev.history || [])]
         };
       });
+    }
+  };
+
+  const handleConfirmDeleteVehicle = async () => {
+    if (!vehicleToDelete) return;
+    setIsDeletingVehicle(true);
+    try {
+      const cust = findCustomerProfile(vehicleToDelete.plate, vehicleToDelete.ownerEmail, vehicleToDelete.ownerPhone);
+      const custId = vehicleToDelete.customerId || cust?._id || cust?.id || 'any';
+      await deleteCustomerVehicle(custId, vehicleToDelete.plate);
+      setSelectedVehicleDetail(null);
+      setVehicleToDelete(null);
+    } catch (err) {
+      console.error('Error deleting vehicle:', err);
+      showToast('Could not delete vehicle. Please try again.', 'error');
+    } finally {
+      setIsDeletingVehicle(false);
     }
   };
   const [staffForm, setStaffForm] = useState({
@@ -1810,6 +1843,17 @@ export default function CarWashAdminHubPage() {
                       >
                         <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
                       </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVehicleToDelete(v);
+                        }}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all active:scale-95"
+                        title="Delete vehicle from fleet"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
@@ -1855,6 +1899,7 @@ export default function CarWashAdminHubPage() {
             vehicle={selectedVehicleDetail?.vehicle}
             bookingHistory={selectedVehicleDetail?.history || []}
             onWashDone={handleWashDone}
+            onDeleteVehicle={(veh) => setVehicleToDelete(veh)}
             onNewOfflineSale={() => {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);
@@ -1895,6 +1940,82 @@ export default function CarWashAdminHubPage() {
             onClose={() => setSelectedInvoiceSale(null)}
             sale={selectedInvoiceSale}
           />
+
+          {/* Modal: Delete Registered Vehicle Confirmation */}
+          <AdminModal
+            isOpen={!!vehicleToDelete}
+            onClose={() => !isDeletingVehicle && setVehicleToDelete(null)}
+            title="Remove Registered Vehicle"
+            subtitle="Deregister this vehicle from customer records and active fleet"
+          >
+            {vehicleToDelete && (
+              <div className="space-y-4 text-xs">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 font-bold text-base">
+                    ⚠️
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-red-900 text-sm">Are you sure you want to delete this vehicle?</h4>
+                    <p className="text-red-700 leading-relaxed text-xs">
+                      This will remove the vehicle from the registered fleet and customer profile. Past booking transactions and financial reports remain securely archived.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Vehicle Model:</span>
+                    <span className="font-extrabold text-gray-900">{vehicleToDelete.model || 'Vehicle'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">License Plate:</span>
+                    <span className="font-black text-amber-600 px-2 py-0.5 bg-amber-50 rounded border border-amber-200 tracking-wider">
+                      {vehicleToDelete.plate}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Registered Owner:</span>
+                    <span className="font-bold text-gray-800">{vehicleToDelete.ownerName || '—'}</span>
+                  </div>
+                  {vehicleToDelete.ownerPhone && (
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500 font-medium">Contact Number:</span>
+                      <span className="text-gray-700 font-semibold">{vehicleToDelete.ownerPhone}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={() => setVehicleToDelete(null)}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 font-bold transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={handleConfirmDeleteVehicle}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {isDeletingVehicle ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Confirm Delete Vehicle
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </AdminModal>
         </div>
       )}
 

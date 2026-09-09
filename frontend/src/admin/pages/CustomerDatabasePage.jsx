@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download, Users, Phone, Mail, Car, Award, History, Sparkles, Plus,
   ShieldAlert, ShieldCheck, AlertTriangle, Lock, Clock, Calendar, CheckCircle2,
-  RefreshCw, XCircle, ChevronRight, UserCheck, AlertOctagon
+  RefreshCw, XCircle, ChevronRight, UserCheck, AlertOctagon, Trash2
 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
@@ -16,10 +16,20 @@ export default function CustomerDatabasePage() {
     updateCustomerMembership,
     updateCustomerUsageRules,
     addCustomerVehicle,
+    deleteCustomerVehicle,
     showToast
   } = useAdmin();
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const updated = customers.find(c => (c._id && c._id === selectedCustomer._id) || (c.id && c.id === selectedCustomer.id));
+      if (updated) {
+        setSelectedCustomer(prev => ({ ...prev, ...updated }));
+      }
+    }
+  }, [customers]);
   const [activeTab, setActiveTab] = useState('overview');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [suspensionReasonInput, setSuspensionReasonInput] = useState('');
@@ -221,6 +231,26 @@ export default function CustomerDatabasePage() {
     }));
     setNewVehiclePlate('');
     setNewVehicleModel('');
+  };
+
+  const handleDeleteCustomerVehicle = async (vehString) => {
+    if (!selectedCustomer) return;
+    const plate = vehString.split('(')[0].trim();
+    const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (window.confirm(`Are you sure you want to remove vehicle ${plate} from ${selectedCustomer.fullName || selectedCustomer.name}'s profile and the fleet?`)) {
+      await deleteCustomerVehicle(selectedCustomer._id || selectedCustomer.id, cleanPlate);
+      setSelectedCustomer(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          vehicles: (prev.vehicles || []).filter(v => !v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanPlate)),
+          rawVehicles: (prev.rawVehicles || []).filter(v => {
+            const p = typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '');
+            return p.toUpperCase().replace(/[^A-Z0-9]/g, '') !== cleanPlate;
+          })
+        };
+      });
+    }
   };
 
   // Metrics
@@ -517,9 +547,19 @@ export default function CustomerDatabasePage() {
                           <Car className="w-4 h-4 text-amber-500" />
                           <span>{v}</span>
                         </div>
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                          Plate Verified
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                            Plate Verified
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerVehicle(v)}
+                            className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer"
+                            title="Delete vehicle from profile and fleet"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

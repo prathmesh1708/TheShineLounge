@@ -87,7 +87,8 @@ export default function CarDetailingAdminHubPage() {
     addInventoryItem,
     showToast,
     addOfflineSale,
-    addStaff
+    addStaff,
+    deleteCustomerVehicle
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -159,6 +160,15 @@ export default function CarDetailingAdminHubPage() {
 
   const normalizePlate = (plate) => (plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+  const getDeregisteredPlates = () => {
+    try {
+      return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+    } catch (e) {
+      return [];
+    }
+  };
+  const deregisteredPlates = getDeregisteredPlates();
+
   const findCustomerProfile = (rawPlate, rawEmail, rawPhone) => {
     const cleanPlate = normalizePlate(rawPlate);
     const normEmail = (rawEmail || '').toLowerCase().trim();
@@ -176,13 +186,13 @@ export default function CarDetailingAdminHubPage() {
   };
 
   const serviceBookings = (bookings || []).filter(b => {
-    if (!b) return false;
+    if (!b || b.vehicleDeregistered) return false;
     const isDetailing = b.serviceKey === 'car-detailing' || (b.serviceName && b.serviceName.toLowerCase().includes('detail'));
     if (!isDetailing) return false;
     const id = (b.id || b.bookingId || '').toString().toUpperCase();
     if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(id)) return false;
     const cleanPlate = normalizePlate(b.vehicleNo || b.vehiclePlate || b.vehicle);
-    if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(cleanPlate)) return false;
+    if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(cleanPlate) || deregisteredPlates.includes(cleanPlate)) return false;
     return true;
   });
 
@@ -196,7 +206,7 @@ export default function CarDetailingAdminHubPage() {
     .forEach((b) => {
       const rawPlate = (b.vehicleNo || b.vehiclePlate || '').trim();
       const cleanPlate = normalizePlate(rawPlate);
-      if (!cleanPlate) return;
+      if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
       if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(cleanPlate)) return;
 
       const email = (b.customerEmail || b.email || '').toLowerCase().trim();
@@ -223,6 +233,7 @@ export default function CarDetailingAdminHubPage() {
         registeredVehiclesMap[key] = {
           plate: rawPlate || cleanPlate,
           model: model,
+          customerId: matchedCust?._id || matchedCust?.id || null,
           ownerName: name,
           ownerEmail: custEmail,
           ownerPhone: custPhone,
@@ -378,8 +389,27 @@ export default function CarDetailingAdminHubPage() {
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [vehicleToDelete, setVehicleToDelete] = useState(null);
+  const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
+
+  const handleConfirmDeleteVehicle = async () => {
+    if (!vehicleToDelete) return;
+    setIsDeletingVehicle(true);
+    try {
+      const cust = findCustomerProfile(vehicleToDelete.plate, vehicleToDelete.ownerEmail, vehicleToDelete.ownerPhone);
+      const custId = vehicleToDelete.customerId || cust?._id || cust?.id || 'any';
+      await deleteCustomerVehicle(custId, vehicleToDelete.plate);
+      setSelectedVehicleDetail(null);
+      setVehicleToDelete(null);
+    } catch (err) {
+      console.error('Error deleting detailing vehicle:', err);
+      showToast('Could not delete vehicle. Please try again.', 'error');
+    } finally {
+      setIsDeletingVehicle(false);
+    }
+  };
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -1178,9 +1208,22 @@ export default function CarDetailingAdminHubPage() {
                           <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                        {v.totalBookings} {v.totalBookings === 1 ? 'Booking' : 'Bookings'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                          {v.totalBookings} {v.totalBookings === 1 ? 'Booking' : 'Bookings'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVehicleToDelete(v);
+                          }}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all active:scale-95"
+                          title="Delete vehicle from registered fleet"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="pt-3 border-t border-gray-100 space-y-1.5 text-xs text-gray-600">
@@ -1224,6 +1267,7 @@ export default function CarDetailingAdminHubPage() {
             onClose={() => setSelectedVehicleDetail(null)}
             vehicle={selectedVehicleDetail?.vehicle}
             bookingHistory={selectedVehicleDetail?.history || []}
+            onDeleteVehicle={(veh) => setVehicleToDelete(veh)}
             onNewOfflineSale={() => {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);
@@ -1264,6 +1308,82 @@ export default function CarDetailingAdminHubPage() {
             onClose={() => setSelectedInvoiceSale(null)}
             sale={selectedInvoiceSale}
           />
+
+          {/* Modal: Delete Registered Vehicle Confirmation */}
+          <AdminModal
+            isOpen={!!vehicleToDelete}
+            onClose={() => !isDeletingVehicle && setVehicleToDelete(null)}
+            title="Remove Registered Vehicle"
+            subtitle="Deregister this vehicle from customer records and active fleet"
+          >
+            {vehicleToDelete && (
+              <div className="space-y-4 text-xs">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 font-bold text-base">
+                    ⚠️
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-red-900 text-sm">Are you sure you want to delete this vehicle?</h4>
+                    <p className="text-red-700 leading-relaxed text-xs">
+                      This will remove the vehicle from the registered fleet and customer profile. Past booking transactions and financial reports remain securely archived.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Vehicle Model:</span>
+                    <span className="font-extrabold text-gray-900">{vehicleToDelete.model || 'Vehicle'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">License Plate:</span>
+                    <span className="font-black text-amber-600 px-2 py-0.5 bg-amber-50 rounded border border-amber-200 tracking-wider">
+                      {vehicleToDelete.plate}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Registered Owner:</span>
+                    <span className="font-bold text-gray-800">{vehicleToDelete.ownerName || '—'}</span>
+                  </div>
+                  {vehicleToDelete.ownerPhone && (
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500 font-medium">Contact Number:</span>
+                      <span className="text-gray-700 font-semibold">{vehicleToDelete.ownerPhone}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={() => setVehicleToDelete(null)}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 font-bold transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={handleConfirmDeleteVehicle}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {isDeletingVehicle ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Confirm Delete Vehicle
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </AdminModal>
         </div>
       )}
 

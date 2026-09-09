@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, User, Car, CreditCard, Calendar, Clock, ShoppingBag, Phone, Mail, FileText, Plus, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, User, Car, CreditCard, Calendar, Clock, ShoppingBag, Phone, Mail, FileText, Plus, Sparkles, CheckCircle2, Trash2 } from 'lucide-react';
 
 export default function RegisteredVehicleDetailModal({
   isOpen,
@@ -9,7 +9,8 @@ export default function RegisteredVehicleDetailModal({
   bookingHistory = [],
   onNewOfflineSale,
   onDownloadInvoice,
-  onWashDone
+  onWashDone,
+  onDeleteVehicle
 }) {
   if (!isOpen || !vehicle) return null;
 
@@ -62,6 +63,16 @@ export default function RegisteredVehicleDetailModal({
                 style={{ backgroundColor: '#e07b2a' }}
               >
                 <Plus className="w-3 h-3" /> New Offline Sale
+              </button>
+            )}
+            {onDeleteVehicle && (
+              <button
+                type="button"
+                onClick={() => onDeleteVehicle(v)}
+                className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 flex items-center gap-1 transition-all shadow-2xs"
+                title="Delete vehicle from registered fleet"
+              >
+                <Trash2 className="w-3 h-3 text-red-500" /> Delete
               </button>
             )}
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors">
@@ -300,6 +311,29 @@ export default function RegisteredVehicleDetailModal({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div className="px-6 py-3.5 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+          <span className="text-xs text-gray-500 font-medium">Registered Fleet Management</span>
+          <div className="flex items-center gap-2">
+            {onDeleteVehicle && (
+              <button
+                type="button"
+                onClick={() => onDeleteVehicle(v)}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 flex items-center gap-1.5 transition-all shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500" /> Delete Vehicle
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-xl text-xs font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-100 transition-all"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>,

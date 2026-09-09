@@ -182,6 +182,10 @@ const bookingSchema = new mongoose.Schema({
   membershipExpiry: {
     type: String,
     default: ''
+  },
+  vehicleDeregistered: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

@@ -1854,6 +1854,83 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const deleteCustomerVehicle = async (customerId, plateNumber) => {
+    const rawPlate = String(plateNumber || '').trim();
+    if (!rawPlate) return;
+    const cleanPlate = rawPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    // 1. Persist immediately to localStorage deregistered plates list
+    try {
+      const existingDereg = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+      if (!existingDereg.includes(cleanPlate)) {
+        existingDereg.push(cleanPlate);
+        localStorage.setItem('tsl_deregistered_plates', JSON.stringify(existingDereg));
+      }
+    } catch (e) {}
+
+    // 2. Call backend API
+    try {
+      const target = customers.find(c => c._id === customerId || c.id === customerId);
+      const targetId = target ? (target._id || target.id) : (customerId || 'any');
+      await apiClient.delete(`/users/vehicles/deregister/${cleanPlate}`, {
+        data: { customerId: targetId, plateNumber: cleanPlate }
+      });
+      showToast(`Vehicle ${rawPlate} removed from fleet and records`);
+    } catch (err) {
+      console.warn('Backend deregister warning:', err.message);
+      showToast(`Vehicle ${rawPlate} removed from fleet`);
+    }
+
+    // 3. Immediately update in-memory state
+    setCustomers(prev => prev.map(c => {
+      const filteredVehicles = (c.vehicles || []).filter(v => {
+        const vClean = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return !vClean.includes(cleanPlate);
+      });
+      const filteredRaw = (c.rawVehicles || []).filter(v => {
+        const p = typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '');
+        return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '') !== cleanPlate;
+      });
+      return {
+        ...c,
+        vehicles: filteredVehicles,
+        rawVehicles: filteredRaw
+      };
+    }));
+
+    setBookings(prev => prev.map(b => {
+      const bPlate = String(b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (bPlate === cleanPlate) {
+        return { ...b, vehicleDeregistered: true };
+      }
+      return b;
+    }));
+
+    setMemberships(prev => prev.map(m => {
+      const mPlate = String(m.vehicleNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (mPlate === cleanPlate) {
+        return { ...m, vehicleNo: '' };
+      }
+      return m;
+    }));
+
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        const updatedOffline = offline.map(s => {
+          const sPlate = String(s.vehicleNo || s.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (sPlate === cleanPlate) {
+            return { ...s, vehicleDeregistered: true };
+          }
+          return s;
+        });
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(updatedOffline));
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent('tsl_vehicle_updated', { detail: { plate: cleanPlate } }));
+  };
+
   return (
     <AdminContext.Provider value={{
       stats,
@@ -1904,6 +1981,7 @@ export const AdminProvider = ({ children }) => {
       updateCustomerMembership,
       updateCustomerUsageRules,
       addCustomerVehicle,
+      deleteCustomerVehicle,
       addInventoryItem,
       updateStock,
       addCoupon,
