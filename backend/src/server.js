@@ -1,3 +1,4 @@
+require('./common/config/env');
 const express = require('express');
 const cors = require('cors');
 const { PORT } = require('./common/config/env');
