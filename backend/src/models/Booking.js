@@ -55,6 +55,10 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  vehicleModel: {
+    type: String,
+    default: ''
+  },
   location: {
     type: String,
     default: ''
@@ -180,6 +184,10 @@ const bookingSchema = new mongoose.Schema({
     default: ''
   },
   membershipExpiry: {
+    type: String,
+    default: ''
+  },
+  saleDate: {
     type: String,
     default: ''
   },

@@ -133,6 +133,52 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
 }
 
+/* Official Tax Invoice Receipt - Strict Light Theme Guarantee (Device/Laptop Dark Mode Immune) */
+.receipt-page-container,
+.receipt-page-container *,
+.receipt-paper-canvas,
+.receipt-paper-canvas *,
+.receipt-print-wrapper,
+.receipt-print-wrapper * {
+  color-scheme: light !important;
+}
+
+[data-theme="dark"] .receipt-page-container,
+[data-theme="dark"] .receipt-paper-canvas,
+[data-theme="dark"] .receipt-print-wrapper {
+  color-scheme: light !important;
+}
+
+[data-theme="dark"] .receipt-page-container .bg-white,
+[data-theme="dark"] .receipt-paper-canvas .bg-white,
+[data-theme="dark"] .receipt-print-wrapper .bg-white,
+[data-theme="dark"] .receipt-paper-canvas,
+[data-theme="dark"] .receipt-print-wrapper {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="dark"] .receipt-page-container .text-gray-900,
+[data-theme="dark"] .receipt-paper-canvas .text-gray-900,
+[data-theme="dark"] .receipt-print-wrapper .text-gray-900,
+[data-theme="dark"] .receipt-paper-canvas span,
+[data-theme="dark"] .receipt-paper-canvas p,
+[data-theme="dark"] .receipt-paper-canvas div {
+  color: inherit !important;
+}
+
+[data-theme="dark"] .receipt-page-container .text-gray-500,
+[data-theme="dark"] .receipt-paper-canvas .text-gray-500,
+[data-theme="dark"] .receipt-print-wrapper .text-gray-500 {
+  color: #64748b !important;
+}
+
+[data-theme="dark"] .receipt-page-container .border-gray-200,
+[data-theme="dark"] .receipt-paper-canvas .border-gray-200,
+[data-theme="dark"] .receipt-print-wrapper .border-gray-200 {
+  border-color: #e2e8f0 !important;
+}
+
 [data-theme="dark"] .service-card:hover,
 [data-theme="dark"] .detailing-card:hover,
 [data-theme="dark"] .grooming-card:hover,

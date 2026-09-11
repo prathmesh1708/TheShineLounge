@@ -24,11 +24,26 @@ export default function CustomerReceiptPage() {
   // Enforce pure light theme while on CustomerReceiptPage to guarantee crisp white paper and prevent dark-mode inheritance
   useEffect(() => {
     const prevTheme = document.documentElement.getAttribute('data-theme');
+    const prevBg = document.body.style.backgroundColor;
+    const prevColor = document.body.style.color;
+
     document.documentElement.setAttribute('data-theme', 'light');
+    document.documentElement.style.colorScheme = 'light';
+    document.body.setAttribute('data-theme', 'light');
+    document.body.style.backgroundColor = '#f1f5f9';
+    document.body.style.color = '#0f172a';
+
     return () => {
       if (prevTheme) {
         document.documentElement.setAttribute('data-theme', prevTheme);
+        document.body.setAttribute('data-theme', prevTheme);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        document.body.removeAttribute('data-theme');
       }
+      document.documentElement.style.colorScheme = '';
+      document.body.style.backgroundColor = prevBg;
+      document.body.style.color = prevColor;
     };
   }, []);
 
@@ -117,6 +132,7 @@ export default function CustomerReceiptPage() {
       const blobUrl = URL.createObjectURL(pdfBlob);
       setPdfBlobUrl(blobUrl);
       setIsDownloaded(true);
+      setAutoDownloadedNotice(true);
 
       // 2. Trigger direct browser download
       const a = document.createElement('a');
@@ -127,17 +143,12 @@ export default function CustomerReceiptPage() {
       setTimeout(() => {
         if (document.body.contains(a)) document.body.removeChild(a);
       }, 1000);
-
-      // 3. On mobile browsers (iOS Safari / Android Chrome), open the PDF blob directly in the native viewer
-      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile) {
-        window.location.replace(blobUrl);
-      }
     } catch (err) {
       console.error('Direct PDF download error:', err);
       try {
         await downloadReceiptPdf(receiptRef.current, filename);
         setIsDownloaded(true);
+        setAutoDownloadedNotice(true);
       } catch (e) {
         console.error('Fallback download failed:', e);
       }
@@ -173,11 +184,11 @@ export default function CustomerReceiptPage() {
 
   if (loading) {
     return (
-      <div className={`min-h-screen ${autoDownload ? 'bg-slate-900/90 backdrop-blur-md' : 'bg-slate-100'} flex flex-col items-center justify-center p-4`}>
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center space-y-4 max-w-sm w-full text-center border border-slate-100">
           <Loader2 className="w-10 h-10 text-[#1ea952] animate-spin" />
           <h2 className="text-base font-black text-gray-900">
-            {autoDownload ? 'Downloading Official PDF Invoice' : 'Loading Official Receipt'}
+            Loading Official Receipt
           </h2>
           <p className="text-xs text-gray-500">Connecting to The Shine Lounge records...</p>
         </div>
@@ -187,22 +198,20 @@ export default function CustomerReceiptPage() {
 
   if (error || !sale) {
     return (
-      <div className={`min-h-screen ${autoDownload ? 'bg-slate-900/90 backdrop-blur-md' : 'bg-slate-100'} flex flex-col items-center justify-center p-4`}>
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center space-y-4 max-w-md w-full text-center border border-slate-100">
           <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
             <AlertCircle className="w-6 h-6" />
           </div>
           <h2 className="text-lg font-black text-gray-900">Receipt Not Found</h2>
           <p className="text-xs text-gray-500">{error || 'The requested receipt could not be retrieved.'}</p>
-          {!autoDownload && (
-            <Link
-              to="/"
-              className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#1e3e62] hover:bg-[#152e4a] transition-all flex items-center gap-1.5"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Return to Homepage</span>
-            </Link>
-          )}
+          <Link
+            to="/"
+            className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#1e3e62] hover:bg-[#152e4a] transition-all flex items-center gap-1.5 mt-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Homepage</span>
+          </Link>
         </div>
       </div>
     );
@@ -210,85 +219,11 @@ export default function CustomerReceiptPage() {
 
   const receiptNo = sale.id || sale.bookingId || id;
 
-  // DIRECT DOWNLOAD VIEW: When customer opens WhatsApp link (?download=pdf), bypass the website UI entirely!
-  if (autoDownload) {
-    return (
-      <div
-        data-theme="light"
-        className="min-h-screen bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-slate-800"
-      >
-        {/* Hidden render canvas for html2pdf to snapshot with 100% fidelity */}
-        <div
-          style={{
-            position: 'fixed',
-            left: '-9999px',
-            top: 0,
-            width: '794px',
-            visibility: 'visible',
-            backgroundColor: '#ffffff'
-          }}
-        >
-          <ReceiptDocument ref={receiptRef} sale={sale} />
-        </div>
-
-        <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
-            {isDownloading ? (
-              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-            ) : (
-              <FileCheck className="w-8 h-8 text-emerald-600" />
-            )}
-          </div>
-
-          <div>
-            <h2 className="text-lg font-black text-gray-900">
-              {isDownloading ? 'Downloading Tax Invoice...' : 'Invoice Downloaded!'}
-            </h2>
-            <p className="text-xs text-gray-500 font-mono mt-1">Invoice-{receiptNo}.pdf</p>
-            <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200/60 rounded-xl py-1.5 px-2 mt-2 font-medium">
-              Official Tax Invoice & Receipt from The Shine Lounge
-            </p>
-          </div>
-
-          <div className="pt-2 space-y-2">
-            {pdfBlobUrl ? (
-              <a
-                href={pdfBlobUrl}
-                download={`Invoice-${receiptNo}.pdf`}
-                className="w-full py-3 px-4 rounded-xl bg-[#1ea952] hover:bg-[#16a34a] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all active:scale-95"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download / Open PDF Again</span>
-              </a>
-            ) : (
-              <button
-                onClick={() => triggerDirectPdfDownload(sale)}
-                disabled={isDownloading}
-                className="w-full py-3 px-4 rounded-xl bg-[#1ea952] hover:bg-[#16a34a] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-60"
-              >
-                {isDownloading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
-                )}
-                <span>Download PDF</span>
-              </button>
-            )}
-          </div>
-
-          <p className="text-[10px] text-gray-400">
-            If your download did not trigger automatically, tap the button above.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // STANDARD VIEW: For direct manual preview without ?download=pdf
+  // DIRECT RECEIPT VIEW: Directly display the authentic official tax invoice & receipt
   return (
     <div
       data-theme="light"
-      className="min-h-screen py-4 sm:py-8 px-2 sm:px-4"
+      className="receipt-page-container min-h-screen py-4 sm:py-8 px-2 sm:px-4"
       style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}
     >
       {/* Floating Action Header Bar */}

@@ -141,6 +141,9 @@ const createBooking = async (req, res) => {
       isOfflineSale: req.body.isOfflineSale !== undefined ? req.body.isOfflineSale : (finalBookingId && finalBookingId.startsWith('OFS-')),
       saleType: req.body.saleType || 'service',
       paymentMode: req.body.paymentMode || 'Cash',
+      vehicleModel: req.body.vehicleModel || vehicleType || '',
+      saleDate: req.body.saleDate || '',
+      notes: req.body.notes || '',
       membershipName: req.body.membershipName || '',
       membershipValidity: req.body.membershipValidity || '',
       membershipExpiry: req.body.membershipExpiry || ''
@@ -485,8 +488,11 @@ const getPublicReceipt = async (req, res) => {
         paymentMode: booking.paymentMode,
         isOfflineSale: booking.isOfflineSale,
         saleType: booking.saleType,
+        membershipName: booking.membershipName || '',
         membershipExpiry: booking.membershipExpiry,
         membershipValidity: booking.membershipValidity,
+        saleDate: booking.saleDate || booking.date,
+        notes: booking.notes || '',
         hasPdf: !!booking.receiptPdfBase64
       }
     });

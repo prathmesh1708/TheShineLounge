@@ -305,7 +305,7 @@ export const AdminProvider = ({ children }) => {
     });
     readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
 
-    // Offline sales and admin memberships
+    // Offline sales from localStorage (if not yet in backend bookings)
     try {
       const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
       if (Array.isArray(offline)) {
@@ -313,12 +313,8 @@ export const AdminProvider = ({ children }) => {
       }
     } catch (e) {}
 
-    try {
-      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
-      if (Array.isArray(adminMems)) {
-        adminMems.forEach(addLocalPass);
-      }
-    } catch (e) {}
+    // Note: Do NOT re-ingest tsl_admin_memberships here because it is a cached output of this exact function,
+    // which caused single memberships to re-add and duplicate into artificial stacked passes.
 
     // Plan durations and wash allowances configured by the admin across all services
     const catalogMap = new Map();
@@ -548,10 +544,37 @@ export const AdminProvider = ({ children }) => {
           const combinedOfflineMap = new Map();
           // Include backend offline sales
           backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
-          // Include locally cached offline sales if not already from backend
+          // Include locally cached offline sales if not already from backend, and auto-sync them to MongoDB
           cachedOffline.forEach(s => {
             const key = s.id || s.bookingId;
-            if (!combinedOfflineMap.has(key)) combinedOfflineMap.set(key, s);
+            if (!combinedOfflineMap.has(key)) {
+              combinedOfflineMap.set(key, s);
+              // Auto-sync missing offline sale to MongoDB
+              apiClient.post('/bookings', {
+                bookingId: s.bookingId || s.id,
+                serviceKey: s.serviceKey || 'car-wash',
+                serviceName: s.serviceName || (s.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+                packageName: s.packageName || s.membershipName || 'Standard Service',
+                price: Number(s.price || s.total || s.amount || 0),
+                date: s.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                saleDate: s.saleDate || s.date,
+                timeSlot: s.timeSlot || '09:00 AM - 09:30 AM',
+                customerName: s.customerName || 'Valued Customer',
+                customerEmail: s.customerEmail || '',
+                phone: s.phone || '',
+                vehicleNo: s.vehicleNo || '',
+                vehicleType: s.vehicleModel || s.vehicleType || '',
+                vehicleModel: s.vehicleModel || s.vehicleType || '',
+                status: 'Completed',
+                isOfflineSale: true,
+                saleType: s.saleType || (s.membershipName ? 'membership' : 'service'),
+                membershipName: s.membershipName || '',
+                membershipValidity: s.membershipValidity || '',
+                membershipExpiry: s.membershipExpiry || '',
+                paymentMode: s.paymentMode || 'Cash',
+                notes: s.notes || ''
+              }).catch(() => {});
+            }
           });
           const allOffline = Array.from(combinedOfflineMap.values());
           localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
@@ -1624,16 +1647,22 @@ export const AdminProvider = ({ children }) => {
       notes: formData.notes || ''
     };
 
-    // Try saving to backend
+    // Persist invoice directly to MongoDB
+    let savedRecord = null;
     try {
-      await apiClient.post('/bookings', bookingPayload);
+      const res = await apiClient.post('/bookings', bookingPayload);
+      if (res && res.data && res.data.booking) {
+        savedRecord = {
+          ...res.data.booking,
+          id: res.data.booking.bookingId || res.data.booking._id
+        };
+      }
       fetchBookingsList();
     } catch (err) {
-      console.warn('Offline sale backend save error, using local fallback:', err.message);
+      console.error('Offline sale MongoDB save error:', err.response?.data || err.message);
     }
 
-    // Always update local state and localStorage cache
-    const localRecord = {
+    const finalRecord = savedRecord || {
       id: newId,
       ...bookingPayload,
       createdAt: now.toISOString(),
@@ -1642,11 +1671,13 @@ export const AdminProvider = ({ children }) => {
 
     try {
       const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
+      const filtered = cached.filter(s => s && (s.id !== finalRecord.id && s.bookingId !== finalRecord.bookingId));
+      localStorage.setItem('tsl_offline_sales', JSON.stringify([finalRecord, ...filtered]));
     } catch (e) {}
 
     setBookings(prev => {
-      const next = [localRecord, ...prev];
+      const filtered = prev.filter(b => b && (b.id !== finalRecord.id && b.bookingId !== finalRecord.bookingId));
+      const next = [finalRecord, ...filtered];
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
