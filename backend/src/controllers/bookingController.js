@@ -11,11 +11,21 @@ const { sendNotificationToUser } = require('../common/services/pushNotificationH
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const findBookingByAnyId = async (id) => {
-  if (mongoose.Types.ObjectId.isValid(id)) {
-    const byObjectId = await Booking.findById(id);
+  if (!id) return null;
+  const raw = String(id).trim();
+  if (mongoose.Types.ObjectId.isValid(raw)) {
+    const byObjectId = await Booking.findById(raw);
     if (byObjectId) return byObjectId;
   }
-  return Booking.findOne({ bookingId: id });
+  const cleanId = raw.replace(/^MEM-/, '');
+  return Booking.findOne({
+    $or: [
+      { bookingId: raw },
+      { bookingId: cleanId },
+      { bookingId: `MEM-${cleanId}` },
+      { bookingId: new RegExp(`^${escapeRegex(cleanId)}$`, 'i') }
+    ]
+  });
 };
 
 const isPrivileged = (user) => user && (user.role === 'admin' || user.role === 'staff');
@@ -491,11 +501,48 @@ const getPublicReceipt = async (req, res) => {
 // @access  Public
 const saveReceiptPdf = async (req, res) => {
   try {
-    const booking = await findBookingByAnyId(req.params.id);
+    let booking = await findBookingByAnyId(req.params.id);
+    const { pdfBase64, saleData } = req.body;
+
+    // If the booking does not exist yet (e.g. offline sale recorded before API sync), auto-create it
+    if (!booking && saleData) {
+      const bId = req.params.id || saleData.id || saleData.bookingId;
+      const sKey = saleData.serviceKey || 'car-wash';
+      const sName = saleData.serviceName || (sKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash');
+      const pName = saleData.packageName || saleData.membershipName || (saleData.saleType === 'membership' ? 'Monthly Membership' : 'Standard Service');
+      const cleanPrice = Number(String(saleData.price || saleData.total || saleData.amount || 0).replace(/[^0-9.]/g, '')) || 0;
+
+      booking = await Booking.create({
+        bookingId: bId,
+        serviceKey: sKey,
+        serviceName: sName,
+        packageName: pName,
+        price: cleanPrice,
+        date: saleData.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        timeSlot: saleData.timeSlot || '09:00 AM - 09:30 AM',
+        customerName: saleData.customerName || saleData.customer || 'Valued Customer',
+        customerEmail: String(saleData.customerEmail || saleData.email || '').toLowerCase().trim(),
+        phone: saleData.phone || saleData.mobile || '',
+        vehicleNo: String(saleData.vehicleNo || '').toUpperCase().trim(),
+        vehicleType: saleData.vehicleModel || saleData.vehicleType || '',
+        vehicleModel: saleData.vehicleModel || saleData.vehicleType || '',
+        status: 'Completed',
+        isOfflineSale: true,
+        saleType: saleData.saleType || (saleData.membershipName ? 'membership' : 'service'),
+        membershipName: saleData.membershipName || (saleData.saleType === 'membership' ? pName : ''),
+        membershipExpiry: saleData.membershipExpiry || '',
+        membershipValidity: saleData.membershipValidity || '',
+        paymentMode: saleData.paymentMode || 'Cash',
+        notes: saleData.notes || '',
+        receiptPdfBase64: pdfBase64 || ''
+      });
+
+      return res.json({ success: true, message: 'Receipt created and PDF saved', bookingId: booking.bookingId });
+    }
+
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Receipt not found' });
     }
-    const { pdfBase64 } = req.body;
     if (pdfBase64) {
       booking.receiptPdfBase64 = pdfBase64;
       await booking.save();

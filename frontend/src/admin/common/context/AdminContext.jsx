@@ -1594,25 +1594,30 @@ export const AdminProvider = ({ children }) => {
       membershipValidity = `${days} Days`;
     }
 
+    const cleanPrice = Number(String(formData.price || 0).replace(/[^0-9.]/g, '')) || 0;
+    const pName = formData.saleType === 'membership'
+      ? (formData.membershipName || 'Monthly Membership')
+      : (formData.packageName || 'Standard Service');
+
     const bookingPayload = {
       bookingId: newId,
       serviceKey: formData.serviceKey || 'car-wash',
-      serviceName: formData.serviceName || 'Car Wash',
-      packageName: formData.saleType === 'membership' ? formData.membershipName : formData.packageName,
-      price: Number(formData.price) || 0,
+      serviceName: formData.serviceName || (formData.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+      packageName: pName,
+      price: cleanPrice,
       date: dateStr,
       saleDate: formData.saleDate || now.toISOString().split('T')[0],
       timeSlot: `${timeStart} - ${timeEnd}`,
-      customerName: formData.customerName,
+      customerName: formData.customerName || 'Valued Customer',
       customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
       vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
-      vehicleType: formData.vehicleModel || '',
+      vehicleType: formData.vehicleModel || formData.vehicleType || '',
       phone: formData.phone || '',
       status: 'Completed',
       isOfflineSale: true,
-      saleType: formData.saleType,
+      saleType: formData.saleType || (formData.membershipName ? 'membership' : 'service'),
       vehicleModel: formData.vehicleModel || '',
-      membershipName: formData.saleType === 'membership' ? formData.membershipName : '',
+      membershipName: formData.saleType === 'membership' ? (formData.membershipName || pName) : '',
       membershipValidity,
       membershipExpiry,
       paymentMode: formData.paymentMode || 'Cash',

@@ -148,7 +148,10 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
         reader.onloadend = () => {
           if (reader.result) {
             const base64data = reader.result.split(',')[1];
-            apiClient.post(`/bookings/receipt/${encodeURIComponent(receiptNo)}/pdf`, { pdfBase64: base64data }).catch(() => {});
+            apiClient.post(`/bookings/receipt/${encodeURIComponent(receiptNo)}/pdf`, {
+              pdfBase64: base64data,
+              saleData: sale
+            }).catch(() => {});
           }
         };
         reader.readAsDataURL(pdfBlob);
