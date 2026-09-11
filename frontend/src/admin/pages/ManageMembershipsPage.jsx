@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { CreditCard, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, User, Car, Clock, Sparkles } from 'lucide-react';
+import { CreditCard, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, User, Car, Clock, Sparkles, Trash2 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
 
 export default function ManageMembershipsPage() {
-  const { memberships, updateMembershipStatus, renewMembership, logMembershipWash } = useAdmin();
+  const { memberships, updateMembershipStatus, renewMembership, logMembershipWash, deleteMembership } = useAdmin();
   const [selectedMember, setSelectedMember] = useState(null);
 
   const handleLogWash = async (member) => {
@@ -19,6 +19,22 @@ export default function ManageMembershipsPage() {
       membershipName: member.planName,
       serviceKey: member.serviceKey || 'car-wash'
     });
+  };
+
+  const handleDeleteMembership = async (member) => {
+    if (!member) return;
+    const id = member.id || '';
+    const name = member.customerName || 'customer';
+    const plate = member.vehicleNo ? ` [${member.vehicleNo}]` : '';
+    if (!window.confirm(`Are you sure you want to delete membership ${id} (${name}${plate})?`)) {
+      return;
+    }
+    if (deleteMembership) {
+      await deleteMembership(member);
+    }
+    if (selectedMember && selectedMember.id === member.id) {
+      setSelectedMember(null);
+    }
   };
 
   const columns = [
@@ -126,10 +142,17 @@ export default function ManageMembershipsPage() {
           </button>
           <button
             onClick={() => setSelectedMember(row)}
-            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs"
+            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs hover:opacity-90 active:scale-95 transition-all"
             style={{ backgroundColor: '#e07b2a' }}
           >
             Manage
+          </button>
+          <button
+            onClick={() => handleDeleteMembership(row)}
+            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors active:scale-95"
+            title="Delete this membership"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
           {(row.status === 'Expired' || row.status === 'Expiring Soon') && (
             <button
@@ -296,25 +319,34 @@ export default function ManageMembershipsPage() {
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-200" /> Log Completed Wash (Mark Wash Done)
               </button>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => {
                     renewMembership(selectedMember.id);
                     setSelectedMember(null);
                   }}
-                  className="py-2 px-3 text-xs font-bold text-white rounded-xl shadow-xs"
+                  className="py-2 px-2 text-xs font-bold text-white rounded-xl shadow-xs text-center active:scale-95 transition-all"
                   style={{ backgroundColor: '#e07b2a' }}
                 >
-                  Renew (Starts After Current Expiry)
+                  Renew Pass
                 </button>
                 <button
                   onClick={() => {
                     updateMembershipStatus(selectedMember.id, 'Expired');
                     setSelectedMember(null);
                   }}
-                  className="py-2 px-3 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100"
+                  className="py-2 px-2 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 text-center active:scale-95 transition-all"
                 >
-                  Suspend / Cancel Pass
+                  Suspend Pass
+                </button>
+                <button
+                  onClick={() => {
+                    handleDeleteMembership(selectedMember);
+                  }}
+                  className="py-2 px-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs flex items-center justify-center gap-1 text-center active:scale-95 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Pass</span>
                 </button>
               </div>
             </div>

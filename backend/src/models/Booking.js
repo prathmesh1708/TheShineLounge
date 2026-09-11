@@ -186,6 +186,10 @@ const bookingSchema = new mongoose.Schema({
   vehicleDeregistered: {
     type: Boolean,
     default: false
+  },
+  receiptPdfBase64: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true

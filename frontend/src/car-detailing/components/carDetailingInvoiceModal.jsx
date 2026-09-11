@@ -31,9 +31,15 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
     const service = booking.package || booking.serviceName || 'Car Detailing';
     const date = booking.date || 'Today';
     const time = booking.time || booking.timeSlot || '';
-    const amountStr = `₹${totalPrice.toLocaleString('en-IN')}`;
+    const isLocalhost = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.')
+    );
+    const origin = isLocalhost ? 'https://app.theshinelounge.in' : window.location.origin;
+    const receiptUrl = `${origin}/receipt/${encodeURIComponent(invId)}?download=pdf`;
 
-    const message = `✨ *THE SHINE LOUNGE - DETAILING TAX INVOICE* ✨\n━━━━━━━━━━━━━━━━━━━━\n📄 *Invoice / Ref:* #${invId}\n📅 *Date:* ${date} ${time ? `(${time})` : ''}\n👤 *Customer:* ${customer}\n🚗 *Vehicle:* ${plate} (${model})\n✨ *Detailing Treatment:* ${service}\n💳 *Payment Status:* ${booking.paymentStatus || 'Paid'}\n💰 *Total Price (incl. GST):* ${amountStr}\n━━━━━━━━━━━━━━━━━━━━\n📍 *Location:* Plot 42, Senapati Bapat Marg, Mumbai 400013\n📞 *Concierge:* +91 98200 99999\n🌐 *Website:* https://theshinelounge.com\n\n🙏 _Thank you for trusting The Shine Lounge with your vehicle's gloss and protection!_`;
+    const message = `✨ *THE SHINE LOUNGE - DETAILING TAX INVOICE* ✨\n\nHello *${customer}*,\nThank you for choosing *The Shine Lounge*! Here is your official detailing tax invoice.\n\n📄 *Invoice No:* #${invId}\n📅 *Date:* ${date} ${time ? `(${time})` : ''}\n🚗 *Vehicle:* ${plate} (${model})\n✨ *Detailing Treatment:* ${service}\n💳 *Payment Status:* ${booking.paymentStatus || 'Paid'}\n💰 *Total Price (incl. GST):* ${amountStr}\n\n📥 *Download Official A4 PDF Invoice:*\n👉 ${receiptUrl}\n\n📍 *The Shine Lounge - Premium Car Care*\n📞 *Concierge:* +91 98200 99999\n🌐 *Website:* https://theshinelounge.com\n\n_Tap the link above to view or download your official PDF invoice directly._`;
 
     const url = `https://api.whatsapp.com/send?${digits ? `phone=${digits}&` : ''}text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener,noreferrer');

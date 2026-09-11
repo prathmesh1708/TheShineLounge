@@ -1,4 +1,4 @@
-import { isMembershipPackage, parseFlexibleDate } from '../../../common/utils/membershipUtils';
+import { isMembershipPackage, parseFlexibleDate, normalizeMembershipId } from '../../../common/utils/membershipUtils';
 import apiClient from '../../../common/utils/apiClient';
 
 /**
@@ -204,7 +204,8 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
       if (Array.isArray(parsed)) {
         parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100')).forEach(m => {
           if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
-            combinedMembershipsMap.set(m.id || m.vehicleNo, m);
+            const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
+            combinedMembershipsMap.set(mKey, m);
           }
         });
       }
@@ -213,32 +214,36 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
   (memberships || []).forEach(m => {
     if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
-      combinedMembershipsMap.set(m.id || m.vehicleNo, m);
+      const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
+      combinedMembershipsMap.set(mKey, m);
     }
   });
 
   // Also include offline sales with saleType === 'membership'
   allOfflineSalesMap.forEach((s) => {
     if (s.saleType === 'membership') {
-      const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
-      combinedMembershipsMap.set(s.id || s.bookingId, {
-        id: s.id || s.bookingId,
-        customerName: s.customerName,
-        phone: s.phone,
-        email: s.customerEmail || '',
-        vehicleNo: s.vehicleNo,
-        vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
-        planName: s.membershipName || s.packageName || s.planName || 'Monthly Membership',
-        serviceKey: s.serviceKey || 'car-wash',
-        startDate: s.date || s.saleDate,
-        expiryDate: s.membershipExpiry || '',
-        washesUsed: 0,
-        maxWashes: catalogLimits['monthly membership'] || 30,
-        status: 'Active',
-        amount: priceVal,
-        price: priceVal,
-        total: priceVal
-      });
+      const sKey = normalizeMembershipId(s.id || s.bookingId) || normalizePlate(s.vehicleNo);
+      if (!combinedMembershipsMap.has(sKey)) {
+        const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
+        combinedMembershipsMap.set(sKey, {
+          id: s.id || s.bookingId,
+          customerName: s.customerName,
+          phone: s.phone,
+          email: s.customerEmail || '',
+          vehicleNo: s.vehicleNo,
+          vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
+          planName: s.membershipName || s.packageName || s.planName || 'Monthly Membership',
+          serviceKey: s.serviceKey || 'car-wash',
+          startDate: s.date || s.saleDate,
+          expiryDate: s.membershipExpiry || '',
+          washesUsed: 0,
+          maxWashes: catalogLimits['monthly membership'] || 30,
+          status: 'Active',
+          amount: priceVal,
+          price: priceVal,
+          total: priceVal
+        });
+      }
     }
   });
 
@@ -609,7 +614,12 @@ export async function updateCarNumberAcrossSystem({
     const offlineSales = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
     let modifiedSales = false;
     const updatedSales = offlineSales.map(s => {
-      const matchesPass = passId && (s.id === passId || s.bookingId === passId);
+      const matchesPass = passId && (
+        s.id === passId ||
+        s.bookingId === passId ||
+        normalizeMembershipId(s.id) === normalizeMembershipId(passId) ||
+        normalizeMembershipId(s.bookingId) === normalizeMembershipId(passId)
+      );
       const matchesPlate = oldPlate && normalizePlate(s.vehicleNo) === normalizePlate(oldPlate);
       const matchesEmail = customerEmail && s.customerEmail && s.customerEmail.toLowerCase().trim() === customerEmail.toLowerCase().trim();
       if (matchesPass || matchesPlate || matchesEmail) {
@@ -634,7 +644,12 @@ export async function updateCarNumberAcrossSystem({
     const adminMemberships = adminRaw ? (JSON.parse(adminRaw) || []).filter(m => m && !String(m.id || '').startsWith('MEM-100')) : [];
     let modifiedAdmin = false;
     const updatedAdmin = adminMemberships.map(m => {
-      const matchesPass = passId && (m.id === passId || m.bookingId === passId);
+      const matchesPass = passId && (
+        m.id === passId ||
+        m.bookingId === passId ||
+        normalizeMembershipId(m.id) === normalizeMembershipId(passId) ||
+        normalizeMembershipId(m.bookingId) === normalizeMembershipId(passId)
+      );
       const matchesPlate = oldPlate && normalizePlate(m.vehicleNo) === normalizePlate(oldPlate);
       const matchesEmail = customerEmail && m.email && m.email.toLowerCase().trim() === customerEmail.toLowerCase().trim();
       if (matchesPass || matchesPlate || matchesEmail) {

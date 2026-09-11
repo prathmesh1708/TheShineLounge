@@ -86,11 +86,13 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
     <div
       ref={ref}
       id="printable-tsl-receipt"
-      className="receipt-print-wrapper bg-white text-[#0f172a] mx-auto w-full max-w-[794px] overflow-hidden select-none"
+      data-theme="light"
+      className="receipt-print-wrapper receipt-paper-canvas mx-auto w-full max-w-[794px] overflow-hidden select-none"
       style={{
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         boxSizing: 'border-box',
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        color: '#0f172a'
       }}
     >
       {/* 1. Split Top Header Banner (72% Navy #1e3e62, 28% Orange #e07b2a) */}

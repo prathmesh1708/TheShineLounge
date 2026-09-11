@@ -476,12 +476,55 @@ const getPublicReceipt = async (req, res) => {
         isOfflineSale: booking.isOfflineSale,
         saleType: booking.saleType,
         membershipExpiry: booking.membershipExpiry,
-        membershipValidity: booking.membershipValidity
+        membershipValidity: booking.membershipValidity,
+        hasPdf: !!booking.receiptPdfBase64
       }
     });
   } catch (error) {
     console.error('Error fetching public receipt:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch receipt' });
+  }
+};
+
+// @desc    Save pre-generated PDF receipt base64 string
+// @route   POST /api/bookings/receipt/:id/pdf
+// @access  Public
+const saveReceiptPdf = async (req, res) => {
+  try {
+    const booking = await findBookingByAnyId(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+    const { pdfBase64 } = req.body;
+    if (pdfBase64) {
+      booking.receiptPdfBase64 = pdfBase64;
+      await booking.save();
+    }
+    res.json({ success: true, message: 'Receipt PDF saved' });
+  } catch (error) {
+    console.error('Error saving receipt PDF:', error);
+    res.status(500).json({ success: false, message: 'Failed to save receipt PDF' });
+  }
+};
+
+// @desc    Direct PDF file stream download
+// @route   GET /api/bookings/receipt/:id/pdf
+// @access  Public
+const streamReceiptPdf = async (req, res) => {
+  try {
+    const booking = await findBookingByAnyId(req.params.id);
+    if (!booking || !booking.receiptPdfBase64) {
+      return res.status(404).json({ success: false, message: 'Receipt PDF not available directly' });
+    }
+    const buffer = Buffer.from(booking.receiptPdfBase64, 'base64');
+    const receiptNo = booking.bookingId || req.params.id;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${receiptNo}.pdf"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error streaming receipt PDF:', error);
+    res.status(500).json({ success: false, message: 'Failed to stream receipt PDF' });
   }
 };
 
@@ -491,6 +534,8 @@ module.exports = {
   getMyBookings,
   updateBooking,
   deleteBooking,
-  getPublicReceipt
+  getPublicReceipt,
+  saveReceiptPdf,
+  streamReceiptPdf
 };
 

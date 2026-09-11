@@ -17,7 +17,8 @@ import {
   addPassDuration,
   startOfDay,
   formatLongDate,
-  toISODateString
+  toISODateString,
+  normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
@@ -83,7 +84,18 @@ export const AdminProvider = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+          const seen = new Set();
+          const clean = [];
+          for (const m of parsed) {
+            if (!m || String(m.id || '').startsWith('MEM-100')) continue;
+            const norm = normalizeMembershipId(m.id || m.bookingId || m.rawBookingId);
+            if (norm) {
+              if (seen.has(norm)) continue;
+              seen.add(norm);
+            }
+            clean.push(m);
+          }
+          return clean;
         }
       }
     } catch (e) {}
@@ -92,7 +104,17 @@ export const AdminProvider = ({ children }) => {
 
   useEffect(() => {
     try {
-      const clean = memberships.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+      const seen = new Set();
+      const clean = [];
+      for (const m of memberships) {
+        if (!m || String(m.id || '').startsWith('MEM-100')) continue;
+        const norm = normalizeMembershipId(m.id || m.bookingId || m.rawBookingId);
+        if (norm) {
+          if (seen.has(norm)) continue;
+          seen.add(norm);
+        }
+        clean.push(m);
+      }
       localStorage.setItem('tsl_admin_memberships', JSON.stringify(clean));
       window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: clean }));
     } catch (e) {
@@ -240,13 +262,21 @@ export const AdminProvider = ({ children }) => {
     const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
 
     // Purchases made offline (or before the API call landed) live in localStorage.
-    const knownIds = new Set(membershipBookings.map(b => b.bookingId || b.id).filter(Boolean));
+    const knownIds = new Set();
+    membershipBookings.forEach(b => {
+      [b.bookingId, b.id, b._id].filter(Boolean).forEach(id => {
+        const norm = normalizeMembershipId(id);
+        if (norm) knownIds.add(norm);
+      });
+    });
+
     const localPasses = [];
     const addLocalPass = (pass) => {
       if (!pass || (!pass.packageName && !pass.planName && !pass.plan)) return;
-      const passId = pass.bookingId || pass.id || pass.passId;
-      if (passId && knownIds.has(passId)) return;
-      if (passId) knownIds.add(passId);
+      const passId = pass.bookingId || pass.id || pass.passId || pass._id;
+      const normPassId = normalizeMembershipId(passId);
+      if (normPassId && knownIds.has(normPassId)) return;
+      if (normPassId) knownIds.add(normPassId);
       const pkg = pass.packageName || pass.planName || pass.plan;
       const passPrice = Number(pass.amount !== undefined && pass.amount !== null ? pass.amount : (pass.price !== undefined && pass.price !== null ? pass.price : (pass.total || 0)));
       localPasses.push({
@@ -383,6 +413,8 @@ export const AdminProvider = ({ children }) => {
         id: rawId
           ? (rawId.startsWith('MEM-') ? rawId : `MEM-${rawId.replace('B-2026-', '')}`)
           : (record._id ? `MEM-${String(record._id).slice(-6)}` : `MEM-${idx + 1}`),
+        bookingId: record.bookingId || record.id || record._id || rawId,
+        rawBookingId: rawId,
         customerName: record.customerName || 'Valued Member',
         phone: record.phone || record.mobile || '',
         email: record.customerEmail || '',
@@ -407,9 +439,21 @@ export const AdminProvider = ({ children }) => {
       };
     });
 
+    // Deduplicate derived passes to ensure no duplicate twin rows with matching ID ever display
+    const seenDerived = new Set();
+    const uniqueDerived = [];
+    for (const d of derived) {
+      const norm = normalizeMembershipId(d.id || d.bookingId || d.rawBookingId);
+      if (norm) {
+        if (seenDerived.has(norm)) continue;
+        seenDerived.add(norm);
+      }
+      uniqueDerived.push(d);
+    }
+
     // Newest purchases first (no mock data appended)
-    derived.reverse();
-    return derived;
+    uniqueDerived.reverse();
+    return uniqueDerived;
   };
 
   const fetchBookingsList = async () => {
@@ -1348,6 +1392,96 @@ export const AdminProvider = ({ children }) => {
     showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
   };
 
+  const deleteMembership = async (membershipIdOrObj) => {
+    const mem = typeof membershipIdOrObj === 'object' ? membershipIdOrObj : { id: membershipIdOrObj };
+    const rawId = String(mem.id || '');
+    const bookingId = String(mem.bookingId || mem.rawBookingId || '');
+    const cleanId = rawId.replace(/^MEM-/, '');
+
+    const candidateIds = Array.from(new Set([rawId, bookingId, cleanId, mem._id].filter(Boolean)));
+
+    // 1. Delete from backend if booking exists
+    for (const idToDel of candidateIds) {
+      try {
+        await apiClient.delete(`/bookings/${idToDel}`);
+      } catch (_) {}
+    }
+
+    // 2. Remove from bookings state and derive memberships
+    setBookings(prev => {
+      const nextBookings = prev.filter(b => {
+        const bId = String(b.bookingId || b.id || b._id || '');
+        return !candidateIds.includes(bId);
+      });
+      return nextBookings;
+    });
+
+    // 3. Remove from offline sales in localStorage
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        const filtered = offline.filter(s => {
+          const sId = String(s.id || s.bookingId || s._id || '');
+          return !candidateIds.includes(sId);
+        });
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
+      }
+    } catch (_) {}
+
+    // 4. Remove from admin memberships in localStorage
+    try {
+      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+      if (Array.isArray(adminMems)) {
+        const filtered = adminMems.filter(m => {
+          const mId = String(m.id || m.bookingId || '');
+          return !candidateIds.includes(mId);
+        });
+        localStorage.setItem('tsl_admin_memberships', JSON.stringify(filtered));
+      }
+    } catch (_) {}
+
+    // 5. Remove from scoped passes in localStorage
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('tsl_membership_passes')) {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || '[]');
+            if (Array.isArray(val)) {
+              const filtered = val.filter(p => !candidateIds.includes(String(p.id || p.bookingId || p.passId || '')));
+              localStorage.setItem(key, JSON.stringify(filtered));
+            }
+          } catch (_) {}
+        }
+        if (key.includes('tsl_active_membership')) {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || 'null');
+            if (val && candidateIds.includes(String(val.id || val.bookingId || val.passId || ''))) {
+              localStorage.removeItem(key);
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+
+    // 6. Update memberships state directly
+    setMemberships(prev => {
+      return prev.filter(m => {
+        const mId = String(m.id || '');
+        const mBId = String(m.bookingId || '');
+        return !candidateIds.includes(mId) && !candidateIds.includes(mBId);
+      });
+    });
+
+    // 7. Dispatch events so all tabs and components re-sync
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: rawId, deleted: true } }));
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { id: rawId, deleted: true } }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (_) {}
+
+    showToast('Membership deleted successfully');
+  };
+
   // 5. Bookings
   const updateBookingStatus = async (id, newStatus) => {
     // 1. Optimistically update local state
@@ -1966,6 +2100,7 @@ export const AdminProvider = ({ children }) => {
       composeNotification,
       updateMembershipStatus,
       renewMembership,
+      deleteMembership,
       updateBookingStatus,
       assignStaffToBooking,
       addBooking,

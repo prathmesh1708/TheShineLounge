@@ -143,6 +143,21 @@ export function getPurchaseTime(booking) {
   return dated ? dated.getTime() : 0;
 }
 
+/**
+ * Normalizes membership and booking IDs for consistent comparison.
+ * e.g. "MEM-OFS-MTWMQHY0-1294" -> "ofs-mtwmqhy0-1294"
+ * e.g. "OFS-MTWMQHY0-1294" -> "ofs-mtwmqhy0-1294"
+ * e.g. "MEM-B-2026-1234" -> "1234"
+ */
+export function normalizeMembershipId(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .trim()
+    .replace(/^MEM-/, '')
+    .replace(/^B-2026-/, '')
+    .toLowerCase();
+}
+
 /** Passes stack only against passes for the same customer, service and vehicle. */
 export function membershipChainKey(booking) {
   const customer = String(booking?.customerEmail || booking?.customerName || '').toLowerCase().trim();
@@ -158,8 +173,35 @@ export function membershipChainKey(booking) {
 export function buildMembershipSchedule(bookings, options = {}) {
   const { now = new Date(), catalog = null } = options;
 
-  const entries = (bookings || [])
+  // Deduplicate before scheduling to prevent duplicate passes from stacking against themselves
+  const seenNormIds = new Set();
+  const seenFingerprints = new Set();
+
+  const uniqueBookings = (bookings || [])
     .filter(b => b && isMembershipPackage(readPackageName(b)))
+    .filter(booking => {
+      const rawId = booking.bookingId || booking.id || booking.passId || booking._id || '';
+      const normId = normalizeMembershipId(rawId);
+      if (normId) {
+        if (seenNormIds.has(normId)) return false;
+        seenNormIds.add(normId);
+      }
+
+      // Deduplicate twin passes with the same customer, vehicle, plan, and purchase date
+      const chainKey = membershipChainKey(booking);
+      const pkg = String(readPackageName(booking) || '').toLowerCase().trim();
+      const dateStr = String(booking.date || booking.purchasedAt || booking.createdAt || '').slice(0, 10);
+      const fingerprint = `${chainKey}|${pkg}|${dateStr}`;
+      if (fingerprint && seenFingerprints.has(fingerprint)) {
+        return false;
+      }
+      if (chainKey && dateStr) {
+        seenFingerprints.add(fingerprint);
+      }
+      return true;
+    });
+
+  const entries = uniqueBookings
     .map((booking, index) => ({ booking, index, purchasedAt: getPurchaseTime(booking) }))
     .sort((a, b) => (a.purchasedAt - b.purchasedAt) || (a.index - b.index));
 

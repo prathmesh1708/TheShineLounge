@@ -50,45 +50,89 @@ export async function getReceiptPdfBlob(element, filename = 'Receipt.pdf') {
 }
 
 /**
- * Tries Web Share API with the PDF file, falling back to download
+ * Direct file share helper using Web Share API with download fallback
  */
-export async function shareOrDownloadReceiptPdf(element, filename = 'Receipt.pdf', shareTitle = 'The Shine Lounge Receipt') {
+export async function sharePdfFile({ blob, fileName = 'Receipt.pdf', title = 'The Shine Lounge Receipt', text = '' }) {
+  const file = new File([blob], fileName, {
+    type: 'application/pdf',
+    lastModified: Date.now()
+  });
+
+  const canShareFiles = typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [file] });
+
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        title,
+        text,
+        files: [file]
+      });
+      return {
+        success: true,
+        status: 'shared',
+        method: 'native-share',
+        file,
+        blob
+      };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return {
+          success: false,
+          status: 'cancelled',
+          method: 'native-share',
+          file,
+          blob
+        };
+      }
+      console.warn('Native share threw error, continuing to download fallback:', err);
+    }
+  }
+
+  // Fallback: trigger direct file download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1500);
+
+  return {
+    success: false,
+    status: 'fallback-downloaded',
+    method: 'download-fallback',
+    file,
+    blob
+  };
+}
+
+/**
+ * Tries Web Share API with the generated PDF file, falling back to download on desktop/unsupported browsers
+ */
+export async function shareOrDownloadReceiptPdf(element, filename = 'Receipt.pdf', shareTitle = 'The Shine Lounge Receipt', shareText = '') {
   try {
     const pdfBlob = await getReceiptPdfBlob(element, filename);
-    const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
-
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-      try {
-        await navigator.share({
-          files: [pdfFile],
-          title: shareTitle,
-          text: `Here is your official receipt from The Shine Lounge.`
-        });
-        return { shared: true, downloaded: false };
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          return { cancelled: true };
-        }
-        console.warn('Navigator share failed, triggering download:', err);
-      }
-    }
-
-    // Fallback or non-supported: trigger direct file download
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 1500);
-
-    return { shared: false, downloaded: true };
+    return await sharePdfFile({
+      blob: pdfBlob,
+      fileName: filename,
+      title: shareTitle,
+      text: shareText
+    });
   } catch (error) {
     console.error('PDF generation error, attempting direct save:', error);
     await downloadReceiptPdf(element, filename);
-    return { shared: false, downloaded: true };
+    return {
+      success: false,
+      status: 'fallback-downloaded',
+      method: 'download-fallback',
+      error
+    };
   }
 }
+

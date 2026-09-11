@@ -4064,5 +4064,45 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* ==========================================================================
+   OFFICIAL RECEIPT DOCUMENT & PRINT CANVAS PROTECTION
+   Strictly isolate receipt documents and customer receipt page from dark theme.
+   A receipt must ALWAYS be rendered on crisp #ffffff paper with official brand colors.
+   ========================================================================== */
+html[data-theme="dark"] .receipt-print-wrapper,
+html[data-theme="dark"] #printable-tsl-receipt,
+html[data-theme="dark"] .receipt-paper-canvas,
+html[data-theme="dark"] .receipt-paper-canvas .bg-white,
+[data-theme="dark"] .receipt-print-wrapper,
+[data-theme="dark"] #printable-tsl-receipt,
+[data-theme="dark"] .receipt-paper-canvas,
+.receipt-print-wrapper,
+#printable-tsl-receipt,
+.receipt-paper-canvas {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  color-scheme: light !important;
+}
 
+html[data-theme="dark"] #printable-tsl-receipt *,
+html[data-theme="dark"] .receipt-print-wrapper *,
+[data-theme="dark"] #printable-tsl-receipt *,
+[data-theme="dark"] .receipt-print-wrapper * {
+  color-scheme: light !important;
+}
 
+html[data-theme="dark"] #printable-tsl-receipt h2,
+html[data-theme="dark"] .receipt-print-wrapper h2,
+[data-theme="dark"] #printable-tsl-receipt h2,
+[data-theme="dark"] .receipt-print-wrapper h2 {
+  color: #1e3e62 !important;
+}
+
+html[data-theme="dark"] #printable-tsl-receipt table,
+html[data-theme="dark"] #printable-tsl-receipt table td,
+[data-theme="dark"] #printable-tsl-receipt table,
+[data-theme="dark"] #printable-tsl-receipt table td {
+  background: transparent !important;
+  background-color: transparent !important;
+}
