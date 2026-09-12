@@ -306,11 +306,20 @@ export default function CarWashAdminHubPage() {
   const fetchLiveStaff = async () => {
     try {
       const res = await apiClient.get('/users/staff?serviceKey=car-wash');
-      if (res.data && res.data.staff) {
+      if (res.data && Array.isArray(res.data.staff)) {
         setDbStaff(res.data.staff);
+        try {
+          localStorage.setItem('tsl_car_wash_staff', JSON.stringify(res.data.staff));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Could not fetch live staff list:', err.message);
+      try {
+        const cached = JSON.parse(localStorage.getItem('tsl_car_wash_staff') || '[]');
+        if (Array.isArray(cached) && cached.length > 0) {
+          setDbStaff(cached);
+        }
+      } catch (e) {}
     }
   };
 
@@ -318,6 +327,12 @@ export default function CarWashAdminHubPage() {
     fetchLiveService();
     fetchLiveStaff();
     fetchMembershipSubscribers();
+
+    const handleStaffUpdated = () => fetchLiveStaff();
+    window.addEventListener('tsl_staff_updated', handleStaffUpdated);
+    return () => {
+      window.removeEventListener('tsl_staff_updated', handleStaffUpdated);
+    };
   }, []);
 
   // Helper to reliably resolve MongoDB target _id
@@ -884,21 +899,32 @@ export default function CarWashAdminHubPage() {
       if (res.data && res.data.success) {
         showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
-        setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
+        setDbStaff(prev => {
+          const updated = [savedStaff, ...prev.filter(s => s.email?.toLowerCase() !== savedStaff.email?.toLowerCase())];
+          try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
         addStaff?.(savedStaff);
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+        setDbStaff(prev => {
+          const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
+          try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
         addStaff?.(newStaffData);
         showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
       }
     } catch (err) {
       console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+      setDbStaff(prev => {
+        const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
+        try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
       addStaff?.(newStaffData);
       showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',

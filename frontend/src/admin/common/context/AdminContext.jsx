@@ -1901,18 +1901,41 @@ export const AdminProvider = ({ children }) => {
 
   // 6. Staff
   const addStaff = (newStaff) => {
-    setStaffList(prev => [
-      ...prev,
-      {
-        // Prefer the real Mongo _id returned by the backend; only fall back to a
-        // synthetic placeholder id if the caller didn't have one (e.g. offline path).
-        id: newStaff._id || newStaff.id || `STF-${(prev.length + 1).toString().padStart(2, '0')}`,
-        ...newStaff,
-        status: 'Active',
-        joinedDate: new Date().toISOString().split('T')[0],
-        avatar: newStaff.avatar || newStaff.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
-      }
-    ]);
+    if (!newStaff) return;
+    const cleanStaff = {
+      id: newStaff._id || newStaff.id || newStaff.email || `STF-${Date.now()}`,
+      _id: newStaff._id || newStaff.id,
+      name: newStaff.fullName || newStaff.name || 'Staff Member',
+      fullName: newStaff.fullName || newStaff.name || 'Staff Member',
+      email: newStaff.email || '',
+      mobile: newStaff.mobile || newStaff.phone || '',
+      department: newStaff.department || 'Car Wash',
+      staffRole: newStaff.staffRole || newStaff.role || 'Specialist',
+      serviceKey: newStaff.serviceKey || 'car-wash',
+      salary: newStaff.salary || '',
+      leaveBalance: newStaff.leaveBalance !== undefined ? newStaff.leaveBalance : 12,
+      photo: newStaff.photo || newStaff.avatar || newStaff.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      avatar: newStaff.avatar || newStaff.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      permissions: Array.isArray(newStaff.permissions) ? newStaff.permissions : ['bookings', 'orders'],
+      status: newStaff.status || (newStaff.isActive !== false ? 'Active' : 'Inactive'),
+      isActive: newStaff.isActive !== false,
+      joinedDate: newStaff.joinedDate || new Date().toISOString().split('T')[0]
+    };
+
+    setStaffList(prev => {
+      const email = cleanStaff.email?.toLowerCase();
+      const filtered = prev.filter(s => {
+        if (cleanStaff._id && s._id === cleanStaff._id) return false;
+        if (email && s.email?.toLowerCase() === email) return false;
+        return true;
+      });
+      return [cleanStaff, ...filtered];
+    });
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: cleanStaff }));
+    } catch (e) {}
+
     showToast('New staff member added!');
   };
 
