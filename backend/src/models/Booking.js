@@ -203,8 +203,8 @@ const bookingSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// A booking is looked up by plate on every vehicle arrival; without this the
-// match is a collection scan on a field that grows with every wash.
+bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ customerEmail: 1, createdAt: -1 });
 bookingSchema.index({ serviceKey: 1, vehicleNoNormalized: 1, createdAt: -1 });
 
 bookingSchema.pre('save', function () {

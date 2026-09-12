@@ -281,7 +281,10 @@ const getBookings = async (req, res) => {
       Object.assign(query, ownedByFilter(email));
     }
 
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const bookings = await Booking.find(query)
+      .select('-receiptPdfBase64')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -315,7 +318,10 @@ const getMyBookings = async (req, res) => {
       query.serviceKey = req.query.serviceKey;
     }
 
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const bookings = await Booking.find(query)
+      .select('-receiptPdfBase64')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
