@@ -127,13 +127,6 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     // Synchronously open a new tab immediately in the user gesture loop
     // so Chrome popup blocker NEVER blocks it on desktop browsers.
     let waWindow = null;
-    const isMobileDevice = typeof navigator !== 'undefined' &&
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (!isMobileDevice) {
-      waWindow = window.open('about:blank', '_blank');
-    }
-
     try {
       // 2. Generate PDF Blob from the exact same ReceiptDocument
       const pdfBlob = await getReceiptPdfBlob(receiptRef.current, filename);
@@ -157,19 +150,22 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
         reader.readAsDataURL(pdfBlob);
       } catch (_) {}
 
-      // 4. Mobile Devices (Android / iPhone):
+      // 4. Native Document Sharing (macOS Safari/Chrome, iOS, Android, Windows):
       // Uses navigator.share with both files: [pdfFile] and text: textToSend.
-      // When shared to WhatsApp, it attaches the PDF document and sets the message caption.
-      if (isMobileDevice && typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      // When shared to WhatsApp, it attaches the actual PDF document file directly into the conversation!
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         try {
+          if (waWindow && !waWindow.closed) {
+            waWindow.close();
+          }
           await navigator.share({
             files: [pdfFile],
-            title: filename,
+            title: `Tax Invoice ${receiptNo}`,
             text: textToSend
           });
           setShowWhatsAppModal(false);
-          setStatusNotice({ type: 'success', message: 'Invoice PDF & message shared successfully!' });
-          setTimeout(() => setStatusNotice(null), 3000);
+          setStatusNotice({ type: 'success', message: 'Invoice PDF document shared successfully!' });
+          setTimeout(() => setStatusNotice(null), 3500);
           return;
         } catch (err) {
           if (err.name === 'AbortError') {
@@ -178,7 +174,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
             setTimeout(() => setStatusNotice(null), 2500);
             return;
           }
-          console.warn('Native share failed, continuing to WhatsApp redirect flow:', err);
+          console.warn('Native file share failed or cancelled, falling back to direct WhatsApp Web flow:', err);
         }
       }
 
