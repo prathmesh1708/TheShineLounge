@@ -1733,17 +1733,17 @@ export const AdminProvider = ({ children }) => {
       return next;
     });
 
-    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+    setCustomers(prev => deriveCustomers(prev, [finalRecord], [finalRecord]));
 
     try {
-      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
-      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: localRecord }));
-      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: finalRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: finalRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: finalRecord }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
     showToast(`✅ Offline sale ${newId} recorded successfully!`);
-    return localRecord;
+    return finalRecord;
   };
 
   const deleteOfflineSale = async (saleId) => {

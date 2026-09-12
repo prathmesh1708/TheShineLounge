@@ -115,7 +115,7 @@ const createBooking = async (req, res) => {
       var targetStaffId = assignedStaff ? assignedStaff._id : null;
     }
 
-    const booking = await Booking.create({
+    const bookingData = {
       bookingId: finalBookingId,
       serviceKey,
       serviceName,
@@ -147,7 +147,13 @@ const createBooking = async (req, res) => {
       membershipName: req.body.membershipName || '',
       membershipValidity: req.body.membershipValidity || '',
       membershipExpiry: req.body.membershipExpiry || ''
-    });
+    };
+
+    const booking = await Booking.findOneAndUpdate(
+      { bookingId: finalBookingId },
+      { $set: bookingData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     if (assignedStaff) {
       await notifyStaffOfBooking(assignedStaff, booking);
