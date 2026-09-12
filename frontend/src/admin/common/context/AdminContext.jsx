@@ -205,6 +205,10 @@ export const AdminProvider = ({ children }) => {
     servicesRef.current = services;
   }, [services]);
 
+  // Request deduplication & stale-time cache refs
+  const inFlightRequestsRef = useRef({});
+  const lastFetchedRef = useRef({});
+
   // Business Settings State
   const [settings, setSettings] = useState({
     businessName: 'The Shine Lounge',
@@ -452,210 +456,242 @@ export const AdminProvider = ({ children }) => {
     return uniqueDerived;
   };
 
-  const fetchBookingsList = async () => {
-    try {
-      let mapped = [];
-      const res = await apiClient.get('/bookings');
-      if (res.data && res.data.bookings) {
-        const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        const now = new Date();
-        const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
+  const fetchBookingsList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.bookings && now - lastFetchedRef.current.bookings < 15000) {
+      return;
+    }
+    if (inFlightRequestsRef.current.bookings) {
+      return inFlightRequestsRef.current.bookings;
+    }
 
-        mapped = res.data.bookings.map(b => {
-          const rawDate = b.date || '';
-          const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
-          const displayDate = isLegacyDate ? liveDateStr : rawDate;
-
-          const rawTime = b.timeSlot || '';
-          const isLegacyTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
-          const displayTime = isLegacyTime ? defaultSlot : rawTime;
-
-          return {
-            _id: b._id,
-            id: b.bookingId,
-            bookingId: b.bookingId,
-            customerName: b.customerName || b.userName || b.name || (b.customerEmail ? b.customerEmail.split('@')[0] : 'Valued Customer'),
-            customerEmail: b.customerEmail || b.email || '',
-            vehicleNo: b.vehicleNo || b.vehiclePlate || '',
-            vehicleType: b.vehicleType || b.vehicleModel || '',
-            location: b.location || 'Main Branch',
-            phone: b.phone || b.mobile || b.customerPhone || '',
-            serviceKey: b.serviceKey,
-            serviceName: b.serviceName || b.service || 'Service',
-            service: b.serviceName || b.service || 'Service',
-            plan: b.packageName || b.plan || 'Standard',
-            packageName: b.packageName || b.plan || 'Standard',
-            // Ordering key for two passes bought on the same day (buy, upgrade).
-            date: displayDate,
-            timeSlot: formatBookingDateTime(displayTime, displayDate),
-            total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
-            price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
-            status: b.status || 'Pending',
-            staffAssigned: b.assignedStaffName || 'Not Assigned',
-            assignedStaffId: b.assignedStaffId,
-            assignedStaffName: b.assignedStaffName || '',
-            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-            notes: b.notes || '',
-            photos: b.photos || [],
-            paymentMode: b.paymentMode || 'UPI',
-            isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
-            saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
-            vehicleModel: b.vehicleModel || b.vehicleType || '',
-            membershipName: b.membershipName || '',
-            membershipValidity: b.membershipValidity || '',
-            membershipExpiry: b.membershipExpiry || '',
-            createdAt: b.createdAt || b.bookedAt || b.date,
-            bookedAt: b.bookedAt || b.createdAt
-          };
-        });
-
-        // Bi-directional sync of genuine offline sales between backend and localStorage
-        const backendOfflineSales = mapped.filter(b =>
-          !b.isDeleted &&
-          b.id !== 'OFS-MTJX5GRW-3986' &&
-          b.bookingId !== 'OFS-MTJX5GRW-3986' &&
-          !String(b.bookingId || b.id || '').startsWith('WASH-') &&
-          !String(b.bookingId || b.id || '').startsWith('BK-90') &&
-          !String(b.bookingId || b.id || '').startsWith('B-2026-88') &&
-          !String(b.bookingId || b.id || '').startsWith('BK-SAL-') &&
-          !String(b.bookingId || b.id || '').startsWith('BK-70') &&
-          !String(b.bookingId || b.id || '').startsWith('BK-80') &&
-          (
-            (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-            (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
-          )
-        );
-        try {
-          const rawCached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-          const cachedOffline = Array.isArray(rawCached) ? rawCached.filter(s =>
-            s &&
-            s.id !== 'OFS-MTJX5GRW-3986' &&
-            s.bookingId !== 'OFS-MTJX5GRW-3986' &&
-            !String(s.id || s.bookingId || '').startsWith('WASH-') &&
-            !String(s.id || s.bookingId || '').startsWith('BK-90') &&
-            !String(s.id || s.bookingId || '').startsWith('B-2026-88') &&
-            !String(s.id || s.bookingId || '').startsWith('BK-SAL-') &&
-            !String(s.id || s.bookingId || '').startsWith('BK-70') &&
-            !String(s.id || s.bookingId || '').startsWith('BK-80')
-          ) : [];
-
-          const combinedOfflineMap = new Map();
-          // Include backend offline sales
-          backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
-          // Include locally cached offline sales if not already from backend, and auto-sync them to MongoDB
-          cachedOffline.forEach(s => {
-            const key = s.id || s.bookingId;
-            if (!combinedOfflineMap.has(key)) {
-              combinedOfflineMap.set(key, s);
-              // Auto-sync missing offline sale to MongoDB
-              apiClient.post('/bookings', {
-                bookingId: s.bookingId || s.id,
-                serviceKey: s.serviceKey || 'car-wash',
-                serviceName: s.serviceName || (s.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
-                packageName: s.packageName || s.membershipName || 'Standard Service',
-                price: Number(s.price || s.total || s.amount || 0),
-                date: s.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-                saleDate: s.saleDate || s.date,
-                timeSlot: s.timeSlot || '09:00 AM - 09:30 AM',
-                customerName: s.customerName || 'Valued Customer',
-                customerEmail: s.customerEmail || '',
-                phone: s.phone || '',
-                vehicleNo: s.vehicleNo || '',
-                vehicleType: s.vehicleModel || s.vehicleType || '',
-                vehicleModel: s.vehicleModel || s.vehicleType || '',
-                status: 'Completed',
-                isOfflineSale: true,
-                saleType: s.saleType || (s.membershipName ? 'membership' : 'service'),
-                membershipName: s.membershipName || '',
-                membershipValidity: s.membershipValidity || '',
-                membershipExpiry: s.membershipExpiry || '',
-                paymentMode: s.paymentMode || 'Cash',
-                notes: s.notes || ''
-              }).catch(() => {});
-            }
-          });
-          const allOffline = Array.from(combinedOfflineMap.values());
-          localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
-
-          // Ensure all offline sales are in mapped list
-          allOffline.forEach(ofs => {
-            if (!mapped.some(m => m.id === ofs.id || m.bookingId === ofs.bookingId)) {
-              mapped.unshift(ofs);
-            }
-          });
-        } catch (e) {}
-
-        // Rely EXCLUSIVELY on live database bookings + genuine offline sales (no mock salon bookings or fake fallbacks)
-        const cleanBookings = mapped.filter(b =>
-          b &&
-          !String(b.id || b.bookingId || '').startsWith('BK-90') &&
-          !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
-          !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
-          !String(b.id || b.bookingId || '').startsWith('BK-70') &&
-          !String(b.id || b.bookingId || '').startsWith('BK-80') &&
-          b.id !== 'OFS-MTJX5GRW-3986' &&
-          b.bookingId !== 'OFS-MTJX5GRW-3986'
-        );
-
-        setBookings(cleanBookings);
-        setMemberships(deriveMembershipsFromBookings(cleanBookings));
-      } else {
-        setBookings([]);
-        setMemberships(deriveMembershipsFromBookings([]));
-      }
-    } catch (err) {
-      console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
+    const fetchPromise = (async () => {
       try {
-        const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-        if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-          const cleanOffline = cachedOffline.filter(b =>
-            b &&
+        let mapped = [];
+        const res = await apiClient.get('/bookings');
+        lastFetchedRef.current.bookings = Date.now();
+        if (res.data && res.data.bookings) {
+          const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          const now = new Date();
+          const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+          const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+          const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
+
+          mapped = res.data.bookings.map(b => {
+            const rawDate = b.date || '';
+            const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
+            const displayDate = isLegacyDate ? liveDateStr : rawDate;
+
+            const rawTime = b.timeSlot || '';
+            const isLegacyTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
+            const displayTime = isLegacyTime ? defaultSlot : rawTime;
+
+            return {
+              _id: b._id,
+              id: b.bookingId,
+              bookingId: b.bookingId,
+              customerName: b.customerName || b.userName || b.name || (b.customerEmail ? b.customerEmail.split('@')[0] : 'Valued Customer'),
+              customerEmail: b.customerEmail || b.email || '',
+              vehicleNo: b.vehicleNo || b.vehiclePlate || '',
+              vehicleType: b.vehicleType || b.vehicleModel || '',
+              location: b.location || 'Main Branch',
+              phone: b.phone || b.mobile || b.customerPhone || '',
+              serviceKey: b.serviceKey,
+              serviceName: b.serviceName || b.service || 'Service',
+              service: b.serviceName || b.service || 'Service',
+              plan: b.packageName || b.plan || 'Standard',
+              packageName: b.packageName || b.plan || 'Standard',
+              // Ordering key for two passes bought on the same day (buy, upgrade).
+              date: displayDate,
+              timeSlot: formatBookingDateTime(displayTime, displayDate),
+              total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+              price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+              status: b.status || 'Pending',
+              staffAssigned: b.assignedStaffName || 'Not Assigned',
+              assignedStaffId: b.assignedStaffId,
+              assignedStaffName: b.assignedStaffName || '',
+              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+              notes: b.notes || '',
+              photos: b.photos || [],
+              paymentMode: b.paymentMode || 'UPI',
+              isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
+              saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
+              vehicleModel: b.vehicleModel || b.vehicleType || '',
+              membershipName: b.membershipName || '',
+              membershipValidity: b.membershipValidity || '',
+              membershipExpiry: b.membershipExpiry || '',
+              createdAt: b.createdAt || b.bookedAt || b.date,
+              bookedAt: b.bookedAt || b.createdAt
+            };
+          });
+
+          // Bi-directional sync of genuine offline sales between backend and localStorage
+          const backendOfflineSales = mapped.filter(b =>
+            !b.isDeleted &&
             b.id !== 'OFS-MTJX5GRW-3986' &&
             b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+            !String(b.bookingId || b.id || '').startsWith('WASH-') &&
+            !String(b.bookingId || b.id || '').startsWith('BK-90') &&
+            !String(b.bookingId || b.id || '').startsWith('B-2026-88') &&
+            !String(b.bookingId || b.id || '').startsWith('BK-SAL-') &&
+            !String(b.bookingId || b.id || '').startsWith('BK-70') &&
+            !String(b.bookingId || b.id || '').startsWith('BK-80') &&
+            (
+              (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+              (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
+            )
+          );
+          try {
+            const rawCached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+            const cachedOffline = Array.isArray(rawCached) ? rawCached.filter(s =>
+              s &&
+              s.id !== 'OFS-MTJX5GRW-3986' &&
+              s.bookingId !== 'OFS-MTJX5GRW-3986' &&
+              !String(s.id || s.bookingId || '').startsWith('WASH-') &&
+              !String(s.id || s.bookingId || '').startsWith('BK-90') &&
+              !String(s.id || s.bookingId || '').startsWith('B-2026-88') &&
+              !String(s.id || s.bookingId || '').startsWith('BK-SAL-') &&
+              !String(s.id || s.bookingId || '').startsWith('BK-70') &&
+              !String(s.id || s.bookingId || '').startsWith('BK-80')
+            ) : [];
+
+            const combinedOfflineMap = new Map();
+            // Include backend offline sales
+            backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
+            // Include locally cached offline sales if not already from backend, and auto-sync them to MongoDB
+            cachedOffline.forEach(s => {
+              const key = s.id || s.bookingId;
+              if (!combinedOfflineMap.has(key)) {
+                combinedOfflineMap.set(key, s);
+                // Auto-sync missing offline sale to MongoDB
+                apiClient.post('/bookings', {
+                  bookingId: s.bookingId || s.id,
+                  serviceKey: s.serviceKey || 'car-wash',
+                  serviceName: s.serviceName || (s.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+                  packageName: s.packageName || s.membershipName || 'Standard Service',
+                  price: Number(s.price || s.total || s.amount || 0),
+                  date: s.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                  saleDate: s.saleDate || s.date,
+                  timeSlot: s.timeSlot || '09:00 AM - 09:30 AM',
+                  customerName: s.customerName || 'Valued Customer',
+                  customerEmail: s.customerEmail || '',
+                  phone: s.phone || '',
+                  vehicleNo: s.vehicleNo || '',
+                  vehicleType: s.vehicleModel || s.vehicleType || '',
+                  vehicleModel: s.vehicleModel || s.vehicleType || '',
+                  status: 'Completed',
+                  isOfflineSale: true,
+                  saleType: s.saleType || (s.membershipName ? 'membership' : 'service'),
+                  membershipName: s.membershipName || '',
+                  membershipValidity: s.membershipValidity || '',
+                  membershipExpiry: s.membershipExpiry || '',
+                  paymentMode: s.paymentMode || 'Cash',
+                  notes: s.notes || ''
+                }).catch(() => {});
+              }
+            });
+            const allOffline = Array.from(combinedOfflineMap.values());
+            localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
+
+            // Ensure all offline sales are in mapped list
+            allOffline.forEach(ofs => {
+              if (!mapped.some(m => m.id === ofs.id || m.bookingId === ofs.bookingId)) {
+                mapped.unshift(ofs);
+              }
+            });
+          } catch (e) {}
+
+          // Rely EXCLUSIVELY on live database bookings + genuine offline sales (no mock salon bookings or fake fallbacks)
+          const cleanBookings = mapped.filter(b =>
+            b &&
             !String(b.id || b.bookingId || '').startsWith('BK-90') &&
             !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
             !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
             !String(b.id || b.bookingId || '').startsWith('BK-70') &&
-            !String(b.id || b.bookingId || '').startsWith('BK-80')
+            !String(b.id || b.bookingId || '').startsWith('BK-80') &&
+            b.id !== 'OFS-MTJX5GRW-3986' &&
+            b.bookingId !== 'OFS-MTJX5GRW-3986'
           );
-          setBookings(cleanOffline);
-          setMemberships(deriveMembershipsFromBookings(cleanOffline));
-          return;
+
+          setBookings(cleanBookings);
+          setMemberships(deriveMembershipsFromBookings(cleanBookings));
+        } else {
+          setBookings([]);
+          setMemberships(deriveMembershipsFromBookings([]));
         }
-      } catch (e) {}
-      setBookings([]);
-      setMemberships([]);
-    }
+      } catch (err) {
+        console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
+        try {
+          const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+          if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
+            const cleanOffline = cachedOffline.filter(b =>
+              b &&
+              b.id !== 'OFS-MTJX5GRW-3986' &&
+              b.bookingId !== 'OFS-MTJX5GRW-3986' &&
+              !String(b.id || b.bookingId || '').startsWith('BK-90') &&
+              !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-70') &&
+              !String(b.id || b.bookingId || '').startsWith('BK-80')
+            );
+            setBookings(cleanOffline);
+            setMemberships(deriveMembershipsFromBookings(cleanOffline));
+            return;
+          }
+        } catch (e) {}
+        setBookings([]);
+        setMemberships([]);
+      } finally {
+        delete inFlightRequestsRef.current.bookings;
+      }
+    })();
+
+    inFlightRequestsRef.current.bookings = fetchPromise;
+    return fetchPromise;
   };
 
 
-  const fetchStaffList = async () => {
-    try {
-      const res = await apiClient.get('/users/staff');
-      if (res.data && res.data.staff) {
-        const mapped = res.data.staff.map(s => ({
-          _id: s._id,
-          id: s.email,
-          name: s.fullName,
-          fullName: s.fullName,
-          email: s.email,
-          mobile: s.mobile || '',
-          department: s.department || 'Car Wash',
-          staffRole: s.staffRole || 'Specialist',
-          serviceKey: s.serviceKey || '',
-          salary: s.salary || '',
-          leaveBalance: s.leaveBalance || 12,
-          photo: s.photo || '',
-          permissions: s.permissions || [],
-          isActive: s.isActive
-        }));
-        setStaffList(mapped);
-      }
-    } catch (err) {
-      console.warn('Could not fetch staff list:', err.message);
+  const fetchStaffList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.staff && now - lastFetchedRef.current.staff < 60000) {
+      return;
     }
+    if (inFlightRequestsRef.current.staff) {
+      return inFlightRequestsRef.current.staff;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await apiClient.get('/users/staff');
+        lastFetchedRef.current.staff = Date.now();
+        if (res.data && res.data.staff) {
+          const mapped = res.data.staff.map(s => ({
+            _id: s._id,
+            id: s.email,
+            name: s.fullName,
+            fullName: s.fullName,
+            email: s.email,
+            mobile: s.mobile || '',
+            department: s.department || 'Car Wash',
+            staffRole: s.staffRole || 'Specialist',
+            serviceKey: s.serviceKey || '',
+            salary: s.salary || '',
+            leaveBalance: s.leaveBalance || 12,
+            photo: s.photo || '',
+            permissions: s.permissions || [],
+            isActive: s.isActive
+          }));
+          setStaffList(mapped);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff list:', err.message);
+      } finally {
+        delete inFlightRequestsRef.current.staff;
+      }
+    })();
+
+    inFlightRequestsRef.current.staff = fetchPromise;
+    return fetchPromise;
   };
 
   // Derives enriched customers combining backend CRM accounts, live bookings & offline sales
@@ -749,15 +785,15 @@ export const AdminProvider = ({ children }) => {
         const rawVehList = tPlate ? [{ plateNumber: tPlate, model: tModel }] : [];
 
         customerMap.set(key, {
-          _id: t._id || `offline-cust-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          id: tEmail || tPhone || `CUST-${tName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'OFFLINE'}`,
+          _id: t.id || t.bookingId || `CUST-OFS-${Date.now()}`,
+          id: tEmail || tPhone || t.id || `CUST-${Date.now()}`,
           name: tName || 'Valued Customer',
           fullName: tName || 'Valued Customer',
-          email: tEmail || '',
-          phone: tPhone || '',
-          mobile: tPhone || '',
-          city: 'Mumbai',
-          segment: isMem ? 'Active Member' : 'Regular Customer',
+          email: tEmail,
+          phone: tPhone,
+          mobile: tPhone,
+          city: t.location || 'Mumbai',
+          segment: isMem ? 'Active Member' : 'Offline Customer',
           totalSpent: tPrice,
           loyaltyPoints: Math.floor(tPrice / 100),
           vehicles: vehList,
@@ -768,14 +804,15 @@ export const AdminProvider = ({ children }) => {
             startDate: tDate || new Date().toISOString(),
             expiryDate: t.membershipExpiry || t.validUntil || ''
           } : null,
-          lastVisit: tDate || 'Just now',
-          createdAt: t.createdAt || new Date().toISOString()
+          lastVisit: tDate || new Date().toISOString().split('T')[0],
+          role: 'user',
+          createdAt: tDate || new Date().toISOString()
         });
       }
     });
 
-    // Also check if any customer holds an active membership from tsl_admin_memberships
-    (adminMems || []).forEach(m => {
+    // Cross-reference any active memberships in Admin Panel -> Memberships
+    adminMems.forEach(m => {
       if (!m) return;
       const key = normalizeKey(m.customerEmail || m.email, m.phone || m.mobile, m.customerName || m.name);
       if (key && customerMap.has(key)) {
@@ -795,73 +832,104 @@ export const AdminProvider = ({ children }) => {
     return Array.from(customerMap.values());
   };
 
-  const fetchCustomersList = async () => {
-    try {
-      const res = await apiClient.get('/users/customers');
-      let base = [];
-      if (res.data && Array.isArray(res.data.customers)) {
-        base = res.data.customers.map(c => ({
-          _id: c._id,
-          id: c.email || c.phone || c._id,
-          name: c.fullName || c.name || 'Customer',
-          fullName: c.fullName || c.name || 'Customer',
-          email: c.email,
-          phone: c.phone || c.mobile || '',
-          mobile: c.mobile || c.phone || '',
-          city: c.city || '',
-          segment: c.segment || 'Regular Customer',
-          totalSpent: Number(c.totalSpent) || 0,
-          loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor((Number(c.totalSpent) || 0) / 100),
-          vehicles: Array.isArray(c.vehicles) ? c.vehicles : [],
-          rawVehicles: Array.isArray(c.rawVehicles) ? c.rawVehicles : [],
-          membership: c.membership || null,
-          lastVisit: c.lastVisit || null,
-          role: c.role,
-          createdAt: c.createdAt
-        }));
-      } else {
-        base = [];
-      }
-
-      let offline = [];
-      try {
-        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      } catch (e) {}
-
-      const merged = deriveCustomers(base, bookingsRef.current || [], offline);
-      setCustomers(merged);
-    } catch (err) {
-      console.warn('Could not fetch customers list:', err.message);
-      let offline = [];
-      try {
-        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      } catch (e) {}
-      setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], offline));
+  const fetchCustomersList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.customers && now - lastFetchedRef.current.customers < 30000) {
+      return;
     }
+    if (inFlightRequestsRef.current.customers) {
+      return inFlightRequestsRef.current.customers;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await apiClient.get('/users/customers');
+        lastFetchedRef.current.customers = Date.now();
+        let base = [];
+        if (res.data && Array.isArray(res.data.customers)) {
+          base = res.data.customers.map(c => ({
+            _id: c._id,
+            id: c.email || c.phone || c._id,
+            name: c.fullName || c.name || 'Customer',
+            fullName: c.fullName || c.name || 'Customer',
+            email: c.email,
+            phone: c.phone || c.mobile || '',
+            mobile: c.mobile || c.phone || '',
+            city: c.city || '',
+            segment: c.segment || 'Regular Customer',
+            totalSpent: Number(c.totalSpent) || 0,
+            loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor((Number(c.totalSpent) || 0) / 100),
+            vehicles: Array.isArray(c.vehicles) ? c.vehicles : [],
+            rawVehicles: Array.isArray(c.rawVehicles) ? c.rawVehicles : [],
+            membership: c.membership || null,
+            lastVisit: c.lastVisit || null,
+            role: c.role,
+            createdAt: c.createdAt
+          }));
+        } else {
+          base = [];
+        }
+
+        let offline = [];
+        try {
+          offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+        } catch (e) {}
+
+        const merged = deriveCustomers(base, bookingsRef.current || [], offline);
+        setCustomers(merged);
+      } catch (err) {
+        console.warn('Could not fetch customers list:', err.message);
+        let offline = [];
+        try {
+          offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+        } catch (e) {}
+        setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], offline));
+      } finally {
+        delete inFlightRequestsRef.current.customers;
+      }
+    })();
+
+    inFlightRequestsRef.current.customers = fetchPromise;
+    return fetchPromise;
   };
 
 
-  const fetchServicesList = async () => {
-    try {
-      const res = await serviceApi.getServices();
-      if (res && res.services) {
-        setServices(res.services);
-        setMemberships(deriveMembershipsFromBookings(bookingsRef.current, res.services));
-      }
-    } catch (err) {
-      console.warn('Could not fetch services list:', err.message);
+  const fetchServicesList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.services && now - lastFetchedRef.current.services < 60000) {
+      return;
     }
+    if (inFlightRequestsRef.current.services) {
+      return inFlightRequestsRef.current.services;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await serviceApi.getServices();
+        lastFetchedRef.current.services = Date.now();
+        if (res && res.services) {
+          setServices(res.services);
+          setMemberships(deriveMembershipsFromBookings(bookingsRef.current, res.services));
+        }
+      } catch (err) {
+        console.warn('Could not fetch services list:', err.message);
+      } finally {
+        delete inFlightRequestsRef.current.services;
+      }
+    })();
+
+    inFlightRequestsRef.current.services = fetchPromise;
+    return fetchPromise;
   };
 
   useEffect(() => {
+    // Initial single on-demand fetch on mount (Zero background polling loops)
     fetchBookingsList();
     fetchStaffList();
     fetchCustomersList();
     fetchServicesList();
 
-    // Poll for live booking updates from staff every 5 seconds
-    const interval = setInterval(fetchBookingsList, 5000);
-    const handleLiveBooking = () => fetchBookingsList();
+    const handleLiveBooking = () => fetchBookingsList(true);
 
     // Listen for live service/package updates from any admin hub
     const handleServiceUpdated = (e) => {
@@ -881,13 +949,6 @@ export const AdminProvider = ({ children }) => {
       setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
     };
 
-    const handleStorageChange = (e) => {
-      handleLiveBooking();
-      if (!e || !e.key || e.key.startsWith('tsl_')) {
-        setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
-      }
-    };
-
     const handleExternalWashOrSale = (e) => {
       const record = e?.detail;
       if (record && !record.deleted) {
@@ -899,13 +960,9 @@ export const AdminProvider = ({ children }) => {
           return next;
         });
         setCustomers(prev => deriveCustomers(prev, [record], [record]));
-      } else {
-        handleLiveBooking();
       }
-      fetchCustomersList();
     };
 
-    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('tsl_booking_created', handleLiveBooking);
     window.addEventListener('salonDataChanged', handleLiveBooking);
     window.addEventListener('bookingAdded', handleLiveBooking);
@@ -914,12 +971,8 @@ export const AdminProvider = ({ children }) => {
     window.addEventListener('tsl_wash_used', handleExternalWashOrSale);
     window.addEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
     window.addEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
-    window.addEventListener('tsl_customer_updated', handleLiveBooking);
-    window.addEventListener('tsl_vehicle_updated', handleLiveBooking);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('tsl_booking_created', handleLiveBooking);
       window.removeEventListener('salonDataChanged', handleLiveBooking);
       window.removeEventListener('bookingAdded', handleLiveBooking);
@@ -928,8 +981,6 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener('tsl_wash_used', handleExternalWashOrSale);
       window.removeEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
       window.removeEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
-      window.removeEventListener('tsl_customer_updated', handleLiveBooking);
-      window.removeEventListener('tsl_vehicle_updated', handleLiveBooking);
     };
   }, []);
 

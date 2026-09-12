@@ -613,10 +613,7 @@ export function StaffProvider({ children }) {
     window.addEventListener('tsl_admin_memberships_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
-    // Poll so orders placed by customers land in the queue without a refresh.
-    const interval = setInterval(fetchLiveJobs, 10000);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('tsl_customer_updated', handleSync);
       window.removeEventListener('tsl_vehicle_updated', handleSync);
       window.removeEventListener('tsl_admin_memberships_updated', handleSync);

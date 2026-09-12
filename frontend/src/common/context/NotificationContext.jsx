@@ -64,19 +64,16 @@ export function NotificationProvider({ children }) {
     }
   }, []);
 
-  // Initial fetch and poll every 10 seconds for real-time live sync
+  // Initial single on-demand fetch on mount (Zero background polling loops)
   useEffect(() => {
-    fetchUserNotifications();
-    fetchStaffNotifications();
-    fetchAdminNotifications();
-
-    const interval = setInterval(() => {
-      fetchUserNotifications();
-      fetchStaffNotifications();
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    if (path.startsWith('/admin')) {
       fetchAdminNotifications();
-    }, 10000);
-
-    return () => clearInterval(interval);
+    } else if (path.startsWith('/staff')) {
+      fetchStaffNotifications();
+    } else {
+      fetchUserNotifications();
+    }
   }, [fetchUserNotifications, fetchStaffNotifications, fetchAdminNotifications]);
 
   // Admin Actions: Create Broadcast / Targeted Notification
