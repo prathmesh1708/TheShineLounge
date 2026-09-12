@@ -48,9 +48,11 @@ export default function ManageBannersPage() {
 
       {/* Banners Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {banners.map((ban) => (
+        {banners.map((ban, banIdx) => {
+          const bId = ban._id || ban.id || `ban-${banIdx}`;
+          return (
           <div
-            key={ban.id}
+            key={bId}
             className={`bg-white border rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between ${
               ban.status === 'active' ? 'border-gray-200' : 'border-gray-200 opacity-60'
             }`}
@@ -65,7 +67,7 @@ export default function ManageBannersPage() {
               </span>
 
               <button
-                onClick={() => toggleBannerStatus(ban.id)}
+                onClick={() => toggleBannerStatus(bId)}
                 className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all ${
                   ban.status === 'active' ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-white'
                 }`}
@@ -88,7 +90,7 @@ export default function ManageBannersPage() {
               </div>
 
               <button
-                onClick={() => deleteBanner(ban.id)}
+                onClick={() => deleteBanner(bId)}
                 className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
                 title="Delete Banner"
               >
@@ -96,7 +98,8 @@ export default function ManageBannersPage() {
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Modal: Add New Banner */}

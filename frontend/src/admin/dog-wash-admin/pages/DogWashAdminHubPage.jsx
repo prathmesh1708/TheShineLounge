@@ -1100,9 +1100,9 @@ export default function DogWashAdminHubPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(dbStaff.length > 0 ? dbStaff : serviceStaff)
               .filter(s => s.serviceKey === 'dog-wash' || (s.department && s.department.toLowerCase().includes('dog')) || (s.staffRole && s.staffRole.toLowerCase().includes('groomer')))
-              .map((stf) => (
+              .map((stf, idx) => (
                 <div 
-                  key={stf._id || stf.id} 
+                  key={stf._id || stf.id || stf.email || `stf-${idx}`} 
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
                 >
@@ -1335,15 +1335,18 @@ export default function DogWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {serviceBanners.map(ban => (
-              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-                <img src={ban.imageUrl} className="w-full h-32 object-cover" />
-                <div className="p-3">
-                  <h4 className="font-bold text-xs">{ban.title}</h4>
-                  <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
+            {serviceBanners.map((ban, banIdx) => {
+              const bId = ban._id || ban.id || `ban-${banIdx}`;
+              return (
+                <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
+                  <img src={ban.imageUrl} className="w-full h-32 object-cover" />
+                  <div className="p-3">
+                    <h4 className="font-bold text-xs">{ban.title}</h4>
+                    <p className="text-[10px] text-gray-500">{ban.subtitle}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

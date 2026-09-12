@@ -1187,9 +1187,9 @@ export default function DriveThroughCafeAdminHubPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(dbStaff.length > 0 ? dbStaff : serviceStaff)
               .filter(s => s.serviceKey === 'drive-through-cafe' || (s.department && s.department.toLowerCase().includes('drive')))
-              .map((stf) => (
+              .map((stf, idx) => (
                 <div 
-                  key={stf._id || stf.id} 
+                  key={stf._id || stf.id || stf.email || `stf-${idx}`} 
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
                 >
@@ -1208,7 +1208,7 @@ export default function DriveThroughCafeAdminHubPage() {
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Express Barista'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
                       </p>
                     </div>
                   </div>
@@ -1217,19 +1217,19 @@ export default function DriveThroughCafeAdminHubPage() {
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
                       <span className="font-bold text-gray-800 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
                       </span>
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
                     </div>
                   </div>
 
                   {stf.permissions && stf.permissions.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {stf.permissions.map(p => (
-                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                      {stf.permissions.map((p, pIdx) => (
+                        <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
                           {p}
                         </span>
                       ))}
@@ -1241,12 +1241,53 @@ export default function DriveThroughCafeAdminHubPage() {
         </div>
       )}
 
+      {activeTab === 'bookings' && (
+        <DataTable
+          columns={[
+            { header: 'Order ID', accessorKey: 'id' },
+            { header: 'Customer', accessorKey: 'customerName' },
+            { header: 'Item / Combo', accessorKey: 'plan' },
+            { header: 'Order Time', accessorKey: 'timeSlot' },
+            { header: 'Amount (₹)', accessorKey: 'total', cell: (r) => <span>₹{r.total}</span> },
+            {
+              header: 'Status',
+              accessorKey: 'status',
+              cell: (r) => {
+                const currentStatus = r.status || 'Pending';
+                const normalizedStatus = currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1).toLowerCase();
+                return (
+                  <select
+                    value={normalizedStatus}
+                    onChange={(e) => updateBookingStatus(r.id, e.target.value)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border-0 shadow-2xs cursor-pointer ${
+                      normalizedStatus === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                      normalizedStatus === 'Preparing' ? 'bg-blue-100 text-blue-800' :
+                      normalizedStatus === 'Ready' ? 'bg-purple-100 text-purple-800' :
+                      normalizedStatus === 'Pending' ? 'bg-amber-100 text-amber-800' :
+                      'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Preparing">Preparing</option>
+                    <option value="Ready">Ready</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                );
+              }
+            }
+          ]}
+          data={serviceBookings}
+          searchPlaceholder="Search drive-thru orders..."
+        />
+      )}
+
       {activeTab === 'marketing' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Promotional Banners & Deals ({serviceBanners.length})</h3>
-              <p className="text-xs text-gray-500">Configure visual promo banners and active discount banners displayed on the customer frontend</p>
+              <h3 className="text-base font-black text-gray-900">Promos & Media Banners ({serviceBanners.length})</h3>
+              <p className="text-xs text-gray-500">Manage promotional hero banners, discount announcements, and display media</p>
             </div>
             <button
               onClick={handleOpenAddBanner}
@@ -1257,53 +1298,56 @@ export default function DriveThroughCafeAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {serviceBanners.map((ban) => (
-              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div className="relative">
-                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
-                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
-                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
-                    {ban.actionLink && (
-                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                        CTA Link: {ban.actionLink}
-                      </span>
-                    )}
+            {serviceBanners.map((ban, banIdx) => {
+              const bId = ban._id || ban.id || `ban-${banIdx}`;
+              return (
+                <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="relative">
+                    <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                    <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                      {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
+                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                      {ban.actionLink && (
+                        <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                          CTA Link: {ban.actionLink}
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => toggleBannerStatus(ban.id)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
-                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
-                    </button>
-                    <div className="flex items-center gap-2">
+                    <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => handleOpenEditBanner(ban)}
-                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                        onClick={() => toggleBannerStatus(bId)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                          ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                       >
-                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                        {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
                       </button>
-                      <button
-                        onClick={() => handleDeleteBanner(ban.id)}
-                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
-                        title="Delete Banner"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditBanner(ban)}
+                          className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBanner(bId)}
+                          className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                          title="Delete Banner"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

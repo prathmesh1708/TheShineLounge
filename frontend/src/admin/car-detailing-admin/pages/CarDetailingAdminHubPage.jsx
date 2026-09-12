@@ -1411,9 +1411,9 @@ export default function CarDetailingAdminHubPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(dbStaff.length > 0 ? dbStaff : serviceStaff)
               .filter(s => s.serviceKey === 'car-detailing' || (s.department && s.department.toLowerCase().includes('detail')))
-              .map((stf) => (
+              .map((stf, idx) => (
                 <div 
-                  key={stf._id || stf.id} 
+                  key={stf._id || stf.id || stf.email || `stf-${idx}`} 
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
                 >
@@ -1452,8 +1452,8 @@ export default function CarDetailingAdminHubPage() {
 
                   {stf.permissions && stf.permissions.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {stf.permissions.map(p => (
-                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                      {stf.permissions.map((p, pIdx) => (
+                        <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
                           {p}
                         </span>
                       ))}
@@ -1499,11 +1499,12 @@ export default function CarDetailingAdminHubPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {serviceBanners.map(ban => {
+              {serviceBanners.map((ban, banIdx) => {
                 const isActive = ban.status !== 'inactive';
+                const bId = ban._id || ban.id || `ban-${banIdx}`;
 
                 return (
-                  <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
                     <div>
                       <div className="relative h-44 w-full bg-gray-900">
                         <img src={ban.imageUrl || ban.image} alt={ban.title} className={`w-full h-full object-cover ${!isActive ? 'opacity-40 grayscale' : ''}`} />
@@ -1537,7 +1538,7 @@ export default function CarDetailingAdminHubPage() {
 
                     <div className="p-3 bg-gray-50 flex items-center justify-between gap-2 border-t border-gray-100">
                       <button
-                        onClick={() => handleToggleBanner(ban.id)}
+                        onClick={() => handleToggleBanner(bId)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                           isActive ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
                         }`}

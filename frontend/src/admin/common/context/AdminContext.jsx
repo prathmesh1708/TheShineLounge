@@ -1404,17 +1404,17 @@ export const AdminProvider = ({ children }) => {
   };
 
   const toggleBannerStatus = (id) => {
-    setBanners(prev => prev.map(b => b.id === id ? { ...b, status: b.status === 'active' ? 'inactive' : 'active' } : b));
+    setBanners(prev => prev.map(b => (b.id === id || b._id === id) ? { ...b, status: b.status === 'active' ? 'inactive' : 'active' } : b));
     showToast('Banner visibility toggled');
   };
 
   const updateBanner = (id, updatedFields) => {
-    setBanners(prev => prev.map(b => b.id === id ? { ...b, ...updatedFields } : b));
+    setBanners(prev => prev.map(b => (b.id === id || b._id === id) ? { ...b, ...updatedFields } : b));
     showToast('Promotional banner updated successfully!');
   };
 
   const deleteBanner = (id) => {
-    setBanners(prev => prev.filter(b => b.id !== id));
+    setBanners(prev => prev.filter(b => b.id !== id && b._id !== id));
     showToast('Banner deleted', 'error');
   };
 

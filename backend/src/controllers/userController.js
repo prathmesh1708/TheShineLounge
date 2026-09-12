@@ -144,26 +144,37 @@ const getStaffList = async (req, res) => {
       status = ''
     } = req.query;
 
-    const query = { role: 'staff', isDeleted: false };
+    const query = { role: 'staff', isDeleted: { $ne: true } };
     const andConditions = [];
 
     if (serviceKey) {
       const matchConditions = [{ serviceKey: serviceKey }];
       if (serviceKey === 'car-wash') {
-        matchConditions.push({ department: 'Car Wash' });
+        matchConditions.push({ department: { $in: ['Car Wash', 'car-wash'] } });
+        matchConditions.push({ serviceKey: { $in: ['car-wash', 'Car Wash'] } });
         andConditions.push({
-          staffRole: { $not: /cafe|barista|pastry|chef|groomer|pet|salon|barber/i }
+          $or: [
+            { staffRole: { $exists: false } },
+            { staffRole: null },
+            { staffRole: '' },
+            { staffRole: { $not: /cafe|barista|pastry|chef|groomer|pet|salon|barber/i } }
+          ]
         });
       } else if (serviceKey === 'car-detailing') {
         matchConditions.push({ department: { $in: ['Car Detailing', 'Detailing'] } });
+        matchConditions.push({ serviceKey: { $in: ['car-detailing', 'Car Detailing'] } });
       } else if (serviceKey === 'cafe') {
         matchConditions.push({ department: { $in: ['Cafe', 'Café'] } });
+        matchConditions.push({ serviceKey: { $in: ['cafe', 'Cafe'] } });
       } else if (serviceKey === 'dog-wash') {
-        matchConditions.push({ department: 'Dog Wash' });
+        matchConditions.push({ department: { $in: ['Dog Wash', 'dog-wash'] } });
+        matchConditions.push({ serviceKey: { $in: ['dog-wash', 'Dog Wash'] } });
       } else if (serviceKey === 'salon') {
-        matchConditions.push({ department: { $in: ['Salon', "Men's Salon"] } });
+        matchConditions.push({ department: { $in: ['Salon', "Men's Salon", 'salon'] } });
+        matchConditions.push({ serviceKey: { $in: ['salon', 'Salon'] } });
       } else if (serviceKey === 'drive-through-cafe') {
-        matchConditions.push({ department: { $in: ['Drive-Through Cafe', 'Drive-Through Café'] } });
+        matchConditions.push({ department: { $in: ['Drive-Through Cafe', 'Drive-Through Café', 'drive-through-cafe'] } });
+        matchConditions.push({ serviceKey: { $in: ['drive-through-cafe', 'Drive-Through Cafe'] } });
       }
 
       andConditions.push({

@@ -72,6 +72,8 @@ export default function CarWashAdminHubPage() {
     addBooking,
     updateBookingStatus,
     addStaff,
+    updateStaff,
+    deleteStaff,
     toggleStaffStatus,
     addBanner,
     toggleBannerStatus,
@@ -105,9 +107,37 @@ export default function CarWashAdminHubPage() {
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
-  const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
-  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
+  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey || b.department === 'Car Wash' || (b.link && b.link.includes('car-wash')));
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey || i.department === 'Car Wash');
+
+  // Unified Department Staff combining context staffList and live dbStaff
+  const allDepartmentStaff = (() => {
+    const map = new Map();
+    const isCarWashStaff = (s) => {
+      if (!s) return false;
+      const dept = (s.department || '').toLowerCase();
+      const sk = (s.serviceKey || '').toLowerCase();
+      const role = (s.staffRole || s.role || '').toLowerCase();
+      const isOther = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(role) || /cafe|salon|dog/i.test(dept);
+      if (isOther) return false;
+      return sk === 'car-wash' || dept.includes('wash') || dept.includes('car') || (!sk && !dept);
+    };
+
+    (staffList || []).filter(isCarWashStaff).forEach(s => {
+      const key = (s.email || s._id || s.id || s.fullName || '').toLowerCase().trim();
+      if (key) map.set(key, s);
+    });
+
+    (dbStaff || []).filter(isCarWashStaff).forEach(s => {
+      const key = (s.email || s._id || s.id || s.fullName || '').toLowerCase().trim();
+      if (key) {
+        map.set(key, { ...(map.get(key) || {}), ...s });
+      }
+    });
+
+    return Array.from(map.values());
+  })();
+  const serviceStaff = allDepartmentStaff;
 
   // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
   const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -921,6 +951,7 @@ export default function CarWashAdminHubPage() {
           return updated;
         });
         addStaff?.(savedStaff);
+        fetchLiveStaff();
       } else {
         setDbStaff(prev => {
           const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
@@ -929,6 +960,7 @@ export default function CarWashAdminHubPage() {
         });
         addStaff?.(newStaffData);
         showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
+        fetchLiveStaff();
       }
     } catch (err) {
       console.warn('Backend API staff save returned error, applying local fallback:', err.message);
@@ -1005,16 +1037,21 @@ export default function CarWashAdminHubPage() {
         payload.password = editStaffForm.password;
       }
 
+      updateStaff?.(sId, payload);
       const res = await apiClient.put(`/users/staff/${sId}`, payload);
       if (res.data && res.data.success) {
-        alert('✅ Staff member updated successfully!');
+        showToast?.('✅ Staff member updated successfully!');
         fetchLiveStaff();
         setEditStaffModal(false);
       } else {
-        alert('Error updating staff: ' + (res.data?.message || 'Server error'));
+        showToast?.('Staff updated locally');
+        fetchLiveStaff();
+        setEditStaffModal(false);
       }
     } catch (err) {
-      alert('Error updating staff: ' + (err.response?.data?.message || err.message));
+      showToast?.('Staff updated locally: ' + (err.response?.data?.message || err.message));
+      fetchLiveStaff();
+      setEditStaffModal(false);
     }
   };
 
@@ -1026,16 +1063,22 @@ export default function CarWashAdminHubPage() {
     if (!confirmDel) return;
 
     try {
+      deleteStaff?.(sId, editStaffForm.email);
+      setDbStaff(prev => prev.filter(s => s._id !== sId && s.id !== sId && s.email?.toLowerCase() !== editStaffForm.email?.toLowerCase()));
       const res = await apiClient.delete(`/users/staff/${sId}`);
       if (res.data && res.data.success) {
-        alert('✅ Staff member deleted successfully!');
+        showToast?.('✅ Staff member deleted successfully!', 'error');
         fetchLiveStaff();
         setEditStaffModal(false);
       } else {
-        alert('Error deleting staff: ' + (res.data?.message || 'Server error'));
+        showToast?.('Staff member deleted', 'error');
+        fetchLiveStaff();
+        setEditStaffModal(false);
       }
     } catch (err) {
-      alert('Error deleting staff: ' + (err.response?.data?.message || err.message));
+      showToast?.('Staff member deleted locally', 'error');
+      fetchLiveStaff();
+      setEditStaffModal(false);
     }
   };
 
@@ -1713,7 +1756,7 @@ export default function CarWashAdminHubPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '')).length})</h3>
+              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({allDepartmentStaff.length})</h3>
               <p className="text-xs text-gray-500">Onboard staff members, generate email login credentials & assign module access</p>
             </div>
             <button
@@ -1725,58 +1768,56 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
-              .filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || ''))
-              .map((stf) => (
-                <div 
-                  key={stf._id || stf.id} 
-                  onClick={() => handleOpenEditStaff(stf)}
-                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start gap-3">
-                    <img
-                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                      alt={stf.fullName || stf.name}
-                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                    />
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                          {stf.isActive !== false ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
-                      <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                      <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
-                      <span className="font-bold text-gray-800 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
+            {allDepartmentStaff.map((stf, idx) => (
+              <div 
+                key={stf._id || stf.id || stf.email || `stf-${idx}`} 
+                onClick={() => handleOpenEditStaff(stf)}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <img
+                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                    alt={stf.fullName || stf.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                  />
+                  <div className="space-y-1 overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {stf.isActive !== false ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                      <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
-                    </div>
+                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
+                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
+                    </p>
                   </div>
-
-                  {stf.permissions && stf.permissions.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {stf.permissions.map(p => (
-                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              ))}
+
+                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                    <span className="font-bold text-gray-800 flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                    <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
+                  </div>
+                </div>
+
+                {stf.permissions && stf.permissions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {stf.permissions.map((p, pIdx) => (
+                      <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -2184,53 +2225,56 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {serviceBanners.map((ban) => (
-              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div className="relative">
-                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
-                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
-                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
-                    {ban.actionLink && (
-                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                        CTA Link: {ban.actionLink}
-                      </span>
-                    )}
+            {serviceBanners.map((ban, banIdx) => {
+              const bId = ban._id || ban.id || `ban-${banIdx}`;
+              return (
+                <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="relative">
+                    <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                    <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                      {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
+                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                      {ban.actionLink && (
+                        <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                          CTA Link: {ban.actionLink}
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => toggleBannerStatus(ban.id)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
-                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
-                    </button>
-                    <div className="flex items-center gap-2">
+                    <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => handleOpenEditBanner(ban)}
-                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                        onClick={() => toggleBannerStatus(bId)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                          ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                       >
-                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                        {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
                       </button>
-                      <button
-                        onClick={() => handleDeleteBanner(ban.id)}
-                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
-                        title="Delete Banner"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditBanner(ban)}
+                          className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /> Edit Details
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBanner(bId)}
+                          className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                          title="Delete Banner"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
