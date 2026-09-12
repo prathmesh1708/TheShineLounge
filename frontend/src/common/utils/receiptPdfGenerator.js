@@ -50,53 +50,6 @@ export async function getReceiptPdfBlob(element, filename = 'Receipt.pdf') {
 }
 
 /**
- * Generates an image Blob (PNG) from a receipt HTML element
- */
-export async function getReceiptImageBlob(element) {
-  if (!element) throw new Error('Receipt element not found for image generation');
-
-  const options = getPdfConfig('Receipt.pdf');
-  const worker = html2pdf().set(options).from(element);
-
-  try {
-    const canvas = await worker.toCanvas().get('canvas');
-    if (canvas && typeof canvas.toBlob === 'function') {
-      return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Canvas to Blob conversion failed'));
-        }, 'image/png', 1.0);
-      });
-    }
-  } catch (err) {
-    console.warn('worker.toCanvas get failed, trying fallback:', err);
-  }
-
-  const imgUri = await worker.outputImg('datauristring');
-  const res = await fetch(imgUri);
-  return await res.blob();
-}
-
-/**
- * Copies receipt image directly into user's system clipboard for instant Cmd+V paste into WhatsApp
- */
-export async function copyReceiptImageToClipboard(element) {
-  if (!element) return false;
-  try {
-    const imageBlob = await getReceiptImageBlob(element);
-    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': imageBlob })
-      ]);
-      return true;
-    }
-  } catch (err) {
-    console.warn('Clipboard image write failed:', err);
-  }
-  return false;
-}
-
-/**
  * Direct file share helper using Web Share API with download fallback
  */
 export async function sharePdfFile({ blob, fileName = 'Receipt.pdf', title = 'The Shine Lounge Receipt', text = '' }) {
