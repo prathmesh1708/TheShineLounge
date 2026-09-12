@@ -39,7 +39,7 @@ import TSLLogo from '../../../common/components/TSLLogo';
 export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, closeMobileSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { stats, bookings, staffList, banners, inventory } = useAdmin();
+  const { stats, bookings, staffList, banners, inventory, memberships, customers } = useAdmin();
   const { user, logout } = useAuth();
 
   // Auto-close mobile sidebar when route changes
@@ -93,13 +93,20 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   // Sub-navigation options inside each service dropdown
   const getSubNavItems = (key, serviceName) => {
-    const bCount = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase())).length;
-    const sCount = staffList.filter(s => s.serviceKey === key || s.department === serviceName).length;
-    const banCount = banners.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
-    const iCount = inventory.filter(i => i.serviceKey === key || i.department === serviceName).length;
+    const bList = bookings || [];
+    const sList = staffList || [];
+    const banList = banners || [];
+    const iList = inventory || [];
+    const mList = memberships || [];
+    const cList = customers || [];
+
+    const bCount = bList.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase())).length;
+    const sCount = sList.filter(s => s.serviceKey === key || s.department === serviceName).length;
+    const banCount = banList.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
+    const iCount = iList.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
     // Calculate registered vehicles count for car services
-    let carBookings = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
+    let carBookings = bList.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
     if (key === 'car-detailing') {
       carBookings = carBookings.filter(b => {
         const pkg = (b.plan || b.packageName || b.service || '').toLowerCase();
@@ -125,7 +132,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     });
 
     // Also include membership vehicles for this service
-    (memberships || []).forEach(m => {
+    mList.forEach(m => {
       if (m.serviceKey && m.serviceKey !== key) return;
       const cleanPlate = normalizePlate(m.vehicleNo);
       if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
@@ -134,7 +141,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     });
 
     // Also include customer profile vehicles
-    (customers || []).forEach(c => {
+    cList.forEach(c => {
       const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
       custVehicles.forEach(cv => {
         const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
