@@ -1559,15 +1559,19 @@ export const AdminProvider = ({ children }) => {
   // 5. Bookings
   const updateBookingStatus = async (id, newStatus) => {
     // 1. Optimistically update local state
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
-    showToast(`Booking ${id} status updated to ${newStatus}`);
+    setBookings(prev => prev.map(b => (b.id === id || b._id === id || b.bookingId === id) ? { ...b, status: newStatus } : b));
+    showToast(`Booking status updated to ${newStatus}`);
 
     // 2. Call PUT /bookings/:id in the backend
     try {
-      const match = bookings.find(b => b.id === id);
-      if (match && match._id) {
-        await apiClient.put(`/bookings/${match._id}`, { status: newStatus });
+      const match = bookings.find(b => b.id === id || b._id === id || b.bookingId === id);
+      const targetDbId = match?._id || id;
+      if (targetDbId) {
+        await apiClient.put(`/bookings/${targetDbId}`, { status: newStatus });
         fetchBookingsList();
+        try {
+          window.dispatchEvent(new CustomEvent('tsl_bookings_updated', { detail: { id, targetDbId, status: newStatus } }));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Error updating booking status in backend:', err.message);
@@ -1576,22 +1580,47 @@ export const AdminProvider = ({ children }) => {
 
   const assignStaffToBooking = async (id, staffName) => {
     // Find the staff user object from the staffList to get their ID
-    const staffUser = staffList.find(s => s.fullName === staffName || s.name === staffName || s.employeeId === staffName);
-    const staffId = staffUser?.id || staffUser?._id || null;
+    const staffUser = staffList.find(s => 
+      s.fullName === staffName || 
+      s.name === staffName || 
+      s.employeeId === staffName || 
+      s.email === staffName ||
+      (staffName && s.email && s.email.toLowerCase() === staffName.toLowerCase()) ||
+      (staffName && s.name && s.name.toLowerCase() === staffName.toLowerCase())
+    );
+    const staffId = staffUser?._id || staffUser?.id || null;
+    const finalStaffName = staffUser?.fullName || staffUser?.name || staffName || '';
 
     // 1. Optimistically update local state
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, staffAssigned: staffName, assignedStaffId: staffId } : b));
-    showToast(`Assigned ${staffName} to booking ${id}`);
+    setBookings(prev => prev.map(b => (b.id === id || b._id === id || b.bookingId === id) ? { 
+      ...b, 
+      staffAssigned: finalStaffName, 
+      assignedStaffName: finalStaffName, 
+      assignedStaff: finalStaffName,
+      staffName: finalStaffName,
+      assignedStaffId: staffId,
+      staffId: staffId
+    } : b));
+
+    if (finalStaffName) {
+      showToast(`Assigned ${finalStaffName} to booking`);
+    } else {
+      showToast('Unassigned staff member');
+    }
 
     // 2. Call PUT /bookings/:id in the backend
     try {
-      const match = bookings.find(b => b.id === id);
-      if (match && match._id) {
-        await apiClient.put(`/bookings/${match._id}`, { 
+      const match = bookings.find(b => b.id === id || b._id === id || b.bookingId === id);
+      const targetDbId = match?._id || id;
+      if (targetDbId) {
+        await apiClient.put(`/bookings/${targetDbId}`, { 
           assignedStaffId: staffId, 
-          assignedStaffName: staffName 
+          assignedStaffName: finalStaffName 
         });
         fetchBookingsList();
+        try {
+          window.dispatchEvent(new CustomEvent('tsl_bookings_updated', { detail: { id, targetDbId, staffId, staffName: finalStaffName } }));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Error assigning staff in backend:', err.message);

@@ -389,8 +389,24 @@ const updateBooking = async (req, res) => {
     if (status !== undefined) booking.status = status;
     if (stepIndex !== undefined) booking.stepIndex = stepIndex;
     if (notes !== undefined) booking.notes = notes;
-    if (assignedStaffId !== undefined) booking.assignedStaffId = assignedStaffId || null;
-    if (assignedStaffName !== undefined) booking.assignedStaffName = assignedStaffName || '';
+
+    if (assignedStaffId !== undefined || assignedStaffName !== undefined) {
+      if (assignedStaffId && !assignedStaffName) {
+        const foundStaff = await User.findById(assignedStaffId);
+        booking.assignedStaffId = assignedStaffId;
+        booking.assignedStaffName = foundStaff ? foundStaff.fullName : '';
+      } else if (!assignedStaffId && assignedStaffName) {
+        const foundStaff = await User.findOne({
+          role: 'staff',
+          fullName: { $regex: new RegExp(`^${escapeRegex(assignedStaffName.trim())}$`, 'i') }
+        });
+        booking.assignedStaffId = foundStaff ? foundStaff._id : null;
+        booking.assignedStaffName = assignedStaffName;
+      } else {
+        booking.assignedStaffId = assignedStaffId || null;
+        booking.assignedStaffName = assignedStaffName || '';
+      }
+    }
 
     // Append photo if uploaded
     if (photoUrl) {
