@@ -275,7 +275,23 @@ export default function CarWashAdminHubPage() {
     }
   });
 
-  const registeredVehiclesList = Object.values(registeredVehiclesMap);
+  const registeredVehiclesList = Object.values(registeredVehiclesMap).sort((a, b) => {
+    // 1. Prioritize active membership holders
+    const aHasMem = Boolean(a.membershipName || a.membershipStatus === 'Active');
+    const bHasMem = Boolean(b.membershipName || b.membershipStatus === 'Active');
+    if (aHasMem && !bHasMem) return -1;
+    if (!aHasMem && bHasMem) return 1;
+
+    // 2. Sort by latest service date descending
+    const aTime = a.lastWashDate && a.lastWashDate !== '—' ? new Date(a.lastWashDate).getTime() : 0;
+    const bTime = b.lastWashDate && b.lastWashDate !== '—' ? new Date(b.lastWashDate).getTime() : 0;
+    if (aTime !== bTime && !isNaN(aTime) && !isNaN(bTime)) {
+      return bTime - aTime;
+    }
+
+    // 3. Fallback: alphabetical plate
+    return (a.plate || '').localeCompare(b.plate || '');
+  });
 
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);

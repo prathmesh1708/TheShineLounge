@@ -106,14 +106,46 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
         return !(pkg.includes('wash') && !pkg.includes('detail'));
       });
     }
+    const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const deregisteredPlates = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+      } catch (e) {
+        return [];
+      }
+    })();
+
     const vMap = {};
     carBookings.forEach(b => {
-      // Bookings with no plate on them are not a vehicle. They used to all
-      // collapse onto a placeholder key and be counted as one phantom car.
-      const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
-      if (plate) vMap[plate] = true;
+      if (b.vehicleDeregistered) return;
+      const cleanPlate = normalizePlate(b.vehicleNo || b.vehiclePlate);
+      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+        vMap[cleanPlate] = true;
+      }
     });
-    const vCount = Math.max(Object.keys(vMap).length, 1);
+
+    // Also include membership vehicles for this service
+    (memberships || []).forEach(m => {
+      if (m.serviceKey && m.serviceKey !== key) return;
+      const cleanPlate = normalizePlate(m.vehicleNo);
+      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+        vMap[cleanPlate] = true;
+      }
+    });
+
+    // Also include customer profile vehicles
+    (customers || []).forEach(c => {
+      const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+      custVehicles.forEach(cv => {
+        const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
+        const cleanPlate = normalizePlate(p);
+        if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+          vMap[cleanPlate] = true;
+        }
+      });
+    });
+
+    const vCount = Object.keys(vMap).length;
 
     if (key === 'car-wash') {
       return [

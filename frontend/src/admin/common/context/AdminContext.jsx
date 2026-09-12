@@ -152,15 +152,33 @@ export const AdminProvider = ({ children }) => {
           b.bookingId !== 'OFS-MTJX5GRW-3986' &&
           !String(b.id || '').startsWith('BK-90') &&
           !String(b.id || '').startsWith('B-2026-88') &&
-          !String(b.id || '').startsWith('BK-SAL-') &&
-          !String(b.id || '').startsWith('BK-70') &&
-          !String(b.id || '').startsWith('BK-80')
+          !String(b.id || '').startsWith('BK-SAL-')
         );
       }
     } catch (e) {}
     return [];
   });
-  const [customers, setCustomers] = useState([]);
+
+  const [customers, setCustomers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsl_admin_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      if (Array.isArray(customers) && customers.length > 0) {
+        localStorage.setItem('tsl_admin_customers', JSON.stringify(customers));
+      }
+    } catch (e) {}
+  }, [customers]);
   const [inventory, setInventory] = useState(() => {
     try {
       const saved = localStorage.getItem('tsl_admin_inventory');
@@ -471,20 +489,9 @@ export const AdminProvider = ({ children }) => {
         const res = await apiClient.get('/bookings');
         lastFetchedRef.current.bookings = Date.now();
         if (res.data && res.data.bookings) {
-          const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-          const now = new Date();
-          const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-          const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-          const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
-
           mapped = res.data.bookings.map(b => {
-            const rawDate = b.date || '';
-            const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
-            const displayDate = isLegacyDate ? liveDateStr : rawDate;
-
+            const rawDate = b.date || b.saleDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '');
             const rawTime = b.timeSlot || '';
-            const isLegacyTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
-            const displayTime = isLegacyTime ? defaultSlot : rawTime;
 
             return {
               _id: b._id,
@@ -501,9 +508,8 @@ export const AdminProvider = ({ children }) => {
               service: b.serviceName || b.service || 'Service',
               plan: b.packageName || b.plan || 'Standard',
               packageName: b.packageName || b.plan || 'Standard',
-              // Ordering key for two passes bought on the same day (buy, upgrade).
-              date: displayDate,
-              timeSlot: formatBookingDateTime(displayTime, displayDate),
+              date: rawDate,
+              timeSlot: rawTime,
               total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
               price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
               status: b.status || 'Pending',
