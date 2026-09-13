@@ -92,6 +92,52 @@ export default function CarWashAdminHubPage() {
   const tabFromUrl = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
+  // Live Backend Database State
+  const [dbService, setDbService] = useState(null);
+  const [dbStaff, setDbStaff] = useState([]);
+  const [isLiveConnection, setIsLiveConnection] = useState(true);
+
+  const fetchLiveService = async () => {
+    try {
+      const res = await serviceApi.getServiceBySlug('car-wash');
+      if (res.success && res.service) {
+        setDbService(res.service);
+        setIsLiveConnection(true);
+        cacheService('tsl_car_wash_service', res.service);
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not fetch live car-wash service, checking local storage');
+    }
+    setIsLiveConnection(false);
+    const cached = localStorage.getItem('tsl_car_wash_service');
+    if (cached) {
+      try {
+        setDbService(JSON.parse(cached));
+      } catch (e) {}
+    }
+  };
+
+  const fetchLiveStaff = async () => {
+    try {
+      const res = await apiClient.get('/users/staff?serviceKey=car-wash');
+      if (res.data && Array.isArray(res.data.staff)) {
+        setDbStaff(res.data.staff);
+        try {
+          localStorage.setItem('tsl_car_wash_staff', JSON.stringify(res.data.staff));
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Could not fetch live staff list:', err.message);
+      try {
+        const cached = JSON.parse(localStorage.getItem('tsl_car_wash_staff') || '[]');
+        if (Array.isArray(cached) && cached.length > 0) {
+          setDbStaff(cached);
+        }
+      } catch (e) {}
+    }
+  };
+
   useEffect(() => {
     if (searchParams.get('tab')) {
       setActiveTabState(searchParams.get('tab'));
@@ -325,51 +371,7 @@ export default function CarWashAdminHubPage() {
     return (a.plate || '').localeCompare(b.plate || '');
   });
 
-  // Live Backend Database State
-  const [dbService, setDbService] = useState(null);
-  const [dbStaff, setDbStaff] = useState([]);
-  const [isLiveConnection, setIsLiveConnection] = useState(true);
-
-  const fetchLiveService = async () => {
-    try {
-      const res = await serviceApi.getServiceBySlug('car-wash');
-      if (res.success && res.service) {
-        setDbService(res.service);
-        setIsLiveConnection(true);
-        cacheService('tsl_car_wash_service', res.service);
-        return;
-      }
-    } catch (err) {
-      console.warn('Could not fetch live car-wash service, checking local storage');
-    }
-    setIsLiveConnection(false);
-    const cached = localStorage.getItem('tsl_car_wash_service');
-    if (cached) {
-      try {
-        setDbService(JSON.parse(cached));
-      } catch (e) {}
-    }
-  };
-
-  const fetchLiveStaff = async () => {
-    try {
-      const res = await apiClient.get('/users/staff?serviceKey=car-wash');
-      if (res.data && Array.isArray(res.data.staff)) {
-        setDbStaff(res.data.staff);
-        try {
-          localStorage.setItem('tsl_car_wash_staff', JSON.stringify(res.data.staff));
-        } catch (e) {}
-      }
-    } catch (err) {
-      console.warn('Could not fetch live staff list:', err.message);
-      try {
-        const cached = JSON.parse(localStorage.getItem('tsl_car_wash_staff') || '[]');
-        if (Array.isArray(cached) && cached.length > 0) {
-          setDbStaff(cached);
-        }
-      } catch (e) {}
-    }
-  };
+  // Effects for live data sync
 
   useEffect(() => {
     fetchLiveService();
@@ -945,7 +947,7 @@ export default function CarWashAdminHubPage() {
       const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => {
           const updated = [savedStaff, ...prev.filter(s => s.email?.toLowerCase() !== savedStaff.email?.toLowerCase())];
@@ -953,24 +955,14 @@ export default function CarWashAdminHubPage() {
           return updated;
         });
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => {
-          const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
-          try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
-          return updated;
-        });
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => {
-        const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
-        try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
-        return updated;
-      });
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
     try {

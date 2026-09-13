@@ -1,4 +1,4 @@
-import { isMembershipPackage, parseFlexibleDate, normalizeMembershipId } from '../../../common/utils/membershipUtils';
+import { isMembershipPackage, isWashRedemptionRecord, parseFlexibleDate, normalizeMembershipId } from '../../../common/utils/membershipUtils';
 import apiClient from '../../../common/utils/apiClient';
 
 /**
@@ -145,15 +145,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     if (!b) return;
     const bId = b.id || b.bookingId || '';
     if (bId && washLogIds.has(bId)) return;
-    const isWashRecord = (
-      bId.startsWith('WASH-') ||
-      b.packageName === 'Ground Wash (Completed)' ||
-      b.packageName === 'Express Wash (Redeemed)' ||
-      (b.paymentMode === 'Membership' && b.status === 'Completed') ||
-      (b.paymentMode === 'Membership Pass' && b.status === 'Completed') ||
-      (b.notes && b.notes.toLowerCase().includes('wash completed'))
-    );
-    if (isWashRecord) {
+    if (isWashRedemptionRecord(b)) {
       if (bId) washLogIds.add(bId);
       allWashLogs.push(b);
     }
@@ -273,20 +265,36 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   const passItems = [];
   const processedPassKeys = new Set();
 
-  // Helper to find wash count for a vehicle
-  const getWashesForVehicle = (cleanPlate, customerName = '', customerPhone = '', baselineWashes = 0) => {
+  // Helper to find wash count for a vehicle within the pass's valid duration
+  const getWashesForVehicle = (cleanPlate, customerName = '', customerPhone = '', baselineWashes = 0, startDateVal = null, expiryDateVal = null) => {
+    const sDate = startDateVal ? parseFlexibleDate(startDateVal) : null;
+    const eDate = expiryDateVal ? parseFlexibleDate(expiryDateVal) : null;
+    if (sDate) sDate.setHours(0, 0, 0, 0);
+    if (eDate) eDate.setHours(23, 59, 59, 999);
+
     const matchingLogs = allWashLogs.filter(w => {
       const wPlate = normalizePlate(w.vehicleNo);
-      if (cleanPlate && wPlate && wPlate === cleanPlate) return true;
+      let isMatch = false;
+      if (cleanPlate && wPlate && wPlate === cleanPlate) isMatch = true;
       if (customerPhone) {
         const wPhone = String(w.phone || '').replace(/\D/g, '').slice(-10);
         const cPhone = String(customerPhone).replace(/\D/g, '').slice(-10);
-        if (wPhone && cPhone && wPhone === cPhone) return true;
+        if (wPhone && cPhone && wPhone === cPhone) isMatch = true;
       }
-      return false;
+      if (!isMatch) return false;
+
+      // STRICT VALIDITY WINDOW: Only count washes logged on or after the pass start/purchase date, up to its expiry
+      if (sDate) {
+        const wDate = parseFlexibleDate(w.date || w.saleDate || w.createdAt);
+        if (wDate) {
+          if (wDate < sDate) return false;
+          if (eDate && wDate > eDate) return false;
+        }
+      }
+      return true;
     });
 
-    const totalUsed = baselineWashes + matchingLogs.length;
+    const totalUsed = matchingLogs.length > 0 ? matchingLogs.length : (Number(baselineWashes) || 0);
     const latestWash = matchingLogs[0];
     const lastDate = latestWash ? (latestWash.date || latestWash.saleDate || 'Today') : '';
 
@@ -321,8 +329,11 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
       maxWashes = catalogLimits['quarterly pass'] || 12;
     }
 
+    const startDateStr = mem.startDateLabel || mem.startDate || '01 Jun 2026';
+    const expiryDateStr = mem.expiryDateLabel || mem.expiryDate || '31 Jul 2026';
+
     const baselineWashes = Number(mem.washesUsed) || 0;
-    const washData = getWashesForVehicle(cleanPlate, mem.customerName, mem.phone, baselineWashes);
+    const washData = getWashesForVehicle(cleanPlate, mem.customerName, mem.phone, baselineWashes, startDateStr, expiryDateStr);
 
     const isUnlimited = maxWashes === 999 || maxWashes === 'Unlimited';
     const isExhausted = !isUnlimited && washData.washesUsed >= maxWashes;
@@ -331,9 +342,6 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
     const passKey = `MEM_${cleanPlate || mem.id}`;
     processedPassKeys.add(passKey);
-
-    const startDateStr = mem.startDateLabel || mem.startDate || '01 Jun 2026';
-    const expiryDateStr = mem.expiryDateLabel || mem.expiryDate || '31 Jul 2026';
 
     passItems.push({
       id: mem.id || `MEM-${Date.now()}`,
@@ -417,7 +425,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
     if (isMembership) {
       // Offline membership sale
-      const washData = getWashesForVehicle(cleanPlate, ownerName, phone, 0);
+      const washData = getWashesForVehicle(cleanPlate, ownerName, phone, 0, rec.date, rec.membershipExpiry);
       passItems.push({
         id: bId || `MEM-${Date.now()}`,
         vehicleNo: plate || '—',

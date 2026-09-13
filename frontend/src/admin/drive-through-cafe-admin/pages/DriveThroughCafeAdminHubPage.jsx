@@ -524,23 +524,20 @@ export default function DriveThroughCafeAdminHubPage() {
       const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Drive-Thru roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Drive-Thru roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',

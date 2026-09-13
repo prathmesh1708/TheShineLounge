@@ -33,7 +33,7 @@ export default function StaffCustomersPage() {
       mobile: mobile.startsWith('+91') ? mobile : `+91 ${mobile}`,
       email,
       address,
-      city: 'Mumbai',
+      city: 'Gurgaon',
       segment: 'New Customer',
       vehicles: [
         { id: `V-${Date.now()}`, registrationNumber: vehicleNo.toUpperCase(), brand, model, color: 'White', fuelType: 'Petrol' }

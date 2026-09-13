@@ -1,3 +1,12 @@
+const dns = require('dns');
+
+// Safely configure public DNS servers for Atlas SRV record resolution
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch (dnsErr) {
+  console.warn('DNS server configuration notice:', dnsErr.message);
+}
+
 const mongoose = require('mongoose');
 const { MONGO_URI, SEED_ON_BOOT } = require('./env');
 const seedAdmin = require('../../utils/seedAdmin');

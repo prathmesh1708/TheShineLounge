@@ -12,9 +12,27 @@ const {
 } = require('../utils/sanitizeUser');
 
 
+// Helper to strip out auto-generated dummy customer emails
+const sanitizeCustomerEmail = (email) => {
+  if (!email) return '';
+  const em = String(email).trim().toLowerCase();
+  if (em.endsWith('@theshinelounge.com') && !em.startsWith('admin') && !em.startsWith('support') && !em.startsWith('staff') && !em.startsWith('manager')) {
+    return '';
+  }
+  return email;
+};
+
+// Helper to find staff by ObjectId or email
+const getStaffFindQuery = (idParam) => {
+  if (idParam && mongoose.Types.ObjectId.isValid(idParam)) {
+    return { _id: idParam };
+  }
+  return { email: String(idParam || '').toLowerCase().trim() };
+};
+
 // ─── STAFF MANAGEMENT (Admin Only) ──────────────────────────
 
-// @desc    Create a new staff member
+// @desc    Create a new staff member or promote existing account
 // @route   POST /api/users/staff
 // @access  Admin
 const createStaff = async (req, res) => {
@@ -38,15 +56,6 @@ const createStaff = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Please provide fullName, email, and password'
-      });
-    }
-
-    // Check duplicate email
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'An account with this email already exists'
       });
     }
 
@@ -77,6 +86,61 @@ const createStaff = async (req, res) => {
       }
     }
 
+    // Check duplicate email — if user already exists, promote or reactivate to staff!
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      if (existingUser.role === 'admin' || existingUser.role === 'superadmin') {
+        return res.status(400).json({
+          success: false,
+          message: 'An admin account with this email already exists'
+        });
+      }
+
+      existingUser.fullName = fullName || existingUser.fullName;
+      if (password) {
+        existingUser.password = password; // Triggers pre-save hash
+      }
+      if (mobile) existingUser.mobile = mobile;
+      existingUser.role = 'staff';
+      existingUser.department = finalDept;
+      existingUser.serviceKey = finalServiceKey;
+      existingUser.staffRole = staffRole || existingUser.staffRole || 'Staff Specialist';
+      if (salary !== undefined) existingUser.salary = salary;
+      if (leaveBalance !== undefined) existingUser.leaveBalance = Number(leaveBalance);
+      if (photo) {
+        existingUser.photo = photo;
+        existingUser.profileImage = photo;
+      }
+      if (permissions) existingUser.permissions = permissions;
+      if (branch) existingUser.branch = branch;
+      existingUser.isActive = true;
+      existingUser.isDeleted = false;
+
+      await existingUser.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Staff member account onboarded successfully',
+        staff: {
+          _id: existingUser._id,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          mobile: existingUser.mobile,
+          role: existingUser.role,
+          department: existingUser.department,
+          serviceKey: existingUser.serviceKey,
+          staffRole: existingUser.staffRole,
+          salary: existingUser.salary,
+          leaveBalance: existingUser.leaveBalance,
+          photo: existingUser.photo,
+          permissions: existingUser.permissions,
+          isActive: existingUser.isActive,
+          branch: existingUser.branch,
+          createdAt: existingUser.createdAt
+        }
+      });
+    }
+
     const staff = await User.create({
       fullName,
       email,
@@ -92,7 +156,7 @@ const createStaff = async (req, res) => {
       profileImage: photo || '',
       permissions: permissions || ['bookings', 'orders'],
       branch: branch || 'Main Branch',
-      createdBy: req.user._id
+      createdBy: req.user?._id || null
     });
 
     res.status(201).json({
@@ -144,7 +208,7 @@ const getStaffList = async (req, res) => {
       status = ''
     } = req.query;
 
-    const query = { role: 'staff', isDeleted: false };
+    const query = { role: 'staff', isDeleted: { $ne: true } };
     const andConditions = [];
 
     if (serviceKey) {
@@ -224,15 +288,16 @@ const getStaffList = async (req, res) => {
   }
 };
 
-// @desc    Get staff member by ID
+// @desc    Get staff member by ID or Email
 // @route   GET /api/users/staff/:id
 // @access  Admin
 const getStaffById = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -274,10 +339,11 @@ const updateStaff = async (req, res) => {
       password
     } = req.body;
 
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -290,7 +356,7 @@ const updateStaff = async (req, res) => {
     // Check duplicate email if changed
     if (email && email.toLowerCase() !== staff.email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
-      if (emailExists) {
+      if (emailExists && emailExists._id.toString() !== staff._id.toString()) {
         return res.status(400).json({
           success: false,
           message: 'This email is already in use by another account'
@@ -352,10 +418,11 @@ const updateStaff = async (req, res) => {
 // @access  Admin
 const toggleStaffStatus = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -395,10 +462,11 @@ const resetStaffPassword = async (req, res) => {
       });
     }
 
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     }).select('+password');
 
     if (!staff) {
@@ -428,10 +496,11 @@ const resetStaffPassword = async (req, res) => {
 // @access  Admin
 const deleteStaff = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -522,15 +591,16 @@ const getCustomers = async (req, res) => {
         }
       });
 
+      const cleanEmail = sanitizeCustomerEmail(u.email);
       return {
         _id: u._id,
-        id: u.email || u._id,
+        id: cleanEmail || u.mobile || u._id,
         name: u.fullName,
         fullName: u.fullName,
-        email: u.email,
+        email: cleanEmail,
         phone: u.mobile || '',
         mobile: u.mobile || '',
-        city: u.city || '',
+        city: u.city || 'Gurgaon',
         segment: computedSegment,
         totalSpent,
         loyaltyPoints: u.loyaltyPoints || Math.floor(totalSpent / 100),
@@ -548,11 +618,11 @@ const getCustomers = async (req, res) => {
 
     const extraCustomersMap = new Map();
     for (const b of allBookings) {
-      const bEmail = (b.customerEmail || '').toLowerCase().trim();
+      const bEmail = sanitizeCustomerEmail(b.customerEmail);
       const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
       const bName = (b.customerName || '').trim();
 
-      const alreadyInUsers = (bEmail && existingEmails.has(bEmail)) ||
+      const alreadyInUsers = (bEmail && existingEmails.has(bEmail.toLowerCase())) ||
                              (bPhone && existingPhones.has(bPhone));
       if (alreadyInUsers) continue;
 
@@ -563,13 +633,13 @@ const getCustomers = async (req, res) => {
         const isMem = b.saleType === 'membership' || (b.packageName && (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass')));
         extraCustomersMap.set(groupKey, {
           _id: b._id,
-          id: b.customerEmail || b.phone || b._id,
+          id: bEmail || b.phone || b._id,
           name: bName || 'Valued Customer',
           fullName: bName || 'Valued Customer',
-          email: b.customerEmail || '',
+          email: bEmail,
           phone: b.phone || '',
           mobile: b.phone || '',
-          city: 'Mumbai',
+          city: b.location || 'Gurgaon',
           segment: isMem ? 'Active Member' : 'Regular Customer',
           totalSpent: Number(b.price) || 0,
           loyaltyPoints: Math.floor((Number(b.price) || 0) / 100),

@@ -31,6 +31,30 @@ export function isMembershipPackage(name) {
   return MEMBERSHIP_HINTS.some(hint => n.includes(hint));
 }
 
+/**
+ * Checks if a booking record is an actual wash redemption performed under a membership
+ */
+export function isWashRedemptionRecord(b) {
+  if (!b) return false;
+  const bId = b.id || b._id || b.bookingId || '';
+  const pkg = (b.packageName || b.plan || b.planName || '').toLowerCase();
+  const payment = (b.paymentMode || b.paymentMethod || '').toLowerCase();
+  const notes = (b.notes || '').toLowerCase();
+
+  return (
+    String(bId).startsWith('WASH-') ||
+    pkg === 'ground wash (completed)' ||
+    pkg === 'express wash (redeemed)' ||
+    pkg.includes('ground wash') ||
+    pkg.includes('redeemed') ||
+    payment === 'membership' ||
+    payment === 'membership pass' ||
+    notes.includes('pass:') ||
+    notes.includes('wash performed') ||
+    notes.includes('wash completed')
+  );
+}
+
 /** Parses the many date shapes flowing through the app; null when unusable. */
 export function parseFlexibleDate(value) {
   if (!value) return null;

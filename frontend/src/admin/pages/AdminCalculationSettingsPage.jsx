@@ -5,9 +5,6 @@ import {
   RotateCcw,
   Percent,
   Receipt,
-  Building2,
-  Phone,
-  Mail,
   ShieldCheck,
   HelpCircle,
   Sparkles,
@@ -42,7 +39,7 @@ export default function AdminCalculationSettingsPage() {
   };
 
   const handleReset = () => {
-    if (window.confirm('Reset all financial calculation rules and CA profile presets to factory defaults?')) {
+    if (window.confirm('Reset all financial calculation rules to factory defaults?')) {
       setForm(defaultCalculationSettings);
       updateCalculationSettings(defaultCalculationSettings);
       showToast('Calculation rules reset to defaults');
@@ -75,10 +72,10 @@ export default function AdminCalculationSettingsPage() {
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
               <Calculator className="w-5 h-5" />
             </div>
-            <h1 className="text-xl font-extrabold text-gray-900">Financial Calculation Rules & CA Presets</h1>
+            <h1 className="text-xl font-extrabold text-gray-900">Financial Calculation Rules & Tax Engine</h1>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Configure GST slabs, tax modes, operational expense ratios, staff performance incentives, and CA audit details.
+            Configure GST slabs, tax modes, operational expense ratios, and staff performance incentives.
           </p>
         </div>
 
@@ -91,108 +88,103 @@ export default function AdminCalculationSettingsPage() {
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 px-4 py-2.5 text-xs font-extrabold text-white rounded-xl shadow-sm hover:opacity-95 transition-opacity"
-            style={{ backgroundColor: '#e07b2a' }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold text-white bg-amber-500 hover:bg-amber-600 active:scale-95 rounded-xl shadow-xs transition-all"
           >
-            <Save className="w-4 h-4" /> Save Calculation Rules
+            <Save className="w-4 h-4" /> Save Financial Rules
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Columns: Core Rules */}
+        {/* Left 2 Columns: Configuration Forms */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Card 1: GST & Tax Calculation Configuration */}
+          {/* Card 1: GST & Taxation Presets */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h2 className="text-sm font-black text-gray-900 flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-amber-500" /> GST Tax Rules & Calculation Mode
+                <Percent className="w-4 h-4 text-amber-500" /> GST Slabs & Taxation Configuration
               </h2>
               <span className="text-[10px] bg-amber-50 text-amber-700 font-extrabold px-2.5 py-1 rounded-lg border border-amber-200">
-                GST Compliance
+                Statutory Engine
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              {/* Default GST Rate */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="font-bold text-gray-700 block mb-1.5">
-                  Standard Default GST Rate (%)
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  Default Lounge GST Rate (%)
                 </label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[0, 5, 12, 18].map((rate) => (
-                    <button
-                      type="button"
-                      key={rate}
-                      onClick={() => setForm({ ...form, defaultGstRate: rate })}
-                      className={`py-2 rounded-xl font-black text-xs border transition-all ${
-                        form.defaultGstRate === rate
-                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {rate}%
-                    </button>
-                  ))}
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={form.defaultGstRate}
+                    onChange={(e) => setForm({ ...form, defaultGstRate: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-gray-900 focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute right-3.5 top-2 text-xs font-bold text-gray-400">%</span>
                 </div>
+                <p className="text-[10px] text-gray-400 mt-1">Applied across services without custom override.</p>
               </div>
 
-              {/* Pricing Mode: Inclusive vs Exclusive */}
               <div>
-                <label className="font-bold text-gray-700 block mb-1.5">
-                  Billing Tax Mode
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  GST Pricing Mode
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, gstPricingMode: 'inclusive' })}
-                    className={`py-2 px-2 text-center rounded-xl font-bold text-xs border transition-all ${
-                      form.gstPricingMode === 'inclusive'
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    Tax Inclusive (Default)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, gstPricingMode: 'exclusive' })}
-                    className={`py-2 px-2 text-center rounded-xl font-bold text-xs border transition-all ${
-                      form.gstPricingMode === 'exclusive'
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    Tax Exclusive (+GST)
-                  </button>
-                </div>
+                <select
+                  value={form.gstPricingMode}
+                  onChange={(e) => setForm({ ...form, gstPricingMode: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="inclusive">Inclusive (Price includes GST)</option>
+                  <option value="exclusive">Exclusive (GST added on top)</option>
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {form.gstPricingMode === 'inclusive'
+                    ? 'Recommended: standard consumer retail display.'
+                    : 'B2B style: GST charged extra on checkout.'}
+                </p>
               </div>
 
-
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  Tax Breakdown Structure
+                </label>
+                <select
+                  value={form.taxType}
+                  onChange={(e) => setForm({ ...form, taxType: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="split">State Split (50% CGST + 50% SGST)</option>
+                  <option value="igst">Interstate (100% IGST)</option>
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {form.taxType === 'split' ? 'Intra-state Maharashtra transactions.' : 'Inter-state billing.'}
+                </p>
+              </div>
             </div>
 
-            {/* Department Specific GST & SAC Codes */}
-            <div className="pt-3 border-t border-gray-100 space-y-3">
-              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
-                Department-Specific GST Slabs & Statutory SAC Codes
-              </h3>
+            {/* Department Specific GST Slabs & SAC Codes */}
+            <div className="pt-3 border-t border-gray-100">
+              <label className="text-xs font-extrabold text-gray-900 block mb-3">
+                Department-Wise GST Slabs & Statutory SAC Codes
+              </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { key: 'car-wash', name: 'Car Wash', defaultSac: '998714' },
-                  { key: 'car-detailing', name: 'Car Detailing', defaultSac: '998714' },
-                  { key: 'cafe', name: 'Lounge Café', defaultSac: '996331' },
-                  { key: 'drive-through-cafe', name: 'Drive-Thru Café', defaultSac: '996331' },
-                  { key: 'dog-wash', name: 'Dog Bath Grooming', defaultSac: '999729' },
-                  { key: 'salon', name: "Men's Luxury Salon", defaultSac: '999721' }
+                  { key: 'car-wash', name: 'Car Wash Department', defaultSac: '998714' },
+                  { key: 'car-detailing', name: 'Car Detailing & Studio', defaultSac: '998714' },
+                  { key: 'cafe', name: 'Gourmet Café & Dining', defaultSac: '996331' },
+                  { key: 'drive-through-cafe', name: 'Drive-Through Takeaway', defaultSac: '996331' },
+                  { key: 'dog-wash', name: 'Dog Wash & Pet Spa', defaultSac: '999729' },
+                  { key: 'salon', name: "Men's Grooming Salon", defaultSac: '999721' }
                 ].map((dept) => (
-                  <div key={dept.key} className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-extrabold text-gray-900 text-xs">{dept.name}</span>
+                  <div key={dept.key} className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-800">{dept.name}</span>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-gray-400 font-bold">GST:</span>
                         <select
-                          value={form.categoryGstRates?.[dept.key] ?? 18}
+                          value={form.categoryGstRates?.[dept.key] ?? form.defaultGstRate ?? 18}
                           onChange={(e) =>
                             setForm({
                               ...form,
@@ -310,103 +302,6 @@ export default function AdminCalculationSettingsPage() {
                 <p className="text-[10px] text-gray-400 mt-1">
                   High-pressure pumps and equipment wear & tear reserve (% of net turnover).
                 </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Chartered Accountant (CA) & Legal Entity Profile */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h2 className="text-sm font-black text-gray-900 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-600" /> Chartered Accountant (CA) Profile & Legal Entity
-              </h2>
-              <span className="text-[10px] bg-blue-50 text-blue-700 font-extrabold px-2.5 py-1 rounded-lg border border-blue-200">
-                Auditor Preset
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">CA Auditor Name</label>
-                <input
-                  type="text"
-                  value={form.caName}
-                  onChange={(e) => setForm({ ...form, caName: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">CA Firm Name</label>
-                <input
-                  type="text"
-                  value={form.caFirmName}
-                  onChange={(e) => setForm({ ...form, caFirmName: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">CA Membership / Reg No</label>
-                <input
-                  type="text"
-                  value={form.caMembershipNo}
-                  onChange={(e) => setForm({ ...form, caMembershipNo: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono text-gray-900 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">
-                  CA WhatsApp Phone (for direct report sharing)
-                </label>
-                <input
-                  type="text"
-                  value={form.caPhone}
-                  onChange={(e) => setForm({ ...form, caPhone: e.target.value })}
-                  placeholder="+919820123456"
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">CA Audit Email</label>
-                <input
-                  type="email"
-                  value={form.caEmail}
-                  onChange={(e) => setForm({ ...form, caEmail: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">Fiscal Year</label>
-                <input
-                  type="text"
-                  value={form.fiscalYear}
-                  onChange={(e) => setForm({ ...form, fiscalYear: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">Lounge GSTIN</label>
-                <input
-                  type="text"
-                  value={form.gstin}
-                  onChange={(e) => setForm({ ...form, gstin: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono font-bold text-gray-900 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">Permanent Account No (PAN)</label>
-                <input
-                  type="text"
-                  value={form.pan}
-                  onChange={(e) => setForm({ ...form, pan: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono font-bold text-gray-900 focus:outline-none"
-                />
               </div>
             </div>
           </div>

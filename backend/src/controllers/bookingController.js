@@ -178,11 +178,9 @@ const createBooking = async (req, res) => {
 
       if (!existingUser && (cleanEmail || cleanPhone || cleanName)) {
         const bcrypt = require('bcryptjs');
-        const fallbackEmail = cleanEmail || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'cust'}_${cleanPhone.replace(/\D/g, '').slice(-4) || Math.floor(1000 + Math.random() * 9000)}@theshinelounge.com`;
         const tempPass = await bcrypt.hash('Welcome@123', 10);
-        await User.create({
+        const newUserData = {
           fullName: cleanName || 'Valued Customer',
-          email: fallbackEmail,
           password: tempPass,
           mobile: cleanPhone,
           role: 'user',
@@ -201,7 +199,11 @@ const createBooking = async (req, res) => {
             status: 'Active',
             boundVehicles: cleanVehicle ? [cleanVehicle] : []
           } : undefined
-        });
+        };
+        if (cleanEmail) {
+          newUserData.email = cleanEmail;
+        }
+        await User.create(newUserData);
       } else if (existingUser) {
         const updateDoc = {
           $inc: { totalSpent: numPrice },

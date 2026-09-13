@@ -11,6 +11,7 @@ import {
 
 import {
   isMembershipPackage,
+  isWashRedemptionRecord,
   buildMembershipSchedule,
   findMembershipMeta,
   parseFlexibleDate,
@@ -393,8 +394,7 @@ export const AdminProvider = ({ children }) => {
 
       // Calculate washes used by matching vehicle plate or customer contact
       const washesUsed = bookingList.filter(b => {
-        const name = b.plan || b.packageName;
-        if (isMembershipPackage(name)) return false;
+        if (!isWashRedemptionRecord(b)) return false;
         if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
 
         const passPlate = normalizePlate(record.vehicleNo);
@@ -417,10 +417,16 @@ export const AdminProvider = ({ children }) => {
         if (!isMatch) return false;
 
         const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt);
-        if (!washedOn) return true;
+        if (!washedOn) return false;
         // Count washes on or after purchase date up to expiry
-        const effectiveStart = record.startDate <= new Date() ? record.startDate : (record.purchaseDate || record.startDate);
-        return washedOn >= effectiveStart && washedOn <= record.expiryDate;
+        const effectiveStart = record.startDate ? parseFlexibleDate(record.startDate) : null;
+        const effectiveEnd = record.expiryDate ? parseFlexibleDate(record.expiryDate) : null;
+        if (effectiveStart) effectiveStart.setHours(0, 0, 0, 0);
+        if (effectiveEnd) effectiveEnd.setHours(23, 59, 59, 999);
+
+        if (effectiveStart && washedOn < effectiveStart) return false;
+        if (effectiveEnd && washedOn > effectiveEnd) return false;
+        return true;
       }).length;
 
       let status = record.status;
@@ -704,6 +710,15 @@ export const AdminProvider = ({ children }) => {
   const deriveCustomers = (baseCustomers = [], bookingList = [], offlineSalesList = []) => {
     const customerMap = new Map();
 
+    const sanitizeCustomerEmail = (email) => {
+      if (!email) return '';
+      const em = String(email).trim().toLowerCase();
+      if (em.endsWith('@theshinelounge.com') && !em.startsWith('admin') && !em.startsWith('support')) {
+        return '';
+      }
+      return email;
+    };
+
     const normalizeKey = (email, phone, name) => {
       const e = (email || '').toLowerCase().trim();
       if (e) return `email:${e}`;
@@ -716,10 +731,12 @@ export const AdminProvider = ({ children }) => {
     // 1. Seed base customers
     (baseCustomers || []).forEach(c => {
       if (!c) return;
-      const key = normalizeKey(c.email, c.phone || c.mobile, c.name || c.fullName);
+      const cleanEmail = sanitizeCustomerEmail(c.email);
+      const key = normalizeKey(cleanEmail, c.phone || c.mobile, c.name || c.fullName);
       if (key) {
         customerMap.set(key, {
           ...c,
+          email: cleanEmail,
           vehicles: Array.isArray(c.vehicles) ? [...c.vehicles] : [],
           rawVehicles: Array.isArray(c.rawVehicles) ? [...c.rawVehicles] : []
         });
@@ -738,7 +755,8 @@ export const AdminProvider = ({ children }) => {
     allTransactions.forEach(t => {
       if (!t) return;
       const tName = (t.customerName || t.fullName || t.name || '').trim();
-      const tEmail = (t.customerEmail || t.email || '').toLowerCase().trim();
+      const rawEmail = (t.customerEmail || t.email || '').toLowerCase().trim();
+      const tEmail = sanitizeCustomerEmail(rawEmail);
       const tPhone = String(t.phone || t.mobile || '').trim();
       const tPlate = (t.vehicleNo || t.vehiclePlate || '').toUpperCase().trim();
       const tModel = t.vehicleType || t.vehicleModel || 'Car';
@@ -798,7 +816,7 @@ export const AdminProvider = ({ children }) => {
           email: tEmail,
           phone: tPhone,
           mobile: tPhone,
-          city: t.location || 'Mumbai',
+          city: t.location || t.city || 'Gurgaon',
           segment: isMem ? 'Active Member' : 'Offline Customer',
           totalSpent: tPrice,
           loyaltyPoints: Math.floor(tPrice / 100),

@@ -51,7 +51,7 @@ export default function CustomerDatabasePage() {
     name: '',
     phone: '',
     email: '',
-    city: 'Mumbai',
+    city: 'Gurgaon',
     vehicle: ''
   });
 
@@ -89,8 +89,8 @@ export default function CustomerDatabasePage() {
           c.id || c.code || 'CUST-N/A',
           c.name || c.fullName || 'N/A',
           c.phone || c.mobile || 'N/A',
-          c.email || 'N/A',
-          c.city || 'Mumbai',
+          c.email && !c.email.toLowerCase().endsWith('@theshinelounge.com') ? c.email : '',
+          c.city || 'Gurgaon',
           c.segment || 'Regular Customer',
           c.totalSpent !== undefined ? c.totalSpent : 24500,
           (c.vehicles && c.vehicles.length > 0) ? c.vehicles.join(' | ') : 'None registered',
@@ -133,7 +133,7 @@ export default function CustomerDatabasePage() {
       vehicles: form.vehicle.trim() ? [form.vehicle.trim()] : []
     });
     setIsAddModalOpen(false);
-    setForm({ name: '', phone: '', email: '', city: 'Mumbai', vehicle: '' });
+    setForm({ name: '', phone: '', email: '', city: 'Gurgaon', vehicle: '' });
   };
 
   const openCustomerModal = (customer) => {
@@ -273,12 +273,15 @@ export default function CustomerDatabasePage() {
     {
       header: 'Contact Info',
       accessorKey: 'phone',
-      cell: (row) => (
-        <div>
-          <p className="font-bold text-gray-800">{row.phone || row.mobile || '+91 98000 00000'}</p>
-          <p className="text-[10px] text-gray-500">{row.email}</p>
-        </div>
-      )
+      cell: (row) => {
+        const cleanEm = row.email && !row.email.toLowerCase().endsWith('@theshinelounge.com') ? row.email : '';
+        return (
+          <div>
+            <p className="font-bold text-gray-800">{row.phone || row.mobile || '+91 98000 00000'}</p>
+            {cleanEm && <p className="text-[10px] text-gray-500">{cleanEm}</p>}
+          </div>
+        );
+      }
     },
     {
       header: 'Membership Segment',
@@ -481,7 +484,7 @@ export default function CustomerDatabasePage() {
                   activeTab === 'rules' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                Membership & Usage Rules
+                Membership Details
               </button>
               <button
                 onClick={() => setActiveTab('audit')}
@@ -512,11 +515,13 @@ export default function CustomerDatabasePage() {
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">Email Address</span>
-                      <span className="font-extrabold text-gray-900">{selectedCustomer.email}</span>
+                      <span className="font-extrabold text-gray-900">
+                        {selectedCustomer.email && !selectedCustomer.email.toLowerCase().endsWith('@theshinelounge.com') ? selectedCustomer.email : '—'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">City</span>
-                      <span className="font-extrabold text-gray-900">{selectedCustomer.city || 'Mumbai'}</span>
+                      <span className="font-extrabold text-gray-900">{selectedCustomer.city || selectedCustomer.location || 'Gurgaon'}</span>
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">Last Visit Date</span>
@@ -592,7 +597,7 @@ export default function CustomerDatabasePage() {
               </div>
             )}
 
-            {/* TAB 2: MEMBERSHIP & USAGE RULES MANAGEMENT */}
+            {/* TAB 2: MEMBERSHIP DETAILS */}
             {activeTab === 'rules' && (
               <div className="space-y-4">
                 {/* Active Plan Summary Box */}
@@ -627,135 +632,6 @@ export default function CustomerDatabasePage() {
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Management Rules Config Form */}
-                <form onSubmit={handleSaveUsageRules} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                  <h4 className="font-extrabold text-gray-900 flex items-center gap-1.5 text-xs">
-                    <ShieldCheck className="w-4 h-4 text-amber-600" />
-                    Anti-Misuse & Membership Usage Rules
-                  </h4>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Max Services Per Day</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={rulesForm.maxPerDay}
-                        onChange={(e) => setRulesForm({ ...rulesForm, maxPerDay: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Prevents multiple claims in 24 hrs</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Max Services Per Month</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        value={rulesForm.maxPerMonth}
-                        onChange={(e) => setRulesForm({ ...rulesForm, maxPerMonth: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Monthly fair usage cap</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Cool-Off Hours Buffer</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="72"
-                        value={rulesForm.coolOffHours}
-                        onChange={(e) => setRulesForm({ ...rulesForm, coolOffHours: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Min hours between uses</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Vehicle License Plate Binding</label>
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          type="checkbox"
-                          id="boundSwitch"
-                          checked={rulesForm.boundVehiclesOnly}
-                          onChange={(e) => setRulesForm({ ...rulesForm, boundVehiclesOnly: e.target.checked })}
-                          className="w-4 h-4 text-amber-600 rounded"
-                        />
-                        <label htmlFor="boundSwitch" className="font-bold text-gray-800">
-                          {rulesForm.boundVehiclesOnly ? 'Strictly Bound' : 'Any Vehicle Allowed'}
-                        </label>
-                      </div>
-                      <span className="text-[10px] text-gray-500">Must match registered plates</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 font-bold text-white rounded-lg shadow-sm"
-                      style={{ backgroundColor: '#e07b2a' }}
-                    >
-                      Save Usage Rules
-                    </button>
-                  </div>
-                </form>
-
-                {/* Management Administrative Overrides */}
-                <div className="p-4 bg-rose-50/50 rounded-xl border border-rose-200 space-y-3">
-                  <h4 className="font-extrabold text-rose-900 flex items-center gap-1.5 text-xs">
-                    <Lock className="w-4 h-4 text-rose-700" />
-                    Management Override & Anti-Abuse Controls
-                  </h4>
-
-                  {selectedCustomer.segment === 'Suspended Member' ? (
-                    <div className="p-3 bg-purple-100 border border-purple-300 rounded-xl space-y-2">
-                      <p className="font-bold text-purple-900 text-xs">
-                        ⚠️ This membership is currently SUSPENDED.
-                      </p>
-                      <p className="text-[11px] text-purple-800">
-                        Reason: {selectedCustomer.membership?.suspensionReason || 'Not recorded'}
-                      </p>
-                      <button
-                        onClick={handleReactivateMembership}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs"
-                      >
-                        Reactivate / Unsuspend Membership
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <label className="text-gray-700 font-bold block">Suspension Reason (for Admin Record)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Attempted redemption for unregistered vehicle MH02AB9999"
-                        value={suspensionReasonInput}
-                        onChange={(e) => setSuspensionReasonInput(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
-                      />
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSuspendMembership}
-                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg"
-                        >
-                          Suspend Membership
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendExpiry(30)}
-                          className="px-3.5 py-1.5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg"
-                        >
-                          Extend Expiry (+30 Days)
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
