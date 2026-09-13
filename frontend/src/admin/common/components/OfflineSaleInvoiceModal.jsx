@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Loader2 } from 'lucide-react';
+import { X, Download, Loader2, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import ReceiptDocument, { formatReceiptDate, getReceiptValidityRange } from '../../../common/components/ReceiptDocument';
-import { downloadReceiptPdf, getReceiptPdfBlob } from '../../../common/utils/receiptPdfGenerator';
+import { downloadReceiptPdf, getReceiptPdfBlob, copyReceiptImageToClipboard } from '../../../common/utils/receiptPdfGenerator';
 import { apiClient } from '../../../common/utils/apiClient';
 
 
@@ -34,6 +34,8 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isCopyingImage, setIsCopyingImage] = useState(false);
+  const [copiedSuccess, setCopiedSuccess] = useState(false);
   const [statusNotice, setStatusNotice] = useState(null);
   const [editableMessageText, setEditableMessageText] = useState(getDefaultMessage);
 
@@ -41,6 +43,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     setTargetPhone(getInitialPhone());
     setPhoneError('');
     setStatusNotice(null);
+    setCopiedSuccess(false);
     setEditableMessageText(getDefaultMessage());
     if (sale && sale.autoOpenWhatsApp) {
       setShowWhatsAppModal(true);
@@ -98,6 +101,30 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     }
   };
 
+  const handleCopyReceiptImage = async () => {
+    if (!receiptRef.current || isCopyingImage) return;
+    try {
+      setIsCopyingImage(true);
+      await copyReceiptImageToClipboard(receiptRef.current);
+      setCopiedSuccess(true);
+      setStatusNotice({
+        type: 'success',
+        message: '📋 Receipt image copied to clipboard! In WhatsApp, just press Cmd+V (or Ctrl+V) to send.'
+      });
+      setTimeout(() => {
+        setCopiedSuccess(false);
+      }, 4000);
+    } catch (err) {
+      console.error('Failed to copy receipt image:', err);
+      setStatusNotice({
+        type: 'error',
+        message: 'Could not copy image directly to clipboard. You can still download the PDF below.'
+      });
+    } finally {
+      setIsCopyingImage(false);
+    }
+  };
+
   const handleSendWhatsApp = async (phoneToSend) => {
     const rawNumber = phoneToSend !== undefined ? phoneToSend : targetPhone;
     const sanitized = cleanPhoneForWhatsApp(rawNumber);
@@ -135,14 +162,22 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     }
 
     try {
-      // 2. Generate PDF Blob from the exact same ReceiptDocument
+      // 2. Automatically copy receipt image to clipboard for instant Cmd+V pasting in WhatsApp
+      try {
+        await copyReceiptImageToClipboard(receiptRef.current);
+        setCopiedSuccess(true);
+      } catch (copyErr) {
+        console.warn('Auto-clipboard copy failed or unsupported:', copyErr);
+      }
+
+      // 3. Generate PDF Blob from the exact same ReceiptDocument
       const pdfBlob = await getReceiptPdfBlob(receiptRef.current, filename);
       const pdfFile = new File([pdfBlob], filename, {
         type: 'application/pdf',
         lastModified: Date.now()
       });
 
-      // 3. Proactively save PDF to backend in background so direct streaming endpoint is immediately available
+      // 4. Proactively save PDF to backend in background so direct streaming endpoint is immediately available
       try {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -157,7 +192,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
         reader.readAsDataURL(pdfBlob);
       } catch (_) {}
 
-      // 4. Mobile Devices (Android / iPhone):
+      // 5. Mobile Devices (Android / iPhone):
       // Uses navigator.share with both files: [pdfFile] and text: textToSend.
       // When shared to WhatsApp, it attaches the PDF document and sets the message caption.
       if (isMobileDevice && typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
@@ -182,7 +217,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
         }
       }
 
-      // 5. Desktop (Mac/PC Chrome):
+      // 6. Desktop (Mac/PC Chrome):
       // Generates and downloads Invoice-${receiptNo}.pdf locally to the admin's machine
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
@@ -203,6 +238,11 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
       }
 
       setShowWhatsAppModal(false);
+      setStatusNotice({
+        type: 'success',
+        message: '✅ WhatsApp opened! Image copied to clipboard — press Cmd+V (or Ctrl+V) in WhatsApp to paste receipt image.'
+      });
+      setTimeout(() => setStatusNotice(null), 8000);
     } catch (error) {
       console.error('Error in WhatsApp PDF send:', error);
       if (waWindow) {
@@ -241,24 +281,46 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Copy Receipt Image Button */}
+            <button
+              onClick={handleCopyReceiptImage}
+              disabled={isCopyingImage || isGeneratingPdf}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 ${
+                copiedSuccess
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-[#1e3e62] border-slate-300 hover:bg-slate-50'
+              }`}
+              title="Copy receipt as image to clipboard for WhatsApp pasting (Cmd+V)"
+            >
+              {isCopyingImage ? (
+                <Loader2 className="w-4 h-4 animate-spin text-[#1e3e62]" />
+              ) : copiedSuccess ? (
+                <Check className="w-4 h-4 text-white" />
+              ) : (
+                <ImageIcon className="w-4 h-4 text-[#1e3e62]" />
+              )}
+              <span className="hidden md:inline">{copiedSuccess ? 'Image Copied!' : 'Copy Image'}</span>
+              <span className="md:hidden">{copiedSuccess ? 'Copied' : 'Image'}</span>
+            </button>
+
             {/* "Send via WhatsApp" Button */}
             <button
               onClick={() => setShowWhatsAppModal(true)}
               disabled={isGeneratingPdf}
               className="px-4 sm:px-5 py-2 rounded-full text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 bg-[#1ea952] hover:bg-[#16a34a] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Send Receipt via WhatsApp with PDF"
+              title="Send Receipt via WhatsApp with Image & PDF"
             >
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing PDF...</span>
+                  <span>Preparing...</span>
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 24 24">
                     <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
                   </svg>
-                  <span>Send via WhatsApp</span>
+                  <span>Send WhatsApp</span>
                 </>
               )}
             </button>
@@ -267,7 +329,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
             <button
               onClick={handleDownloadPdfOnly}
               disabled={isGeneratingPdf}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 bg-[#e07b2a] hover:bg-[#c96a1e] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-3 sm:px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 bg-[#e07b2a] hover:bg-[#c96a1e] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               title="Download Official A4 PDF"
             >
               {isGeneratingPdf ? (
@@ -275,8 +337,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
               ) : (
                 <Download className="w-4 h-4" />
               )}
-              <span className="hidden sm:inline">Download PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">PDF</span>
             </button>
 
             <button
@@ -290,13 +351,15 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
 
         {/* Status Notice banner (e.g. Cancelled or Success) */}
         {statusNotice && (
-          <div className={`mx-3 sm:mx-6 mt-3 p-2.5 rounded-xl flex items-center justify-between text-xs animate-in fade-in ${
+          <div className={`mx-3 sm:mx-6 mt-3 p-3 rounded-xl flex items-center justify-between text-xs animate-in fade-in shadow-xs ${
             statusNotice.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-slate-100 text-slate-700 border border-slate-200'
+              ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+              : statusNotice.type === 'error'
+              ? 'bg-rose-50 text-rose-900 border border-rose-300'
+              : 'bg-slate-100 text-slate-800 border border-slate-300'
           }`}>
-            <span className="font-semibold">{statusNotice.message}</span>
-            <button onClick={() => setStatusNotice(null)} className="text-gray-400 hover:text-gray-700 p-1">
+            <span className="font-semibold leading-relaxed">{statusNotice.message}</span>
+            <button onClick={() => setStatusNotice(null)} className="text-gray-400 hover:text-gray-700 p-1 ml-2">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -326,7 +389,29 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
             )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap sm:flex-nowrap">
+            {/* Quick Copy Image Button */}
+            <button
+              onClick={handleCopyReceiptImage}
+              disabled={isCopyingImage || isGeneratingPdf}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 ${
+                copiedSuccess
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-slate-50 text-[#1e3e62] border-slate-300 hover:bg-slate-100'
+              }`}
+              title="Copy receipt image to clipboard"
+            >
+              {isCopyingImage ? (
+                <Loader2 className="w-4 h-4 animate-spin text-[#1e3e62]" />
+              ) : copiedSuccess ? (
+                <Check className="w-4 h-4 text-white" />
+              ) : (
+                <Copy className="w-4 h-4 text-[#1e3e62]" />
+              )}
+              <span>{copiedSuccess ? 'Image Copied!' : 'Copy Image'}</span>
+            </button>
+
+            {/* Send via WhatsApp */}
             <button
               onClick={() => setShowWhatsAppModal(true)}
               disabled={isGeneratingPdf}
@@ -335,7 +420,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing PDF...</span>
+                  <span>Preparing...</span>
                 </>
               ) : (
                 <>
@@ -346,10 +431,12 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                 </>
               )}
             </button>
+
+            {/* Download PDF */}
             <button
               onClick={handleDownloadPdfOnly}
               disabled={isGeneratingPdf}
-              className="flex-1 sm:flex-initial px-5 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 bg-[#e07b2a] hover:bg-[#c96a1e] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 bg-[#e07b2a] hover:bg-[#c96a1e] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
               <span>Download PDF</span>
@@ -361,7 +448,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
         {showWhatsAppModal && (
           <div className="fixed inset-0 z-[100000] flex items-center justify-center p-3 bg-black/65 backdrop-blur-xs animate-in fade-in duration-150">
             <div
-              className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 overflow-hidden space-y-4 p-5"
+              className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 overflow-hidden space-y-4 p-5"
               onClick={e => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-3 border-b border-gray-100">
@@ -373,7 +460,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                   </div>
                   <div>
                     <h4 className="text-xs font-black text-gray-900 leading-tight">Send via WhatsApp</h4>
-                    <p className="text-[10px] text-gray-500">Official PDF Receipt</p>
+                    <p className="text-[10px] text-gray-500">Official Receipt Image & PDF</p>
                   </div>
                 </div>
                 <button
@@ -385,6 +472,17 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
               </div>
 
               <div className="space-y-3 text-xs">
+                {/* Visual Direct Image tip box */}
+                <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 space-y-1 text-amber-900">
+                  <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                    <span>💡</span>
+                    <span>Send Visual Receipt Directly:</span>
+                  </div>
+                  <p className="text-[10px] leading-relaxed text-amber-800">
+                    Clicking <strong>Send via WhatsApp</strong> will automatically copy the full visual receipt image to your clipboard. Simply press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) in WhatsApp to paste and send the actual receipt image directly!
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1">
                     Customer Name
@@ -453,18 +551,13 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                     </div>
                     <div className="relative">
                       <textarea
-                        rows={5}
+                        rows={4}
                         value={editableMessageText}
                         onChange={(e) => setEditableMessageText(e.target.value)}
                         placeholder="Type your WhatsApp message..."
                         className="w-full p-2.5 bg-white border border-emerald-300 rounded-xl text-[11px] text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none font-sans leading-relaxed shadow-2xs resize-y"
                       />
                     </div>
-                  </div>
-
-                  <div className="pt-1 flex items-center gap-1.5 text-[10px] text-emerald-800 font-medium">
-                    <span>📄</span>
-                    <span>Shares official A4 PDF (<strong className="font-mono">Invoice-{receiptNo}.pdf</strong>) with direct link.</span>
                   </div>
                 </div>
               </div>
@@ -487,7 +580,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                   {isGeneratingPdf ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Preparing PDF...</span>
+                      <span>Preparing...</span>
                     </>
                   ) : (
                     <>
