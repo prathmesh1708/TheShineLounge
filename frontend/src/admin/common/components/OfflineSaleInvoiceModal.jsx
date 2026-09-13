@@ -473,13 +473,30 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
 
               <div className="space-y-3 text-xs">
                 {/* Visual Direct Image tip box */}
-                <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 space-y-1 text-amber-900">
-                  <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                    <span>💡</span>
-                    <span>Send Visual Receipt Directly:</span>
+                <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2 text-amber-900">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                      <span>💡</span>
+                      <span>Send Direct Receipt Image:</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyReceiptImage}
+                      disabled={isCopyingImage}
+                      className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-bold text-amber-900 hover:bg-amber-100/50 shadow-2xs flex items-center gap-1 transition-colors active:scale-95"
+                    >
+                      {isCopyingImage ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : copiedSuccess ? (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-amber-800" />
+                      )}
+                      <span>{copiedSuccess ? 'Image Copied!' : 'Copy Image Now'}</span>
+                    </button>
                   </div>
                   <p className="text-[10px] leading-relaxed text-amber-800">
-                    Clicking <strong>Send via WhatsApp</strong> will automatically copy the full visual receipt image to your clipboard. Simply press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) in WhatsApp to paste and send the actual receipt image directly!
+                    Clicking <strong>Send via WhatsApp</strong> automatically copies the receipt image to your clipboard. When WhatsApp opens, simply press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) to send the visual receipt directly into the chat!
                   </p>
                 </div>
 
