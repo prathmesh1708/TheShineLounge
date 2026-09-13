@@ -1082,9 +1082,9 @@ export default function SalonAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {mergedSalonStaff.map((stf, idx) => (
+            {mergedSalonStaff.map((stf) => (
               <div 
-                key={stf._id || stf.id || stf.email || `stf-${idx}`} 
+                key={stf._id || stf.id} 
                 onClick={() => handleOpenEditStaff(stf)}
                 className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
               >
@@ -1112,19 +1112,19 @@ export default function SalonAdminHubPage() {
                   <div className="p-2 bg-gray-50 rounded-lg">
                     <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
                     <span className="font-bold text-gray-800 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98210 66666'}
+                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98210 77777'}
                     </span>
                   </div>
                   <div className="p-2 bg-gray-50 rounded-lg">
                     <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '₹38,000 / month'}</span>
+                    <span className="font-bold text-emerald-700">{stf.salary || '₹45,000 / month'}</span>
                   </div>
                 </div>
 
                 {stf.permissions && stf.permissions.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
-                    {stf.permissions.map((p, pIdx) => (
-                      <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                    {stf.permissions.map(p => (
+                      <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
                         {p}
                       </span>
                     ))}
@@ -1142,10 +1142,10 @@ export default function SalonAdminHubPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-base font-black text-gray-900">
-                Men's Salon Promotional Banners ({serviceBanners.length})
+                Salon Promotional Banners ({serviceBanners.length})
               </h3>
               <p className="text-xs text-gray-500">
-                Create new salon promo banners, edit styling offers, toggle visibility on customer app, or delete expired promotions.
+                Create new banners, edit text & images, toggle visibility (show/hide on customer app), or delete offers.
               </p>
             </div>
             <button
@@ -1160,7 +1160,7 @@ export default function SalonAdminHubPage() {
             <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center space-y-3">
               <ImageIcon className="w-10 h-10 text-gray-400 mx-auto" />
               <h4 className="font-extrabold text-sm text-gray-800">No Salon Banners Found</h4>
-              <p className="text-xs text-gray-500 max-w-sm mx-auto">Create a promotional banner to highlight grooming packages, wedding makeover deals, or beard spa discounts.</p>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">Create a promotional banner to highlight special salon combo offers, grooming deals, or discounts.</p>
               <button
                 onClick={handleOpenAddBanner}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all"
@@ -1170,12 +1170,11 @@ export default function SalonAdminHubPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {serviceBanners.map((ban, banIdx) => {
+              {serviceBanners.map(ban => {
                 const isActive = ban.status !== 'inactive';
-                const bId = ban._id || ban.id || `ban-${banIdx}`;
 
                 return (
-                  <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
                     <div>
                       <div className="relative h-44 w-full bg-gray-900">
                         <img src={ban.imageUrl || ban.image} alt={ban.title} className={`w-full h-full object-cover ${!isActive ? 'opacity-40 grayscale' : ''}`} />
@@ -1209,7 +1208,7 @@ export default function SalonAdminHubPage() {
 
                     <div className="p-3 bg-gray-50 flex items-center justify-between gap-2 border-t border-gray-100">
                       <button
-                        onClick={() => handleToggleBanner(bId)}
+                        onClick={() => handleToggleBanner(ban.id)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                           isActive ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
                         }`}
@@ -1227,7 +1226,7 @@ export default function SalonAdminHubPage() {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteBanner(bId)}
+                          onClick={() => handleDeleteBanner(ban.id)}
                           className="p-2 text-red-600 hover:text-red-700 hover:bg-white rounded-lg border border-gray-200 transition-all"
                           title="Delete Banner"
                         >

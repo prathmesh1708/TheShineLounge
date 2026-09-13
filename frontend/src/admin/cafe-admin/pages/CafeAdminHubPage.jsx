@@ -906,9 +906,9 @@ export default function CafeAdminHubPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {displayStaff.map((stf, idx) => (
+              {displayStaff.map((stf) => (
                 <div
-                  key={stf._id || stf.id || stf.email || `stf-${idx}`}
+                  key={stf._id || stf.id}
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all duration-200"
                 >
@@ -962,56 +962,53 @@ export default function CafeAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {serviceBanners.map((ban, banIdx) => {
-              const bId = ban._id || ban.id || `ban-${banIdx}`;
-              return (
-                <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div className="relative">
-                    <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
-                    <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
-                      {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
-                    </span>
+            {serviceBanners.map((ban) => (
+              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div className="relative">
+                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                    {ban.actionLink && (
+                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        CTA Link: {ban.actionLink}
+                      </span>
+                    )}
                   </div>
-                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                    <div className="space-y-1">
-                      <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
-                      <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
-                      {ban.actionLink && (
-                        <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                          CTA Link: {ban.actionLink}
-                        </span>
-                      )}
-                    </div>
 
-                    <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleBannerStatus(ban.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                    </button>
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => toggleBannerStatus(bId)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
-                          ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        onClick={() => handleOpenEditBanner(ban)}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
                       >
-                        {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
                       </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOpenEditBanner(ban)}
-                          className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" /> Edit Details
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBanner(bId)}
-                          className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
-                          title="Delete Banner"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleDeleteBanner(ban.id)}
+                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                        title="Delete Banner"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       )}

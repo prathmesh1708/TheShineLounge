@@ -107,37 +107,39 @@ export default function CarWashAdminHubPage() {
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
-  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey || b.department === 'Car Wash' || (b.link && b.link.includes('car-wash')));
-  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey || i.department === 'Car Wash');
+  const serviceStaff = (staffList || []).filter(s => {
+    if (!s) return false;
+    const isDept = s.serviceKey === serviceKey || s.department === 'Car Wash' || (!s.serviceKey && (!s.department || s.department === 'General'));
+    const isExcluded = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '');
+    return isDept && !isExcluded;
+  });
 
-  // Unified Department Staff combining context staffList and live dbStaff
-  const allDepartmentStaff = (() => {
+  // Unified roster combining AdminContext staff and live MongoDB staff
+  const displayedStaffList = (() => {
     const map = new Map();
-    const isCarWashStaff = (s) => {
-      if (!s) return false;
-      const dept = (s.department || '').toLowerCase();
-      const sk = (s.serviceKey || '').toLowerCase();
-      const role = (s.staffRole || s.role || '').toLowerCase();
-      const isOther = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(role) || /cafe|salon|dog/i.test(dept);
-      if (isOther) return false;
-      return sk === 'car-wash' || dept.includes('wash') || dept.includes('car') || (!sk && !dept);
-    };
-
-    (staffList || []).filter(isCarWashStaff).forEach(s => {
-      const key = (s.email || s._id || s.id || s.fullName || '').toLowerCase().trim();
+    (serviceStaff || []).forEach(s => {
+      if (!s) return;
+      const key = (s._id || s.id || s.email || '').toLowerCase().trim();
       if (key) map.set(key, s);
+      if (s.email) map.set(s.email.toLowerCase().trim(), s);
     });
-
-    (dbStaff || []).filter(isCarWashStaff).forEach(s => {
-      const key = (s.email || s._id || s.id || s.fullName || '').toLowerCase().trim();
-      if (key) {
-        map.set(key, { ...(map.get(key) || {}), ...s });
+    (dbStaff || []).forEach(s => {
+      if (!s) return;
+      const isDept = s.serviceKey === serviceKey || s.department === 'Car Wash' || (!s.serviceKey && (!s.department || s.department === 'General'));
+      const isExcluded = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '');
+      if (isDept && !isExcluded) {
+        const key = (s._id || s.id || s.email || '').toLowerCase().trim();
+        const existing = map.get(key) || (s.email ? map.get(s.email.toLowerCase().trim()) : null);
+        const merged = existing ? { ...existing, ...s } : s;
+        if (key) map.set(key, merged);
+        if (s.email) map.set(s.email.toLowerCase().trim(), merged);
       }
     });
-
-    return Array.from(map.values());
+    return Array.from(new Set(map.values()));
   })();
-  const serviceStaff = allDepartmentStaff;
+
+  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
+  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey || i.department === 'Car Wash');
 
   // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
   const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -951,7 +953,6 @@ export default function CarWashAdminHubPage() {
           return updated;
         });
         addStaff?.(savedStaff);
-        fetchLiveStaff();
       } else {
         setDbStaff(prev => {
           const updated = [newStaffData, ...prev.filter(s => s.email?.toLowerCase() !== newStaffData.email?.toLowerCase())];
@@ -960,7 +961,6 @@ export default function CarWashAdminHubPage() {
         });
         addStaff?.(newStaffData);
         showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
-        fetchLiveStaff();
       }
     } catch (err) {
       console.warn('Backend API staff save returned error, applying local fallback:', err.message);
@@ -972,6 +972,10 @@ export default function CarWashAdminHubPage() {
       addStaff?.(newStaffData);
       showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
     }
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: newStaffData }));
+    } catch (e) {}
 
     setAddStaffModal(false);
     setStaffForm({
@@ -1022,37 +1026,34 @@ export default function CarWashAdminHubPage() {
     const sId = selectedStaff?._id || selectedStaff?.id;
     if (!sId) return;
 
-    try {
-      const payload = {
-        fullName: editStaffForm.fullName,
-        email: editStaffForm.email,
-        mobile: editStaffForm.mobile,
-        staffRole: editStaffForm.staffRole,
-        salary: editStaffForm.salary,
-        leaveBalance: Number(editStaffForm.leaveBalance),
-        photo: editStaffForm.photo,
-        permissions: editStaffForm.permissions
-      };
-      if (editStaffForm.password) {
-        payload.password = editStaffForm.password;
-      }
+    const payload = {
+      fullName: editStaffForm.fullName,
+      email: editStaffForm.email,
+      mobile: editStaffForm.mobile,
+      staffRole: editStaffForm.staffRole,
+      salary: editStaffForm.salary,
+      leaveBalance: Number(editStaffForm.leaveBalance),
+      photo: editStaffForm.photo,
+      permissions: editStaffForm.permissions
+    };
+    if (editStaffForm.password) {
+      payload.password = editStaffForm.password;
+    }
 
-      updateStaff?.(sId, payload);
+    try {
       const res = await apiClient.put(`/users/staff/${sId}`, payload);
       if (res.data && res.data.success) {
         showToast?.('✅ Staff member updated successfully!');
-        fetchLiveStaff();
-        setEditStaffModal(false);
-      } else {
-        showToast?.('Staff updated locally');
-        fetchLiveStaff();
-        setEditStaffModal(false);
       }
     } catch (err) {
-      showToast?.('Staff updated locally: ' + (err.response?.data?.message || err.message));
-      fetchLiveStaff();
-      setEditStaffModal(false);
+      console.warn('Staff update API error:', err);
     }
+
+    setDbStaff(prev => prev.map(st => (st._id === sId || st.id === sId || (st.email && st.email.toLowerCase() === editStaffForm.email.toLowerCase())) ? { ...st, ...payload } : st));
+    updateStaff?.(sId, payload);
+    try { window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: payload })); } catch (e) {}
+    fetchLiveStaff();
+    setEditStaffModal(false);
   };
 
   const handleDeleteStaff = async () => {
@@ -1063,23 +1064,17 @@ export default function CarWashAdminHubPage() {
     if (!confirmDel) return;
 
     try {
-      deleteStaff?.(sId, editStaffForm.email);
-      setDbStaff(prev => prev.filter(s => s._id !== sId && s.id !== sId && s.email?.toLowerCase() !== editStaffForm.email?.toLowerCase()));
-      const res = await apiClient.delete(`/users/staff/${sId}`);
-      if (res.data && res.data.success) {
-        showToast?.('✅ Staff member deleted successfully!', 'error');
-        fetchLiveStaff();
-        setEditStaffModal(false);
-      } else {
-        showToast?.('Staff member deleted', 'error');
-        fetchLiveStaff();
-        setEditStaffModal(false);
-      }
+      await apiClient.delete(`/users/staff/${sId}`);
+      showToast?.('✅ Staff member deleted successfully!', 'error');
     } catch (err) {
-      showToast?.('Staff member deleted locally', 'error');
-      fetchLiveStaff();
-      setEditStaffModal(false);
+      console.warn('Staff delete API error:', err);
     }
+
+    setDbStaff(prev => prev.filter(st => st._id !== sId && st.id !== sId && st.email?.toLowerCase() !== editStaffForm.email?.toLowerCase()));
+    deleteStaff?.(sId, editStaffForm.email);
+    try { window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: { id: sId, email: editStaffForm.email } })); } catch (e) {}
+    fetchLiveStaff();
+    setEditStaffModal(false);
   };
 
   // Banner CRUD Handlers
@@ -1489,7 +1484,7 @@ export default function CarWashAdminHubPage() {
           { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
           { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
           { id: 'vehicles', label: `Registered Vehicles (${registeredVehiclesList.length})`, icon: Shield },
-          { id: 'staff', label: `Department Staff (${dbStaff.length || serviceStaff.length})`, icon: Users },
+          { id: 'staff', label: `Department Staff (${displayedStaffList.length})`, icon: Users },
           { id: 'marketing', label: `Promos & Media (${serviceBanners.length})`, icon: ImageIcon },
           { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
         ].map((tab) => {
@@ -1497,7 +1492,7 @@ export default function CarWashAdminHubPage() {
           const isActive = activeTab === tab.id;
           return (
             <button
-              key={tab.id}
+              key={`tab-btn-${tab.id}`}
               onClick={() => handleTabChange(tab.id)}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 isActive ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100'
@@ -1639,8 +1634,8 @@ export default function CarWashAdminHubPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Pricing Cards */}
-            {activePricing.map((p) => (
-              <div key={p._id || p.id || p.title} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
+            {activePricing.map((p, pIdx) => (
+              <div key={`pricing-card-${p._id || p.id || p.title || pIdx}`} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
                 <div className="space-y-2">
                   <div className="flex justify-between items-start">
                     <h4 className="text-lg font-black text-gray-900">{p.title || p.name}</h4>
@@ -1672,12 +1667,12 @@ export default function CarWashAdminHubPage() {
             ))}
 
             {/* Membership Cards */}
-            {activeMemberships.map((m) => {
+            {activeMemberships.map((m, mIdx) => {
               const planSubs = subscribersForPlan(m);
               const subCount = planSubs.filter(s => s.isActive).length;
               const queuedCount = planSubs.filter(s => s.isQueued).length;
               return (
-                <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
+                <div key={`membership-card-${m._id || m.id || m.name || mIdx}`} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
                   <div className="space-y-2">
                     <div className="flex justify-between items-start flex-wrap gap-1">
                       <h4 className="text-lg font-black text-gray-900">{m.name}</h4>
@@ -1756,7 +1751,7 @@ export default function CarWashAdminHubPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({allDepartmentStaff.length})</h3>
+              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({displayedStaffList.length})</h3>
               <p className="text-xs text-gray-500">Onboard staff members, generate email login credentials & assign module access</p>
             </div>
             <button
@@ -1768,56 +1763,64 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {allDepartmentStaff.map((stf, idx) => (
-              <div 
-                key={stf._id || stf.id || stf.email || `stf-${idx}`} 
-                onClick={() => handleOpenEditStaff(stf)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <img
-                    src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
-                    alt={stf.fullName || stf.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
-                  />
-                  <div className="space-y-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {stf.isActive !== false ? 'Active' : 'Inactive'}
+            {displayedStaffList.length === 0 ? (
+              <div className="col-span-full text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl space-y-2">
+                <Users className="w-8 h-8 text-gray-300 mx-auto" />
+                <p className="font-bold text-gray-700">No Car Wash Staff Members Found</p>
+                <p className="text-xs text-gray-400">Click "Onboard New Staff Member" above to add staff credentials to this department.</p>
+              </div>
+            ) : (
+              displayedStaffList.map((stf, sIdx) => (
+                <div 
+                  key={`stf-${stf._id || stf.id || stf.email || sIdx}`} 
+                  onClick={() => handleOpenEditStaff(stf)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={stf.photo || stf.avatar || stf.profileImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"}
+                      alt={stf.fullName || stf.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/30 flex-shrink-0"
+                    />
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
+                      <span className="font-bold text-gray-800 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
                       </span>
                     </div>
-                    <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
-                    <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                      <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
-                    </p>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
-                    <span className="font-bold text-gray-800 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
-                    </span>
-                  </div>
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
-                  </div>
+                  {stf.permissions && stf.permissions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {stf.permissions.map((p, pIdx) => (
+                        <span key={`stf-perm-${stf._id || stf.id || stf.email || sIdx}-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                {stf.permissions && stf.permissions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {stf.permissions.map((p, pIdx) => (
-                      <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1893,7 +1896,7 @@ export default function CarWashAdminHubPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {registeredVehiclesList.map((v, i) => (
                 <div
-                  key={v.plate || i}
+                  key={`veh-card-${v.plate || v.id || i}`}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
                   onClick={() => {
                     const plate = (v.plate || '').toUpperCase().trim();
@@ -2225,56 +2228,53 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {serviceBanners.map((ban, banIdx) => {
-              const bId = ban._id || ban.id || `ban-${banIdx}`;
-              return (
-                <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div className="relative">
-                    <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
-                    <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
-                      {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
-                    </span>
+            {serviceBanners.map((ban, bIdx) => (
+              <div key={`ban-${ban._id || ban.id || ban.title || bIdx}`} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div className="relative">
+                  <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
+                  <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
+                    {ban.status !== 'inactive' ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
+                    {ban.actionLink && (
+                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        CTA Link: {ban.actionLink}
+                      </span>
+                    )}
                   </div>
-                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                    <div className="space-y-1">
-                      <h4 className="font-extrabold text-sm text-gray-900">{ban.title}</h4>
-                      <p className="text-[11px] text-gray-500 leading-relaxed">{ban.subtitle}</p>
-                      {ban.actionLink && (
-                        <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                          CTA Link: {ban.actionLink}
-                        </span>
-                      )}
-                    </div>
 
-                    <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleBannerStatus(ban.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
+                        ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                    </button>
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => toggleBannerStatus(bId)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 ${
-                          ban.status !== 'inactive' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        onClick={() => handleOpenEditBanner(ban)}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
                       >
-                        {ban.status !== 'inactive' ? 'Hide Banner' : 'Show Banner'}
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Details
                       </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOpenEditBanner(ban)}
-                          className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" /> Edit Details
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBanner(bId)}
-                          className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
-                          title="Delete Banner"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleDeleteBanner(ban.id)}
+                        className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+                        title="Delete Banner"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -3295,8 +3295,8 @@ export default function CarWashAdminHubPage() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {staffAttendanceLogs.map((log) => (
-                    <div key={log._id || log.id} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
+                  {staffAttendanceLogs.map((log, logIdx) => (
+                    <div key={`log-${log._id || log.id || `${log.date}-${logIdx}`}`} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-gray-800">{log.date}</span>

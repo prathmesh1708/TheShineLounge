@@ -261,7 +261,32 @@ export default function CarDetailingAdminHubPage() {
 
   const registeredVehiclesList = Object.values(registeredVehiclesMap);
 
-  const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
+  const serviceStaff = (staffList || []).filter(s => {
+    if (!s) return false;
+    return s.serviceKey === serviceKey || (s.department && s.department.toLowerCase().includes('detail'));
+  });
+
+  const displayedStaffList = (() => {
+    const map = new Map();
+    (serviceStaff || []).forEach(s => {
+      if (!s) return;
+      const key = (s._id || s.id || s.email || '').toLowerCase().trim();
+      if (key) map.set(key, s);
+      if (s.email) map.set(s.email.toLowerCase().trim(), s);
+    });
+    (dbStaff || []).forEach(s => {
+      if (!s) return;
+      if (s.serviceKey === serviceKey || (s.department && s.department.toLowerCase().includes('detail'))) {
+        const key = (s._id || s.id || s.email || '').toLowerCase().trim();
+        const existing = map.get(key) || (s.email ? map.get(s.email.toLowerCase().trim()) : null);
+        const merged = existing ? { ...existing, ...s } : s;
+        if (key) map.set(key, merged);
+        if (s.email) map.set(s.email.toLowerCase().trim(), merged);
+      }
+    });
+    return Array.from(new Set(map.values()));
+  })();
+
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
 
@@ -815,7 +840,7 @@ export default function CarDetailingAdminHubPage() {
           { id: 'treatments', label: `Car Detailing (${detailingServices.length})`, icon: Wrench },
           { id: 'overview', label: 'Overview & Revenue', icon: TrendingUp },
           { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
-          { id: 'staff', label: `Department Staff (${serviceStaff.length})`, icon: Users },
+          { id: 'staff', label: `Department Staff (${displayedStaffList.length})`, icon: Users },
           { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon },
           { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
         ].map((tab) => {
@@ -823,7 +848,7 @@ export default function CarDetailingAdminHubPage() {
           const isActive = activeTab === tab.id || (tab.id === 'treatments' && activeTab === 'packages');
           return (
             <button
-              key={tab.id}
+              key={`tab-${tab.id}`}
               onClick={() => handleTabChange(tab.id)}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 isActive ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100'
@@ -1394,7 +1419,7 @@ export default function CarDetailingAdminHubPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-base font-black text-gray-900">
-                Car Detailing Department Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => s.serviceKey === 'car-detailing' || (s.department && s.department.toLowerCase().includes('detail'))).length})
+                Car Detailing Department Staff ({displayedStaffList.length})
               </h3>
               <p className="text-xs text-gray-500">
                 Onboard detailing specialists, generate email login credentials & assign module access
@@ -1409,11 +1434,16 @@ export default function CarDetailingAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
-              .filter(s => s.serviceKey === 'car-detailing' || (s.department && s.department.toLowerCase().includes('detail')))
-              .map((stf, idx) => (
+            {displayedStaffList.length === 0 ? (
+              <div className="col-span-full text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl space-y-2">
+                <Users className="w-8 h-8 text-gray-300 mx-auto" />
+                <p className="font-bold text-gray-700">No Detailing Staff Members Found</p>
+                <p className="text-xs text-gray-400">Click "Onboard New Staff Member" above to add staff credentials to this department.</p>
+              </div>
+            ) : (
+              displayedStaffList.map((stf, sIdx) => (
                 <div 
-                  key={stf._id || stf.id || stf.email || `stf-${idx}`} 
+                  key={`stf-${stf._id || stf.id || stf.email || sIdx}`} 
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
                 >
@@ -1452,15 +1482,16 @@ export default function CarDetailingAdminHubPage() {
 
                   {stf.permissions && stf.permissions.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {stf.permissions.map((p, pIdx) => (
-                        <span key={`perm-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                      {stf.permissions.map(p => (
+                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
                           {p}
                         </span>
                       ))}
                     </div>
                   )}
                 </div>
-              ))}
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1499,12 +1530,11 @@ export default function CarDetailingAdminHubPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {serviceBanners.map((ban, banIdx) => {
+              {serviceBanners.map(ban => {
                 const isActive = ban.status !== 'inactive';
-                const bId = ban._id || ban.id || `ban-${banIdx}`;
 
                 return (
-                  <div key={bId} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
                     <div>
                       <div className="relative h-44 w-full bg-gray-900">
                         <img src={ban.imageUrl || ban.image} alt={ban.title} className={`w-full h-full object-cover ${!isActive ? 'opacity-40 grayscale' : ''}`} />
@@ -1538,7 +1568,7 @@ export default function CarDetailingAdminHubPage() {
 
                     <div className="p-3 bg-gray-50 flex items-center justify-between gap-2 border-t border-gray-100">
                       <button
-                        onClick={() => handleToggleBanner(bId)}
+                        onClick={() => handleToggleBanner(ban.id)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                           isActive ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
                         }`}
