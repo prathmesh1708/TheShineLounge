@@ -487,47 +487,13 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
           </div>
         </div>
 
-        {/* 5. MEMBERSHIP CONFIRMED BANNER */}
-        <div
-          style={{
-            backgroundColor: '#1e3e62',
-            color: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 22px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '46px'
-          }}
-        >
-          <span
-            style={{
-              fontSize: '12.5px',
-              fontWeight: 900,
-              letterSpacing: '0.8px',
-              textTransform: 'uppercase'
-            }}
-          >
-            {isMembership ? 'MEMBERSHIP CONFIRMED' : 'SERVICE CONFIRMED'}
-          </span>
-          <span
-            style={{
-              fontSize: '12px',
-              color: '#dbeafe',
-              fontWeight: 500
-            }}
-          >
-            {isMembership ? `Valid ${validityRange}` : `Completed on ${issuedDate}`}
-          </span>
-        </div>
-
         {/* 6. FOOTER */}
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-end',
-            paddingTop: '16px'
+            paddingTop: '24px'
           }}
         >
           <div>
