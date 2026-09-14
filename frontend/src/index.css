@@ -4091,10 +4091,10 @@ h1, h2, h3, h4, h5, h6 {
   body * {
     visibility: hidden !important;
   }
-  #gst-invoice-content, #gst-invoice-content * {
+  #printable-tsl-receipt, #printable-tsl-receipt * {
     visibility: visible !important;
   }
-  #gst-invoice-content {
+  #printable-tsl-receipt {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useStaff } from '../common/context/StaffContext';
 import { Receipt, Plus, Trash2, Printer, Tag, Sparkles, CheckCircle2, ShieldCheck, Calculator } from 'lucide-react';
 import serviceApi from '../../common/services/serviceApi';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
+import { downloadReceiptPdf } from '../../common/utils/receiptPdfGenerator';
 
 // Helper function to extract pure admin-configured services & packages from DB / cached service object
 const extractAdminServices = (serviceData) => {
@@ -261,6 +262,7 @@ export default function StaffInvoicingPage() {
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [generatedInvoice, setGeneratedInvoice] = useState(null);
+  const receiptRef = useRef(null);
 
   // Keep selectedCustomer synchronized when customers list updates
   useEffect(() => {
@@ -673,7 +675,7 @@ export default function StaffInvoicingPage() {
 
       {/* Generated Receipt Preview Modal */}
       {generatedInvoice && (
-        <div className="bg-white rounded-3xl p-5 shadow-2xl border border-gray-300 space-y-3">
+        <div ref={receiptRef} id="printable-tsl-receipt" className="bg-white rounded-3xl p-5 shadow-2xl border border-gray-300 space-y-3">
           <div className="text-center border-b pb-2">
             <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
               {generatedInvoice.businessName}
@@ -760,10 +762,10 @@ export default function StaffInvoicingPage() {
           </div>
 
           <button
-            onClick={() => window.print()}
+            onClick={() => downloadReceiptPdf(receiptRef.current, 'Receipt.pdf')}
             className="w-full py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition-colors"
           >
-            <Printer className="w-4 h-4" /> Print PDF Receipt
+            <Printer className="w-4 h-4" /> Download PDF Receipt
           </button>
         </div>
       )}
