@@ -185,8 +185,54 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     }
   });
 
-  // 4. Pool of all memberships (Admin Panel Memberships + props + localStorage, no mock data)
+  // 4. Pool of all memberships (MongoDB bookings + Admin Panel Memberships + props + localStorage, no mock data)
   const combinedMembershipsMap = new Map();
+
+  // Ingest live memberships directly from MongoDB bookings array
+  (bookings || []).forEach(b => {
+    if (!b) return;
+    const bId = String(b.id || b.bookingId || '');
+    if (
+      bId.startsWith('BK-90') ||
+      bId.startsWith('B-2026-88') ||
+      bId.startsWith('BK-SAL-') ||
+      bId.startsWith('BK-70') ||
+      bId.startsWith('BK-80') ||
+      bId.startsWith('JOB-700') ||
+      bId.startsWith('DT-2026-10')
+    ) {
+      return;
+    }
+    const isMem = b.saleType === 'membership' || isMembershipPackage(b.packageName || b.planName || b.plan || b.serviceName || b.membershipName);
+    const sKey = (b.serviceKey || '').toLowerCase();
+    const isCarWashOrDetailing = !sKey || sKey === 'car-wash' || sKey === 'carwash' || sKey === 'car-detailing';
+
+    if (isMem && isCarWashOrDetailing) {
+      const mKey = normalizeMembershipId(b.id || b.bookingId || b._id) || normalizePlate(b.vehicleNo);
+      if (mKey) {
+        const priceVal = Number(b.price !== undefined && b.price !== null ? b.price : (b.amount !== undefined && b.amount !== null ? b.amount : (b.total || 2499)));
+        combinedMembershipsMap.set(mKey, {
+          id: b.id || b.bookingId || b._id,
+          bookingId: b.bookingId || b.id || b._id,
+          customerName: b.customerName || 'Valued Member',
+          phone: b.phone || b.mobile || '',
+          email: b.customerEmail || b.email || '',
+          vehicleNo: b.vehicleNo || '',
+          vehicleModel: b.vehicleModel || b.vehicleType || 'Car',
+          planName: b.membershipName || b.packageName || b.planName || b.plan || 'Monthly Membership',
+          serviceKey: b.serviceKey || 'car-wash',
+          startDate: b.saleDate || b.date || 'Today',
+          expiryDate: b.membershipExpiry || b.expiryDate || '',
+          washesUsed: b.washesUsed || 0,
+          maxWashes: b.maxWashes || catalogLimits['monthly membership'] || 30,
+          status: b.status || 'Active',
+          amount: priceVal,
+          price: priceVal,
+          total: priceVal
+        });
+      }
+    }
+  });
 
   // Pull live data from Admin Panel -> Membership
   try {
@@ -197,7 +243,12 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
         parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100')).forEach(m => {
           if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
             const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
-            combinedMembershipsMap.set(mKey, m);
+            if (mKey) {
+              combinedMembershipsMap.set(mKey, {
+                ...(combinedMembershipsMap.get(mKey) || {}),
+                ...m
+              });
+            }
           }
         });
       }
@@ -205,29 +256,34 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   } catch (e) {}
 
   (memberships || []).forEach(m => {
-    if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
+    if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
       const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
-      combinedMembershipsMap.set(mKey, m);
+      if (mKey) {
+        combinedMembershipsMap.set(mKey, {
+          ...(combinedMembershipsMap.get(mKey) || {}),
+          ...m
+        });
+      }
     }
   });
 
   // Also include offline sales with saleType === 'membership'
   allOfflineSalesMap.forEach((s) => {
-    if (s.saleType === 'membership') {
+    if (s.saleType === 'membership' || isMembershipPackage(s.packageName || s.planName || s.plan || '')) {
       const sKey = normalizeMembershipId(s.id || s.bookingId) || normalizePlate(s.vehicleNo);
-      if (!combinedMembershipsMap.has(sKey)) {
+      if (sKey && !combinedMembershipsMap.has(sKey)) {
         const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
         combinedMembershipsMap.set(sKey, {
           id: s.id || s.bookingId,
-          customerName: s.customerName,
-          phone: s.phone,
-          email: s.customerEmail || '',
-          vehicleNo: s.vehicleNo,
+          customerName: s.customerName || 'Valued Member',
+          phone: s.phone || s.mobile || '',
+          email: s.customerEmail || s.email || '',
+          vehicleNo: s.vehicleNo || '',
           vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
-          planName: s.membershipName || s.packageName || s.planName || 'Monthly Membership',
+          planName: s.membershipName || s.packageName || s.planName || s.plan || 'Monthly Membership',
           serviceKey: s.serviceKey || 'car-wash',
-          startDate: s.date || s.saleDate,
-          expiryDate: s.membershipExpiry || '',
+          startDate: s.date || s.saleDate || 'Today',
+          expiryDate: s.membershipExpiry || s.expiryDate || '',
           washesUsed: 0,
           maxWashes: catalogLimits['monthly membership'] || 30,
           status: 'Active',
@@ -285,7 +341,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
       // STRICT VALIDITY WINDOW: Only count washes logged on or after the pass start/purchase date, up to its expiry
       if (sDate) {
-        const wDate = parseFlexibleDate(w.date || w.saleDate || w.createdAt);
+        const wDate = parseFlexibleDate(w.date || w.saleDate || w.createdAt || w.bookedAt);
         if (wDate) {
           if (wDate < sDate) return false;
           if (eDate && wDate > eDate) return false;
@@ -337,8 +393,18 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
     const isUnlimited = maxWashes === 999 || maxWashes === 'Unlimited';
     const isExhausted = !isUnlimited && washData.washesUsed >= maxWashes;
-    let status = mem.status || 'Active';
-    if (isExhausted) status = 'Exhausted';
+    const parsedExpiry = parseFlexibleDate(expiryDateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let status = 'Active';
+    if (mem.status === 'Cancelled' || mem.status === 'Revoked') {
+      status = mem.status;
+    } else if (parsedExpiry && parsedExpiry < today) {
+      status = 'Expired';
+    } else if (isExhausted) {
+      status = 'Exhausted';
+    }
 
     const passKey = `MEM_${cleanPlate || mem.id}`;
     processedPassKeys.add(passKey);
@@ -426,6 +492,19 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     if (isMembership) {
       // Offline membership sale
       const washData = getWashesForVehicle(cleanPlate, ownerName, phone, 0, rec.date, rec.membershipExpiry);
+      const parsedExpiry = parseFlexibleDate(rec.membershipExpiry);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let status = 'Active';
+      if (rec.status === 'Cancelled' || rec.status === 'Revoked') {
+        status = rec.status;
+      } else if (parsedExpiry && parsedExpiry < today) {
+        status = 'Expired';
+      } else if (washData.washesUsed >= (catalogLimits['monthly membership'] || 30)) {
+        status = 'Exhausted';
+      }
+
       passItems.push({
         id: bId || `MEM-${Date.now()}`,
         vehicleNo: plate || '—',
@@ -443,7 +522,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
         expiryDate: rec.membershipExpiry || '30 Days',
         validity: rec.membershipValidity || '1 Month (30 Days)',
         lastWashDate: washData.lastWashDate || rec.date || '—',
-        status: 'Active',
+        status,
         washHistory: washData.washHistory,
         rawAmount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
         amount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
@@ -499,6 +578,8 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   return passItems;
 }
 
+const recentWashLogMap = new Map();
+
 /**
  * Logs a completed wash for a vehicle directly by ground staff.
  * Updates backend /bookings, saves to tsl_offline_sales, and dispatches events.
@@ -511,6 +592,17 @@ export async function recordStaffWashDone({
   membershipName,
   serviceKey = 'car-wash'
 }) {
+  const normPlate = String(vehicleNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const nowMs = Date.now();
+  if (normPlate && recentWashLogMap.has(normPlate)) {
+    const lastTime = recentWashLogMap.get(normPlate);
+    if (nowMs - lastTime < 5000) {
+      console.warn(`Wash done debounced for ${normPlate} (clicked within 5s)`);
+      return null;
+    }
+  }
+  if (normPlate) recentWashLogMap.set(normPlate, nowMs);
+
   const newId = `WASH-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });

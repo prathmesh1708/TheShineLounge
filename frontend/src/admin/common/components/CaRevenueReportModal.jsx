@@ -125,7 +125,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
           <div>
             <div class="logo-text">${cs.businessName || 'The Shine Lounge Pvt Ltd'}</div>
             <div class="sub-text">Trade Name: ${cs.tradeName || 'The Shine Lounge'} • GSTIN: <strong>${cs.gstin || '27AABCT8742L1ZK'}</strong> • PAN: <strong>${cs.pan || 'AABCT8742L'}</strong></div>
-            <div class="sub-text">${cs.registeredAddress || 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai 400013'}</div>
+            <div class="sub-text">${cs.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'}</div>
           </div>
           <div class="meta-badge">
             <div>AUDIT STATEMENT: <strong>${timeRange}</strong></div>

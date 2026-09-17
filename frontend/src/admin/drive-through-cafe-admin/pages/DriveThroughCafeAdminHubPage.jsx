@@ -74,9 +74,7 @@ export default function DriveThroughCafeAdminHubPage() {
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'overview');
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {

@@ -200,8 +200,8 @@ export default function ManageBookingsPage() {
 
       {/* Main Table */}
       <DataTable
-        columns={columns}
-        data={bookings}
+        columns={columns || []}
+        data={(bookings || []).filter(b => b && !String(b.id || b.bookingId || '').startsWith('WASH-'))}
         searchPlaceholder="Search bookings by ID, customer name, email, service..."
         searchKeys={['id', 'customerName', 'phone', 'customerEmail', 'service', 'serviceName', 'vehicleNo', 'plan', 'packageName']}
         filterKey="status"

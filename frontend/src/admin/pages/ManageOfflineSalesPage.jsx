@@ -110,7 +110,8 @@ export default function ManageOfflineSalesPage() {
 
   // Filter offline sales from bookings and localStorage seamlessly (no mock data)
   const offlineSales = useMemo(() => {
-    const fromBookings = bookings.filter(b =>
+    const fromBookings = (bookings || []).filter(b =>
+      b &&
       !b.isDeleted &&
       !String(b.bookingId || b.id || '').startsWith('WASH-') &&
       b.bookingId !== 'OFS-MTJX5GRW-3986' &&

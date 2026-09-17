@@ -7,8 +7,8 @@ export const defaultCalculationSettings = {
   tradeName: 'The Shine Lounge',
   gstin: '27AABCT8742L1ZK',
   pan: 'AABCT8742L',
-  stateCode: '27 - Maharashtra',
-  registeredAddress: 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai, Maharashtra 400013',
+  stateCode: '06 - Haryana',
+  registeredAddress: '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101',
 
   // GST & Tax Presets
   defaultGstRate: 18, // 18% standard rate

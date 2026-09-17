@@ -114,9 +114,7 @@ export default function CarDetailingAdminHubPage() {
   };
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'treatments');
   }, [searchParams]);
 
   useEffect(() => {

@@ -250,7 +250,18 @@ export function StaffProvider({ children }) {
             timeSlot: b.timeSlot || b.time || '02:00 PM',
             amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
             total: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
+            price: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
             status: b.status || 'Confirmed',
+            isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && b.bookingId.startsWith('OFS-')),
+            saleType: b.saleType || (isMembershipPackage(b.packageName || b.package || b.membershipName || b.serviceName) ? 'membership' : 'service'),
+            membershipName: b.membershipName || '',
+            membershipValidity: b.membershipValidity || '',
+            membershipExpiry: b.membershipExpiry || '',
+            customerEmail: b.customerEmail || '',
+            packageName: b.packageName || b.package || b.serviceName || '',
+            bookingId: b.bookingId || b.id || b._id,
+            saleDate: b.saleDate || b.date || '',
+            paymentMode: b.paymentMode || '',
             stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
             notes: b.notes || '',
             photos: b.photos || [],
@@ -377,7 +388,7 @@ export function StaffProvider({ children }) {
       ...localDogJobs.filter(notAlreadyLive),
       ...localSalonJobs.filter(notAlreadyLive)
     ];
-    const baseJobsList = combined.length > 0 ? combined : mockAssignedJobs;
+    const baseJobsList = combined;
 
     // Merge any locally synced job updates (stepIndex, status, notes, photos)
     let syncJobsMap = {};

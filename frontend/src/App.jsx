@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { ThemeProvider } from './common/context/ThemeContext';
 import { AuthProvider } from './common/context/AuthContext';
+import { NotificationProvider } from './common/context/NotificationContext';
 import { AdminRoute, StaffRoute } from './common/components/ProtectedRoute';
 import { initializePushNotifications, setupForegroundNotificationHandler } from './common/services/pushNotificationService';
 
@@ -11,8 +12,27 @@ import { initializePushNotifications, setupForegroundNotificationHandler } from 
 import Navbar from './common/components/Navbar';
 import BottomNavbar from './common/components/BottomNavbar';
 
-// Admin Panel Layout & Login
-import { AdminLayout, AdminLoginPage } from './admin';
+// Admin Panel Layout & Pages
+import {
+  AdminLayout,
+  AdminLoginPage,
+  AdminDashboardPage,
+  ManageServicesPage,
+  ManageBannersPage,
+  ManageNotificationsPage,
+  AdminFeedbackPage,
+  ManageMembershipsPage,
+  ManageBookingsPage,
+  ManageStaffPage,
+  CustomerDatabasePage,
+  InventoryManagementPage,
+  RevenueReportsPage,
+  OffersCouponsPage,
+  AdminSettingsPage,
+  ManageOfflineSalesPage,
+  AdminCalculationSettingsPage,
+  ServiceModulePage
+} from './admin';
 
 // Staff Application Mobile Layout & Pages
 import {
@@ -29,7 +49,7 @@ import {
   StaffProfilePage
 } from './staff';
 
-// Pages
+// Customer Pages
 import Home from './pages/Home';
 import CafePage from './cafe/pages/CafePage';
 import DriveThroughCafePage from './drive-through-cafe/pages/DriveThroughCafePage';
@@ -49,7 +69,6 @@ import ErrorBoundary from './common/components/ErrorBoundary';
 // Premium Framer Motion Page transition wrapper
 function PageTransition({ children }) {
   const location = useLocation();
-  // Group by primary route section so sub-navigation doesn't trigger parent-child AnimatePresence DOM collisions
   const sectionKey = location.pathname.split('/')[1] || 'root';
 
   return (
@@ -71,6 +90,9 @@ function MainAppContent() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isStaffRoute = location.pathname.startsWith('/staff');
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/admin/login' || location.pathname === '/staff/login';
+  const isReceiptRoute = location.pathname.startsWith('/receipt');
+  const isCleanLayout = isAuthRoute || isReceiptRoute || isAdminRoute || isStaffRoute;
 
   React.useEffect(() => {
     initializePushNotifications();
@@ -79,86 +101,85 @@ function MainAppContent() {
     });
   }, []);
 
-  if (isAdminRoute) {
-    const isAdminLogin = location.pathname === '/admin/login';
-
-    if (isAdminLogin) {
-      return (
-        <Routes>
-          <Route path="/admin/login" element={<AdminLoginPage />} />
-        </Routes>
-      );
-    }
-
-    return (
-      <AdminRoute>
-        <Routes>
-          <Route path="/admin/*" element={<AdminLayout />} />
-        </Routes>
-      </AdminRoute>
-    );
-  }
-
-  if (isStaffRoute) {
-    // Allow /staff/login without auth, protect everything else
-    const isStaffLogin = location.pathname === '/staff/login';
-
-    if (isStaffLogin) {
-      return (
-        <Routes>
-          <Route path="/staff/login" element={<StaffLoginPage />} />
-        </Routes>
-      );
-    }
-
-    return (
-      <StaffRoute>
-        <Routes>
-          <Route path="/staff" element={<StaffLayout />}>
-            <Route index element={<StaffDashboardPage />} />
-            <Route path="dashboard" element={<StaffDashboardPage />} />
-            <Route path="attendance" element={<StaffAttendancePage />} />
-            <Route path="bookings" element={<StaffBookingsPage />} />
-            <Route path="customers" element={<StaffCustomersPage />} />
-            <Route path="memberships" element={<StaffMembershipsPage />} />
-            <Route path="invoicing" element={<StaffInvoicingPage />} />
-            <Route path="schedule" element={<StaffSchedulePage />} />
-            <Route path="notifications" element={<StaffNotificationsPage />} />
-            <Route path="profile" element={<StaffProfilePage />} />
-          </Route>
-        </Routes>
-      </StaffRoute>
-    );
-  }
-
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
-  const isReceiptRoute = location.pathname.startsWith('/receipt');
-  const isCleanLayout = isAuthRoute || isReceiptRoute;
-
   return (
     <div className="app-container">
       {!isCleanLayout && <Navbar />}
       
       <main className={isCleanLayout ? "w-full min-h-screen p-0 m-0" : "main-content"}>
         <ErrorBoundary>
-          <PageTransition>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/receipt/:id" element={<CustomerReceiptPage />} />
-              <Route path="/cafe" element={<CafePage />} />
-              <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
-              <Route path="/car-wash" element={<CarWashPage />} />
-              <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
-              <Route path="/car-detailing/*" element={<CarDetailingPage />} />
-              <Route path="/dog-wash/*" element={<DogWashPage />} />
-              <Route path="/salon/*" element={<SalonPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/bookings" element={<BookingsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/login" element={<CustomerAuthPage />} />
-              <Route path="/signup" element={<CustomerAuthPage />} />
-            </Routes>
-          </PageTransition>
+          <Routes>
+            {/* Admin Panel Routes */}
+            <Route path="/admin/login" element={<AdminLoginPage />} />
+            <Route
+              path="/admin/*"
+              element={
+                <AdminRoute>
+                  <AdminLayout />
+                </AdminRoute>
+              }
+            >
+              <Route index element={<AdminDashboardPage />} />
+              <Route path="dashboard" element={<AdminDashboardPage />} />
+              <Route path="car-wash" element={<ServiceModulePage />} />
+              <Route path="car-detailing" element={<ServiceModulePage />} />
+              <Route path="dog-wash" element={<ServiceModulePage />} />
+              <Route path="cafe" element={<ServiceModulePage />} />
+              <Route path="drive-through-cafe" element={<ServiceModulePage />} />
+              <Route path="salon" element={<ServiceModulePage />} />
+              <Route path="services" element={<ManageServicesPage />} />
+              <Route path="banners" element={<ManageBannersPage />} />
+              <Route path="notifications" element={<ManageNotificationsPage />} />
+              <Route path="feedback" element={<AdminFeedbackPage />} />
+              <Route path="memberships" element={<ManageMembershipsPage />} />
+              <Route path="bookings" element={<ManageBookingsPage />} />
+              <Route path="offline-sales" element={<ManageOfflineSalesPage />} />
+              <Route path="staff" element={<ManageStaffPage />} />
+              <Route path="customers" element={<CustomerDatabasePage />} />
+              <Route path="inventory" element={<InventoryManagementPage />} />
+              <Route path="reports" element={<RevenueReportsPage />} />
+              <Route path="calculations" element={<AdminCalculationSettingsPage />} />
+              <Route path="coupons" element={<OffersCouponsPage />} />
+              <Route path="settings" element={<AdminSettingsPage />} />
+            </Route>
+
+            {/* Staff Application Routes */}
+            <Route path="/staff/login" element={<StaffLoginPage />} />
+            <Route
+              path="/staff/*"
+              element={
+                <StaffRoute>
+                  <StaffLayout />
+                </StaffRoute>
+              }
+            >
+              <Route index element={<StaffDashboardPage />} />
+              <Route path="dashboard" element={<StaffDashboardPage />} />
+              <Route path="attendance" element={<StaffAttendancePage />} />
+              <Route path="bookings" element={<StaffBookingsPage />} />
+              <Route path="customers" element={<StaffCustomersPage />} />
+              <Route path="memberships" element={<StaffMembershipsPage />} />
+              <Route path="invoicing" element={<StaffInvoicingPage />} />
+              <Route path="schedule" element={<StaffSchedulePage />} />
+              <Route path="notifications" element={<StaffNotificationsPage />} />
+              <Route path="profile" element={<StaffProfilePage />} />
+            </Route>
+
+            {/* Customer Platform Routes */}
+            <Route path="/" element={<Home />} />
+            <Route path="/receipt/:id" element={<CustomerReceiptPage />} />
+            <Route path="/cafe" element={<CafePage />} />
+            <Route path="/drive-through-cafe" element={<DriveThroughCafePage />} />
+            <Route path="/car-wash" element={<CarWashPage />} />
+            <Route path="/car-wash/confirm" element={<CarWashConfirmPage />} />
+            <Route path="/car-detailing/*" element={<CarDetailingPage />} />
+            <Route path="/dog-wash/*" element={<DogWashPage />} />
+            <Route path="/salon/*" element={<SalonPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/bookings" element={<BookingsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/login" element={<CustomerAuthPage />} />
+            <Route path="/signup" element={<CustomerAuthPage />} />
+          </Routes>
         </ErrorBoundary>
       </main>
 
@@ -173,10 +194,7 @@ function MainAppContent() {
       {!isCleanLayout && <BottomNavbar />}
     </div>
   );
-
 }
-
-import { NotificationProvider } from './common/context/NotificationContext';
 
 export default function App() {
   return (

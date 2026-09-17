@@ -225,13 +225,12 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   const handleToggleDropdown = (key, defaultPath) => {
     if (openDropdownKey === key) {
-      // Toggle accordion or keep open
-      setOpenDropdownKey(null);
-    } else {
-      setOpenDropdownKey(key);
-      if (location.pathname !== defaultPath) {
+      if (!location.pathname.startsWith(defaultPath)) {
         navigate(`${defaultPath}?tab=overview`);
       }
+    } else {
+      setOpenDropdownKey(key);
+      navigate(`${defaultPath}?tab=overview`);
     }
   };
 

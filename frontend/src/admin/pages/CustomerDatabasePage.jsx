@@ -24,7 +24,7 @@ export default function CustomerDatabasePage() {
 
   useEffect(() => {
     if (selectedCustomer) {
-      const updated = customers.find(c => (c._id && c._id === selectedCustomer._id) || (c.id && c.id === selectedCustomer.id));
+      const updated = (customers || []).find(c => c && ((c._id && c._id === selectedCustomer._id) || (c.id && c.id === selectedCustomer.id)));
       if (updated) {
         setSelectedCustomer(prev => ({ ...prev, ...updated }));
       }

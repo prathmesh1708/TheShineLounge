@@ -99,9 +99,7 @@ export default function SalonAdminHubPage() {
   };
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'services');
   }, [searchParams]);
 
   useEffect(() => {

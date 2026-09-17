@@ -232,7 +232,7 @@ export const AdminProvider = ({ children }) => {
   const [settings, setSettings] = useState({
     businessName: 'The Shine Lounge',
     tagline: 'Premium Multi-Service Automotive & Lifestyle Lounge',
-    address: 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai 400013',
+    address: '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101',
     contactPhone: '+91 98200 99999',
     contactEmail: 'admin@theshinelounge.com',
     workingHours: '08:00 AM - 10:00 PM (Mon - Sun)',
@@ -379,6 +379,30 @@ export const AdminProvider = ({ children }) => {
     const soonCutoff = new Date();
     soonCutoff.setDate(soonCutoff.getDate() + 7);
 
+    // Pool all wash redemption records from both allBookings AND localStorage (tsl_offline_sales)
+    const washPoolMap = new Map();
+    const addWashToPool = (b) => {
+      if (!b || !isWashRedemptionRecord(b)) return;
+      const id = b.id || b.bookingId || b._id;
+      const key = id ? (normalizeMembershipId(id) || String(id)) : null;
+      if (key && washPoolMap.has(key)) return;
+      if (key) washPoolMap.set(key, b);
+      else washPoolMap.set(`ANON-${washPoolMap.size}`, b);
+    };
+
+    (bookingList || []).forEach(addWashToPool);
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        offline.forEach(addWashToPool);
+      }
+      const washLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
+      if (Array.isArray(washLogs)) {
+        washLogs.forEach(addWashToPool);
+      }
+    } catch (e) {}
+    const unifiedWashLogs = Array.from(washPoolMap.values());
+
     const derived = schedule.map((record, idx) => {
       const meta = findMembershipMeta(record.packageName, catalog);
       const configuredLimit = meta?.visitLimit !== undefined && meta?.visitLimit !== null
@@ -392,9 +416,8 @@ export const AdminProvider = ({ children }) => {
             ? record.visitLimit
             : (isUnlimited ? 999 : (record.isYearly ? 48 : 4)));
 
-      // Calculate washes used by matching vehicle plate or customer contact
-      const washesUsed = bookingList.filter(b => {
-        if (!isWashRedemptionRecord(b)) return false;
+      // Calculate washes used by matching vehicle plate or customer contact against unified wash logs
+      const washesUsed = unifiedWashLogs.filter(b => {
         if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
 
         const passPlate = normalizePlate(record.vehicleNo);
@@ -416,7 +439,7 @@ export const AdminProvider = ({ children }) => {
 
         if (!isMatch) return false;
 
-        const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt);
+        const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt || b.saleDate);
         if (!washedOn) return false;
         // Count washes on or after purchase date up to expiry
         const effectiveStart = record.startDate ? parseFlexibleDate(record.startDate) : null;
@@ -613,20 +636,43 @@ export const AdminProvider = ({ children }) => {
             });
           } catch (e) {}
 
-          // Rely EXCLUSIVELY on live database bookings + genuine offline sales (no mock salon bookings or fake fallbacks)
-          const cleanBookings = mapped.filter(b =>
-            b &&
-            !String(b.id || b.bookingId || '').startsWith('BK-90') &&
-            !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
-            !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
-            !String(b.id || b.bookingId || '').startsWith('BK-70') &&
-            !String(b.id || b.bookingId || '').startsWith('BK-80') &&
-            b.id !== 'OFS-MTJX5GRW-3986' &&
-            b.bookingId !== 'OFS-MTJX5GRW-3986'
-          );
+          // Cache wash redemption logs in localStorage (tsl_wash_logs) so wash history persists across reloads
+          const washLogsFromMapped = mapped.filter(b => b && (String(b.id || b.bookingId || '').startsWith('WASH-') || isWashRedemptionRecord(b)));
+          try {
+            const cachedWashLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
+            const washMap = new Map();
+            cachedWashLogs.forEach(w => { if (w) washMap.set(w.id || w.bookingId, w); });
+            washLogsFromMapped.forEach(w => { if (w) washMap.set(w.id || w.bookingId, w); });
+            const allWashLogs = Array.from(washMap.values());
+            localStorage.setItem('tsl_wash_logs', JSON.stringify(allWashLogs));
 
+            // Merge cached wash logs into mapped array so no local washes are missing
+            allWashLogs.forEach(w => {
+              if (!mapped.some(m => m.id === w.id || m.bookingId === w.bookingId)) {
+                mapped.unshift(w);
+              }
+            });
+          } catch (e) {}
+
+          const cleanBookings = mapped.filter(b => {
+            if (!b) return false;
+            const bId = String(b.id || b.bookingId || '').trim();
+            if (!bId && !b.customerName) return false;
+            if (
+              bId.startsWith('BK-90') ||
+              bId.startsWith('B-2026-88') ||
+              bId.startsWith('BK-SAL-') ||
+              bId.startsWith('BK-70') ||
+              bId.startsWith('BK-80') ||
+              bId === 'OFS-MTJX5GRW-3986'
+            ) {
+              return false;
+            }
+            return true;
+          });
+
+          setMemberships(deriveMembershipsFromBookings(mapped));
           setBookings(cleanBookings);
-          setMemberships(deriveMembershipsFromBookings(cleanBookings));
         } else {
           setBookings([]);
           setMemberships(deriveMembershipsFromBookings([]));
@@ -636,18 +682,25 @@ export const AdminProvider = ({ children }) => {
         try {
           const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
           if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-            const cleanOffline = cachedOffline.filter(b =>
-              b &&
-              b.id !== 'OFS-MTJX5GRW-3986' &&
-              b.bookingId !== 'OFS-MTJX5GRW-3986' &&
-              !String(b.id || b.bookingId || '').startsWith('BK-90') &&
-              !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-70') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-80')
-            );
+            const cleanOffline = cachedOffline.filter(b => {
+              if (!b) return false;
+              const bId = String(b.id || b.bookingId || '').trim();
+              if (!bId && !b.customerName) return false;
+              if (bId.startsWith('WASH-')) return false;
+              if (
+                bId.startsWith('BK-90') ||
+                bId.startsWith('B-2026-88') ||
+                bId.startsWith('BK-SAL-') ||
+                bId.startsWith('BK-70') ||
+                bId.startsWith('BK-80') ||
+                bId === 'OFS-MTJX5GRW-3986'
+              ) {
+                return false;
+              }
+              return true;
+            });
+            setMemberships(deriveMembershipsFromBookings(cachedOffline));
             setBookings(cleanOffline);
-            setMemberships(deriveMembershipsFromBookings(cleanOffline));
             return;
           }
         } catch (e) {}
@@ -975,16 +1028,19 @@ export const AdminProvider = ({ children }) => {
 
     const handleExternalWashOrSale = (e) => {
       const record = e?.detail;
-      if (record && !record.deleted) {
-        setBookings(prev => {
-          const key = record.id || record.bookingId;
-          if (prev.some(b => (b.id === key || b.bookingId === key))) return prev;
-          const next = [record, ...prev];
-          setMemberships(deriveMembershipsFromBookings(next));
-          return next;
-        });
-        setCustomers(prev => deriveCustomers(prev, [record], [record]));
+      if (!record) return;
+
+      if (!record.deleted && typeof record === 'object' && !Array.isArray(record)) {
+        const key = record.id || record.bookingId;
+        if (key && !bookingsRef.current.some(b => (b.id === key || b.bookingId === key))) {
+          const nextBookings = [record, ...bookingsRef.current];
+          setBookings(nextBookings);
+          setMemberships(deriveMembershipsFromBookings(nextBookings));
+        }
       }
+
+      const list = Array.isArray(record) ? record : [record];
+      setCustomers(prev => deriveCustomers(prev, list, list));
     };
 
     window.addEventListener('tsl_booking_created', handleLiveBooking);
@@ -994,7 +1050,6 @@ export const AdminProvider = ({ children }) => {
     window.addEventListener('tsl_wash_logged', handleExternalWashOrSale);
     window.addEventListener('tsl_wash_used', handleExternalWashOrSale);
     window.addEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
-    window.addEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
 
     return () => {
       window.removeEventListener('tsl_booking_created', handleLiveBooking);
@@ -1004,7 +1059,6 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener('tsl_wash_logged', handleExternalWashOrSale);
       window.removeEventListener('tsl_wash_used', handleExternalWashOrSale);
       window.removeEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
-      window.removeEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
     };
   }, []);
 
@@ -1761,7 +1815,8 @@ export const AdminProvider = ({ children }) => {
           id: res.data.booking.bookingId || res.data.booking._id
         };
       }
-      fetchBookingsList();
+      fetchBookingsList(true);
+      fetchCustomersList(true);
     } catch (err) {
       console.error('Offline sale MongoDB save error:', err.response?.data || err.message);
     }
@@ -1937,6 +1992,12 @@ export const AdminProvider = ({ children }) => {
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
+
+    try {
+      const existingLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
+      const filtered = existingLogs.filter(l => l && l.id !== localRecord.id && l.bookingId !== localRecord.bookingId);
+      localStorage.setItem('tsl_wash_logs', JSON.stringify([localRecord, ...filtered]));
+    } catch (e) {}
 
     setCustomers(prev => deriveCustomers(prev, [localRecord], []));
 

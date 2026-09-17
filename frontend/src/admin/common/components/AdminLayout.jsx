@@ -1,28 +1,10 @@
 import React, { useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { AdminProvider } from '../context/AdminContext';
 import AdminSidebar from './AdminSidebar';
 import AdminHeader from './AdminHeader';
-import ServiceModulePage from '../../pages/ServiceModulePage';
 import TSLLogo from '../../../common/components/TSLLogo';
-
-// 12 Page Imports
-import AdminDashboardPage from '../../pages/AdminDashboardPage';
-import ManageServicesPage from '../../pages/ManageServicesPage';
-import ManageBannersPage from '../../pages/ManageBannersPage';
-import ManageNotificationsPage from '../../pages/ManageNotificationsPage';
-import AdminFeedbackPage from '../../pages/AdminFeedbackPage';
-import ManageMembershipsPage from '../../pages/ManageMembershipsPage';
-import ManageBookingsPage from '../../pages/ManageBookingsPage';
-import ManageStaffPage from '../../pages/ManageStaffPage';
-import CustomerDatabasePage from '../../pages/CustomerDatabasePage';
-import InventoryManagementPage from '../../pages/InventoryManagementPage';
-import RevenueReportsPage from '../../pages/RevenueReportsPage';
-import OffersCouponsPage from '../../pages/OffersCouponsPage';
-import AdminSettingsPage from '../../pages/AdminSettingsPage';
-import ManageOfflineSalesPage from '../../pages/ManageOfflineSalesPage';
-import AdminCalculationSettingsPage from '../../pages/AdminCalculationSettingsPage';
 
 export default function AdminLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -56,6 +38,11 @@ export default function AdminLayout() {
           </div>
         </header>
 
+        {/* Desktop Header */}
+        <div className="hidden lg:block">
+          <AdminHeader isSidebarCollapsed={isSidebarCollapsed} />
+        </div>
+
         {/* Responsive Admin Sidebar (Drawer on mobile, fixed column on desktop) */}
         <AdminSidebar
           isCollapsed={isSidebarCollapsed}
@@ -66,43 +53,13 @@ export default function AdminLayout() {
 
         {/* Dynamic Admin Main Content Area */}
         <main
-          className={`transition-all duration-300 p-3 sm:p-6 pb-12 min-h-screen bg-gray-50/50 ${
+          className={`transition-all duration-300 p-3 sm:p-6 lg:pt-20 pb-12 min-h-screen bg-gray-50/50 ${
             isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
           } ml-0`}
         >
-          <Routes>
-            {/* Global Dashboard */}
-            <Route index element={<AdminDashboardPage />} />
-            <Route path="dashboard" element={<AdminDashboardPage />} />
-
-            {/* Dedicated Service Modules (Car Wash, Car Detailing, Dog Wash, Cafe, Drive-Thru, Salon) */}
-            <Route path="car-wash" element={<ServiceModulePage />} />
-            <Route path="car-detailing" element={<ServiceModulePage />} />
-            <Route path="dog-wash" element={<ServiceModulePage />} />
-            <Route path="cafe" element={<ServiceModulePage />} />
-            <Route path="drive-through-cafe" element={<ServiceModulePage />} />
-            <Route path="salon" element={<ServiceModulePage />} />
-
-            {/* Global Operations */}
-            <Route path="services" element={<ManageServicesPage />} />
-            <Route path="banners" element={<ManageBannersPage />} />
-            <Route path="notifications" element={<ManageNotificationsPage />} />
-            <Route path="feedback" element={<AdminFeedbackPage />} />
-            <Route path="memberships" element={<ManageMembershipsPage />} />
-            <Route path="bookings" element={<ManageBookingsPage />} />
-            <Route path="offline-sales" element={<ManageOfflineSalesPage />} />
-            <Route path="staff" element={<ManageStaffPage />} />
-            <Route path="customers" element={<CustomerDatabasePage />} />
-            <Route path="inventory" element={<InventoryManagementPage />} />
-            <Route path="reports" element={<RevenueReportsPage />} />
-            <Route path="calculations" element={<AdminCalculationSettingsPage />} />
-            <Route path="coupons" element={<OffersCouponsPage />} />
-            <Route path="settings" element={<AdminSettingsPage />} />
-            <Route path="*" element={<Navigate to="/admin" replace />} />
-          </Routes>
+          <Outlet />
         </main>
       </div>
     </AdminProvider>
   );
 }
-

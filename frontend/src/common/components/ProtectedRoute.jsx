@@ -1,10 +1,11 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 // Generic protected route - must be logged in
 export function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -15,7 +16,7 @@ export function ProtectedRoute({ children }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   return children;
@@ -24,6 +25,7 @@ export function ProtectedRoute({ children }) {
 // Admin only route
 export function AdminRoute({ children }) {
   const { isAuthenticated, role, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -34,7 +36,7 @@ export function AdminRoute({ children }) {
   }
 
   if (!isAuthenticated || role !== 'admin') {
-    return <Navigate to="/admin/login" replace />;
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }
 
   return children;

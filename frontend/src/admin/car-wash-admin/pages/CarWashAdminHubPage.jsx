@@ -139,9 +139,7 @@ export default function CarWashAdminHubPage() {
   };
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'overview');
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {
@@ -217,7 +215,7 @@ export default function CarWashAdminHubPage() {
 
   const registeredVehiclesMap = {};
 
-  serviceBookings.forEach((b) => {
+  (bookings || []).forEach((b) => {
     if (b.vehicleDeregistered) return;
     const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
     if (!plate) return;
@@ -269,10 +267,9 @@ export default function CarWashAdminHubPage() {
     }
   });
 
-  // Single source of truth: Ensure every Car Wash membership holder is present in the registered fleet
+  // Single source of truth: Ensure every membership holder is present in the registered fleet
   (memberships || []).forEach(m => {
     if (!m.vehicleNo) return;
-    if (m.serviceKey && m.serviceKey !== serviceKey) return;
     const cleanPlate = normalizePlate(m.vehicleNo);
     if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 

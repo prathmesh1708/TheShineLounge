@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock,
@@ -309,7 +309,19 @@ function MobileBranding() {
    ───────────────────────────────────────────── */
 function AdminLoginCard() {
   const navigate = useNavigate();
-  const { login, logout } = useAuth();
+  const location = useLocation();
+  const { login, logout, isAuthenticated, role } = useAuth();
+
+  const searchParams = new URLSearchParams(location.search);
+  const redirectParam = searchParams.get('redirect');
+  const targetPath = location.state?.from?.pathname || redirectParam || '/admin';
+
+  // If already authenticated as Admin, auto-redirect to target page
+  React.useEffect(() => {
+    if (isAuthenticated && role === 'admin') {
+      navigate(targetPath, { replace: true });
+    }
+  }, [isAuthenticated, role, navigate, targetPath]);
 
   const [email, setEmail] = useState('admin@gmail.com');
   const [password, setPassword] = useState('');
@@ -327,9 +339,9 @@ function AdminLoginCard() {
       const data = await login(email, password);
 
       if (data.success) {
-        const role = data.user?.role;
-        if (role === 'admin') {
-          navigate('/admin');
+        const userRole = data.user?.role;
+        if (userRole === 'admin') {
+          navigate(targetPath, { replace: true });
         } else {
           await logout();
           setError('Access Denied: This portal is strictly reserved for Admin accounts.');

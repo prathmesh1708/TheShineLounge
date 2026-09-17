@@ -68,9 +68,7 @@ export default function CafeAdminHubPage() {
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(normalizeTab(searchParams.get('tab')));
-    }
+    setActiveTabState(normalizeTab(searchParams.get('tab')));
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {
