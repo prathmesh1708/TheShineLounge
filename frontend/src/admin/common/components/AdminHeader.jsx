@@ -3,13 +3,7 @@ import { useLocation, Link } from 'react-router-dom';
 import {
   Search,
   Bell,
-  Building2,
-  Plus,
-  ExternalLink,
-  ChevronDown,
-  CheckCircle2,
-  Calendar,
-  Sparkles
+  Plus
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 
@@ -17,8 +11,6 @@ export default function AdminHeader({ isSidebarCollapsed }) {
   const location = useLocation();
   const { notifications, stats } = useAdmin();
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
-  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState('Mumbai Main Branch (Lower Parel)');
 
   // Module Name lookup
   const getPageTitle = (path) => {
@@ -44,13 +36,6 @@ export default function AdminHeader({ isSidebarCollapsed }) {
     if (path.startsWith('/admin/settings')) return 'Business & System Settings';
     return 'Admin Panel';
   };
-
-  const branches = [
-    'Mumbai Main Branch (Lower Parel)',
-    'Bandra West Lounge Branch',
-    'Thane Service Hub',
-    'Navi Mumbai Express Branch'
-  ];
 
   return (
     <header
@@ -84,40 +69,6 @@ export default function AdminHeader({ isSidebarCollapsed }) {
 
       {/* Right Actions & Utilities */}
       <div className="flex items-center gap-3">
-        {/* Branch Selector Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors"
-          >
-            <Building2 className="w-4 h-4 text-amber-500" />
-            <span className="max-w-[160px] truncate">{selectedBranch}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-          </button>
-
-          {showBranchDropdown && (
-            <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
-              <div className="px-3 py-2 border-b border-gray-100 font-bold text-xs text-gray-500 uppercase tracking-wider">
-                Select Branch
-              </div>
-              {branches.map((b) => (
-                <button
-                  key={b}
-                  onClick={() => {
-                    setSelectedBranch(b);
-                    setShowBranchDropdown(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-amber-50 flex items-center justify-between ${
-                    selectedBranch === b ? 'text-amber-600 font-bold bg-amber-50/50' : 'text-gray-700'
-                  }`}
-                >
-                  <span className="truncate">{b}</span>
-                  {selectedBranch === b && <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
 
 
         {/* Notification Bell */}
