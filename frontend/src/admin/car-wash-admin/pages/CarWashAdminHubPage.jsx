@@ -71,6 +71,7 @@ export default function CarWashAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
+    deleteBooking,
     addStaff,
     updateStaff,
     deleteStaff,
@@ -85,7 +86,8 @@ export default function CarWashAdminHubPage() {
     addOfflineSale,
     memberships,
     logMembershipWash,
-    deleteCustomerVehicle
+    deleteCustomerVehicle,
+    deregisteredPlates: contextDeregisteredPlates
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -188,14 +190,14 @@ export default function CarWashAdminHubPage() {
   // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
   const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  const getDeregisteredPlates = () => {
+  const deregisteredPlates = (() => {
     try {
-      return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+      const local = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+      return Array.from(new Set([...(contextDeregisteredPlates || []), ...local]));
     } catch (e) {
-      return [];
+      return contextDeregisteredPlates || [];
     }
-  };
-  const deregisteredPlates = getDeregisteredPlates();
+  })();
 
   const findCustomerProfile = (plate, email, phone) => {
     const cleanPlate = normalizePlate(plate);
@@ -269,7 +271,7 @@ export default function CarWashAdminHubPage() {
 
   // Single source of truth: Ensure every membership holder is present in the registered fleet
   (memberships || []).forEach(m => {
-    if (!m.vehicleNo) return;
+    if (!m.vehicleNo || m.vehicleDeregistered) return;
     const cleanPlate = normalizePlate(m.vehicleNo);
     if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
@@ -1852,6 +1854,23 @@ export default function CarWashAdminHubPage() {
                   </select>
                 );
               }
+            },
+            {
+              header: 'Actions',
+              cell: (r) => (
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete booking ${r.id}?`)) {
+                      deleteBooking(r);
+                    }
+                  }}
+                  className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                  title="Delete Booking"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Delete</span>
+                </button>
+              )
             }
           ]}
           data={serviceBookings}

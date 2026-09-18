@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
+const DeregisteredVehicle = require('../models/DeregisteredVehicle');
 const bcrypt = require('bcryptjs');
 const { isUsablePlate, normalizePlate } = require('../utils/plateNormalizer');
 const {
@@ -922,46 +923,59 @@ const deregisterVehicle = async (req, res) => {
     const plateRegexStr = cleanPlate.split('').join('[\\s-]*');
     const plateRegex = new RegExp(plateRegexStr, 'i');
 
-    // 1. Remove from all matching user profiles (or specific customer if provided)
-    let userQuery = {
-      $or: [
-        { 'vehicles.plateNormalized': cleanPlate },
-        { 'vehicles.plateNumber': { $regex: plateRegex } },
-        { 'membership.boundVehicles': { $regex: plateRegex } }
-      ]
-    };
+    // 1. Save to DeregisteredVehicle database collection
+    await DeregisteredVehicle.updateOne(
+      { plateNormalized: cleanPlate },
+      {
+        $set: {
+          plateNumber: rawPlate.toUpperCase().trim(),
+          plateNormalized: cleanPlate,
+          deregisteredAt: new Date(),
+          deregisteredBy: req.user?.email || 'admin'
+        }
+      },
+      { upsert: true }
+    );
 
-    if (customerId && customerId !== 'any' && customerId !== 'all') {
-      const isObjId = mongoose.Types.ObjectId.isValid(customerId);
-      userQuery = {
-        $and: [
-          isObjId ? { _id: customerId } : { email: customerId },
-          userQuery
-        ]
-      };
-    }
-
-    const usersWithVeh = await User.find(userQuery);
-
-    for (const u of usersWithVeh) {
+    // 2. Remove from all User profiles (vehicles, rawVehicles, membership.vehicleNo, membership.boundVehicles)
+    const allUsers = await User.find({});
+    for (const u of allUsers) {
+      let modified = false;
       if (Array.isArray(u.vehicles)) {
+        const origLen = u.vehicles.length;
         u.vehicles = u.vehicles.filter(v => {
-          const vPlate = normalizePlate(v.plateNormalized || v.plateNumber);
-          return vPlate !== cleanPlate;
+          const p = typeof v === 'string' ? v.split(' ')[0] : (v.plateNormalized || v.plateNumber || '');
+          return normalizePlate(p) !== cleanPlate;
         });
-        if (u.vehicles.length > 0 && !u.vehicles.some(v => v.isPrimary)) {
-          u.vehicles[0].isPrimary = true;
+        if (u.vehicles.length !== origLen) modified = true;
+      }
+      if (Array.isArray(u.rawVehicles)) {
+        const origLen = u.rawVehicles.length;
+        u.rawVehicles = u.rawVehicles.filter(v => {
+          const p = typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo || '');
+          return normalizePlate(p) !== cleanPlate;
+        });
+        if (u.rawVehicles.length !== origLen) modified = true;
+      }
+      if (u.membership) {
+        if (u.membership.vehicleNo && normalizePlate(u.membership.vehicleNo) === cleanPlate) {
+          u.membership.vehicleNo = '';
+          modified = true;
+        }
+        if (Array.isArray(u.membership.boundVehicles)) {
+          const origLen = u.membership.boundVehicles.length;
+          u.membership.boundVehicles = u.membership.boundVehicles.filter(
+            entry => normalizePlate(String(entry).split('(')[0]) !== cleanPlate
+          );
+          if (u.membership.boundVehicles.length !== origLen) modified = true;
         }
       }
-      if (u.membership && Array.isArray(u.membership.boundVehicles)) {
-        u.membership.boundVehicles = u.membership.boundVehicles.filter(
-          entry => normalizePlate(String(entry).split('(')[0]) !== cleanPlate
-        );
+      if (modified) {
+        await u.save({ validateBeforeSave: false });
       }
-      await u.save({ validateBeforeSave: false });
     }
 
-    // 2. Mark matching service bookings as vehicleDeregistered
+    // 3. Mark matching service bookings as vehicleDeregistered and clear vehicleNo
     await Booking.updateMany(
       {
         $or: [
@@ -980,6 +994,20 @@ const deregisterVehicle = async (req, res) => {
   } catch (error) {
     console.error('Error deregistering vehicle:', error);
     res.status(500).json({ success: false, message: error.message || 'Server error deregistering vehicle' });
+  }
+};
+
+// @desc    Get all globally deregistered vehicles
+// @route   GET /api/users/vehicles/deregistered
+// @access  Staff / Admin
+const getDeregisteredVehicles = async (req, res) => {
+  try {
+    const docs = await DeregisteredVehicle.find({}).sort({ deregisteredAt: -1 }).lean();
+    const plates = docs.map(d => d.plateNormalized);
+    res.status(200).json({ success: true, count: plates.length, plates, items: docs });
+  } catch (error) {
+    console.error('Error getting deregistered vehicles:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching deregistered vehicles' });
   }
 };
 
@@ -1468,6 +1496,7 @@ module.exports = {
   updateCustomerUsageRules,
   addCustomerVehicle,
   deregisterVehicle,
+  getDeregisteredVehicles,
   deleteCustomer,
   updateProfile,
   getMyVehicles,

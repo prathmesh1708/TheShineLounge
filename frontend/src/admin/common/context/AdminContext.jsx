@@ -296,6 +296,8 @@ export const AdminProvider = ({ children }) => {
     const localPasses = [];
     const addLocalPass = (pass) => {
       if (!pass || (!pass.packageName && !pass.planName && !pass.plan)) return;
+      const passPlate = String(pass.vehicleNo || pass.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (pass.vehicleDeregistered || (passPlate && (deregisteredPlates || []).includes(passPlate))) return;
       const passId = pass.bookingId || pass.id || pass.passId || pass._id;
       const normPassId = normalizeMembershipId(passId);
       if (normPassId && knownIds.has(normPassId)) return;
@@ -465,9 +467,8 @@ export const AdminProvider = ({ children }) => {
         customerName: record.customerName || 'Valued Member',
         phone: record.phone || record.mobile || '',
         email: record.customerEmail || '',
-        // Empty, not a sample plate. This row is a membership card an operator
-        // checks a car against at the gate.
-        vehicleNo: record.vehicleNo || '',
+        // Empty if vehicle was deregistered/deleted
+        vehicleNo: (record.vehicleDeregistered || (record.vehicleNo && deregisteredPlates.includes(normalizePlate(record.vehicleNo)))) ? '' : (record.vehicleNo || ''),
         vehicleModel: record.vehicleType || 'Car',
         planName: record.packageName,
         serviceKey: record.serviceKey,
@@ -555,6 +556,7 @@ export const AdminProvider = ({ children }) => {
               membershipName: b.membershipName || '',
               membershipValidity: b.membershipValidity || '',
               membershipExpiry: b.membershipExpiry || '',
+              vehicleDeregistered: Boolean(b.vehicleDeregistered),
               createdAt: b.createdAt || b.bookedAt || b.date,
               bookedAt: b.bookedAt || b.createdAt
             };
@@ -787,11 +789,25 @@ export const AdminProvider = ({ children }) => {
       const cleanEmail = sanitizeCustomerEmail(c.email);
       const key = normalizeKey(cleanEmail, c.phone || c.mobile, c.name || c.fullName);
       if (key) {
+        const filteredVeh = (Array.isArray(c.vehicles) ? c.vehicles : []).filter(v => {
+          const p = String(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo || '')).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return !p || !(deregisteredPlates || []).includes(p);
+        });
+        const filteredRawVeh = (Array.isArray(c.rawVehicles) ? c.rawVehicles : []).filter(v => {
+          const p = String(typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '')).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return !p || !(deregisteredPlates || []).includes(p);
+        });
+        const updatedMem = c.membership ? {
+          ...c.membership,
+          vehicleNo: (c.membership.vehicleNo && (deregisteredPlates || []).includes(String(c.membership.vehicleNo).toUpperCase().replace(/[^A-Z0-9]/g, ''))) ? '' : c.membership.vehicleNo
+        } : null;
+
         customerMap.set(key, {
           ...c,
           email: cleanEmail,
-          vehicles: Array.isArray(c.vehicles) ? [...c.vehicles] : [],
-          rawVehicles: Array.isArray(c.rawVehicles) ? [...c.rawVehicles] : []
+          vehicles: filteredVeh,
+          rawVehicles: filteredRawVeh,
+          membership: updatedMem
         });
       }
     });
@@ -812,6 +828,8 @@ export const AdminProvider = ({ children }) => {
       const tEmail = sanitizeCustomerEmail(rawEmail);
       const tPhone = String(t.phone || t.mobile || '').trim();
       const tPlate = (t.vehicleNo || t.vehiclePlate || '').toUpperCase().trim();
+      const cleanTPlate = tPlate.replace(/[^A-Z0-9]/g, '');
+      const isDereg = t.vehicleDeregistered || (cleanTPlate && (deregisteredPlates || []).includes(cleanTPlate));
       const tModel = t.vehicleType || t.vehicleModel || 'Car';
       const tPrice = Number(t.price !== undefined ? t.price : (t.amount !== undefined ? t.amount : (t.total || 0))) || 0;
       const tDate = t.date || (t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '');
@@ -825,10 +843,9 @@ export const AdminProvider = ({ children }) => {
       if (customerMap.has(key)) {
         const existing = customerMap.get(key);
 
-        // Update vehicle list
-        if (tPlate) {
-          const cleanPlate = tPlate.replace(/[^A-Z0-9]/g, '');
-          const hasPlate = existing.vehicles.some(v => v.replace(/[^A-Z0-9]/g, '').includes(cleanPlate));
+        // Update vehicle list if not deregistered
+        if (cleanTPlate && !isDereg) {
+          const hasPlate = existing.vehicles.some(v => v.replace(/[^A-Z0-9]/g, '').includes(cleanTPlate));
           if (!hasPlate) {
             existing.vehicles.push(`${tPlate}${tModel ? ` (${tModel})` : ''}`);
             existing.rawVehicles.push({ plateNumber: tPlate, model: tModel });
@@ -858,8 +875,8 @@ export const AdminProvider = ({ children }) => {
         }
       } else {
         // Create new customer record for this offline sale / booking customer
-        const vehList = tPlate ? [`${tPlate}${tModel ? ` (${tModel})` : ''}`] : [];
-        const rawVehList = tPlate ? [{ plateNumber: tPlate, model: tModel }] : [];
+        const vehList = (cleanTPlate && !isDereg) ? [`${tPlate}${tModel ? ` (${tModel})` : ''}`] : [];
+        const rawVehList = (cleanTPlate && !isDereg) ? [{ plateNumber: tPlate, model: tModel }] : [];
 
         customerMap.set(key, {
           _id: t.id || t.bookingId || `CUST-OFS-${Date.now()}`,
@@ -999,12 +1016,90 @@ export const AdminProvider = ({ children }) => {
     return fetchPromise;
   };
 
+  const [deregisteredPlates, setDeregisteredPlates] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const cleanLocalStorageOfDeregisteredPlates = (plates) => {
+    if (!Array.isArray(plates) || plates.length === 0) return;
+    const deregSet = new Set(plates.map(p => String(p).toUpperCase().replace(/[^A-Z0-9]/g, '')));
+
+    const cleanObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      let changed = false;
+      const next = { ...obj };
+      if (next.vehicleNo && deregSet.has(String(next.vehicleNo).toUpperCase().replace(/[^A-Z0-9]/g, ''))) {
+        next.vehicleNo = '';
+        next.vehicleDeregistered = true;
+        changed = true;
+      }
+      if (next.vehiclePlate && deregSet.has(String(next.vehiclePlate).toUpperCase().replace(/[^A-Z0-9]/g, ''))) {
+        next.vehiclePlate = '';
+        next.vehicleDeregistered = true;
+        changed = true;
+      }
+      return changed ? next : obj;
+    };
+
+    const cleanArray = (arr) => {
+      if (!Array.isArray(arr)) return arr;
+      return arr.map(item => {
+        if (typeof item === 'string') {
+          const cleanP = String(item).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (Array.from(deregSet).some(d => cleanP.includes(d))) return null;
+          return item;
+        }
+        return cleanObject(item);
+      }).filter(Boolean);
+    };
+
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('tsl_') && key !== 'tsl_deregistered_plates') {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || 'null');
+            if (Array.isArray(val)) {
+              const cleaned = cleanArray(val);
+              localStorage.setItem(key, JSON.stringify(cleaned));
+            } else if (val && typeof val === 'object') {
+              const cleaned = cleanObject(val);
+              localStorage.setItem(key, JSON.stringify(cleaned));
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+  };
+
+  const fetchDeregisteredPlates = async () => {
+    try {
+      const res = await apiClient.get('/users/vehicles/deregistered');
+      if (res.data && res.data.success && Array.isArray(res.data.plates)) {
+        setDeregisteredPlates(prev => {
+          const merged = Array.from(new Set([...prev, ...res.data.plates]));
+          try {
+            localStorage.setItem('tsl_deregistered_plates', JSON.stringify(merged));
+          } catch (_) {}
+          cleanLocalStorageOfDeregisteredPlates(merged);
+          return merged;
+        });
+      }
+    } catch (err) {
+      console.warn('Could not fetch backend deregistered plates:', err.message);
+    }
+  };
+
   useEffect(() => {
     // Initial single on-demand fetch on mount (Zero background polling loops)
     fetchBookingsList();
     fetchStaffList();
     fetchCustomersList();
     fetchServicesList();
+    fetchDeregisteredPlates();
 
     const handleLiveBooking = () => fetchBookingsList(true);
 
@@ -1921,6 +2016,41 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const deleteBooking = async (bookingIdOrObj) => {
+    const mem = typeof bookingIdOrObj === 'object' ? bookingIdOrObj : { id: bookingIdOrObj };
+    const rawId = String(mem.id || mem.bookingId || mem._id || '');
+    const bookingId = String(mem.bookingId || mem.rawBookingId || mem.id || '');
+    const candidateIds = Array.from(new Set([rawId, bookingId, mem._id].filter(Boolean)));
+
+    for (const idToDel of candidateIds) {
+      try {
+        await apiClient.delete(`/bookings/${idToDel}`);
+      } catch (_) {}
+    }
+
+    setBookings(prev => {
+      const next = prev.filter(b => {
+        const bId = String(b.bookingId || b.id || b._id || '');
+        return !candidateIds.includes(bId);
+      });
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
+
+    try {
+      const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(cachedOffline)) {
+        const filteredOffline = cachedOffline.filter(s => {
+          const sId = String(s.id || s.bookingId || s._id || '');
+          return !candidateIds.includes(sId);
+        });
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(filteredOffline));
+      }
+    } catch (_) {}
+
+    showToast('Booking deleted successfully');
+  };
+
   // 5c. Log Completed Wash under Membership (re-calculates washesUsed in real time)
   const logMembershipWash = async ({
     vehicleNo,
@@ -2217,14 +2347,15 @@ export const AdminProvider = ({ children }) => {
     if (!rawPlate) return;
     const cleanPlate = rawPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-    // 1. Persist immediately to localStorage deregistered plates list
-    try {
-      const existingDereg = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
-      if (!existingDereg.includes(cleanPlate)) {
-        existingDereg.push(cleanPlate);
-        localStorage.setItem('tsl_deregistered_plates', JSON.stringify(existingDereg));
-      }
-    } catch (e) {}
+    // 1. Persist immediately to state and localStorage deregistered plates list
+    setDeregisteredPlates(prev => {
+      const next = Array.from(new Set([...prev, cleanPlate]));
+      try {
+        localStorage.setItem('tsl_deregistered_plates', JSON.stringify(next));
+      } catch (e) {}
+      cleanLocalStorageOfDeregisteredPlates(next);
+      return next;
+    });
 
     // 2. Call backend API
     try {
@@ -2287,6 +2418,9 @@ export const AdminProvider = ({ children }) => {
     } catch (e) {}
 
     window.dispatchEvent(new CustomEvent('tsl_vehicle_updated', { detail: { plate: cleanPlate } }));
+    fetchCustomersList();
+    fetchBookingsList(true);
+    fetchDeregisteredPlates();
   };
 
   return (
@@ -2328,6 +2462,7 @@ export const AdminProvider = ({ children }) => {
       updateBookingStatus,
       assignStaffToBooking,
       addBooking,
+      deleteBooking,
       addOfflineSale,
       deleteOfflineSale,
       clearAllOfflineSales,
@@ -2341,6 +2476,8 @@ export const AdminProvider = ({ children }) => {
       updateCustomerUsageRules,
       addCustomerVehicle,
       deleteCustomerVehicle,
+      deregisteredPlates,
+      fetchDeregisteredPlates,
       addInventoryItem,
       updateStock,
       addCoupon,

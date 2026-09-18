@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, Clock, UserCheck, Eye, CheckCircle2, AlertCircle, Car, DollarSign } from 'lucide-react';
+import { Plus, Calendar, Clock, UserCheck, Eye, CheckCircle2, AlertCircle, Car, DollarSign, Trash2 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
 
 export default function ManageBookingsPage() {
-  const { bookings, staffList, updateBookingStatus, assignStaffToBooking, addBooking } = useAdmin();
+  const { bookings, staffList, updateBookingStatus, assignStaffToBooking, addBooking, deleteBooking } = useAdmin();
 
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -167,13 +167,27 @@ export default function ManageBookingsPage() {
     {
       header: 'Actions',
       cell: (row) => (
-        <button
-          onClick={() => setSelectedBooking(row)}
-          className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs"
-          style={{ backgroundColor: '#e07b2a' }}
-        >
-          View / Update
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSelectedBooking(row)}
+            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs"
+            style={{ backgroundColor: '#e07b2a' }}
+          >
+            View / Update
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`Are you sure you want to delete booking ${row.id}?`)) {
+                deleteBooking(row);
+              }
+            }}
+            className="px-2 py-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition-all flex items-center gap-1"
+            title="Delete Booking"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+            <span>Delete</span>
+          </button>
+        </div>
       )
     }
   ];

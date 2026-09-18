@@ -65,6 +65,7 @@ export default function SalonAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
+    deleteBooking,
     addStaff,
     updateStaff,
     addBanner,
@@ -1048,7 +1049,24 @@ export default function SalonAdminHubPage() {
                   <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
-              )}
+              )},
+              {
+                header: 'Actions',
+                cell: (r) => (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete booking ${r.id}?`)) {
+                        deleteBooking(r);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                    title="Delete Booking"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete</span>
+                  </button>
+                )
+              }
             ]}
             data={serviceBookings}
             searchPlaceholder="Search Salon Bookings..."

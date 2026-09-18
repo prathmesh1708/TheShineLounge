@@ -39,7 +39,7 @@ import TSLLogo from '../../../common/components/TSLLogo';
 export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, closeMobileSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { stats, bookings, staffList, banners, inventory, memberships, customers } = useAdmin();
+  const { stats, bookings, staffList, banners, inventory, memberships, customers, deregisteredPlates: contextDeregisteredPlates } = useAdmin();
   const { user, logout } = useAuth();
 
   // Auto-close mobile sidebar when route changes
@@ -116,9 +116,10 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const deregisteredPlates = (() => {
       try {
-        return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+        const local = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+        return Array.from(new Set([...(contextDeregisteredPlates || []), ...local]));
       } catch (e) {
-        return [];
+        return contextDeregisteredPlates || [];
       }
     })();
 
