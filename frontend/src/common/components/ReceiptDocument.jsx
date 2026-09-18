@@ -82,6 +82,21 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
   const paymentMode = sale.paymentMode || 'Cash';
   const customerPhone = formatReceiptPhone(sale.phone || sale.customerPhone || sale.mobile);
 
+  const gstNo = sale.gstNo || sale.gstin || sale.gstNumber || '23AAAAA0000A1Z5';
+
+  const rawService = sale.serviceName || sale.serviceCategory || sale.service || sale.serviceKey;
+  const serviceKeyMap = {
+    'car-wash': 'Car Wash',
+    'car-detailing': 'Car Detailing',
+    'dog-wash': 'Dog Wash',
+    'salon': "Men's Salon",
+    'cafe': 'Café',
+    'drive-through-cafe': 'Drive-Through Café'
+  };
+  const serviceCategoryName = rawService
+    ? (serviceKeyMap[rawService] || rawService)
+    : 'Car Wash';
+
   return (
     <div
       ref={ref}
@@ -200,6 +215,16 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
               }}
             >
               Receipt No: {receiptNo}
+            </p>
+            <p
+              style={{
+                fontSize: '13px',
+                color: '#5a6e85',
+                margin: '3px 0',
+                fontWeight: 500
+              }}
+            >
+              GST No: {gstNo}
             </p>
           </div>
         </div>
@@ -389,6 +414,33 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                   }}
                 >
                   {sale.vehicleModel || sale.vehicleType || '—'}
+                </td>
+              </tr>
+
+              <tr>
+                <td
+                  style={{
+                    color: '#64748b',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                    padding: '6px 0',
+                    verticalAlign: 'middle'
+                  }}
+                >
+                  SERVICE
+                </td>
+                <td
+                  style={{
+                    color: '#0f172a',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    padding: '6px 0',
+                    verticalAlign: 'middle'
+                  }}
+                >
+                  {serviceCategoryName}
                 </td>
               </tr>
             </tbody>
