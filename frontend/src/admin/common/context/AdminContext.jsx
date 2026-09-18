@@ -1848,7 +1848,17 @@ export const AdminProvider = ({ children }) => {
 
   // 5b. Offline Sales (manual counter POS)
   const addOfflineSale = async (formData) => {
-    const newId = `OFS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Count existing offline sales to derive next sequential ID (OFS-TSH-01, OFS-TSH-02, ...)
+    const existingOfflineCount = (bookings || []).filter(b =>
+      b && !b.isDeleted && (
+        b.isOfflineSale ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-'))
+      )
+    ).length;
+    const seqNum = existingOfflineCount + 1;
+    const seqPad = String(seqNum).padStart(2, '0');
+    const newId = `OFS-TSH-${seqPad}`;
     const now = new Date();
     const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : now;
     const dateStr = !isNaN(saleDateObj.getTime())

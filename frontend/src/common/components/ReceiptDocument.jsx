@@ -78,7 +78,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
 
   const issuedDate = formatReceiptDate(sale.date || sale.createdAt);
   const validityRange = getReceiptValidityRange(sale, issuedDate);
-  const receiptNo = sale.id || sale.bookingId || sale.receiptNo || 'OFS-2026-001';
+  const receiptNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
   const paymentMode = sale.paymentMode || 'Cash';
   const customerPhone = formatReceiptPhone(sale.phone || sale.customerPhone || sale.mobile);
 

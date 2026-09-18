@@ -24,7 +24,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
       window.location.hostname.startsWith('192.168.')
     );
     const org = isLocal ? 'https://app.theshinelounge.in' : (window.location.origin || 'https://app.theshinelounge.in');
-    const rNo = sale.id || sale.bookingId || sale.receiptNo || 'OFS-2026-001';
+    const rNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
     const cName = sale.customerName || sale.customer || 'Valued Customer';
     const pUrl = `${org}/receipt/${encodeURIComponent(rNo)}?download=pdf`;
     return `Hello ${cName} ,\n\nThank you for choosing The Shine Lounge!\nPlease find your official tax invoice & receipt ${pUrl} attached.\n\n📍 The Shine Lounge`;
@@ -55,7 +55,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const isMembership = sale.saleType === 'membership' || !!sale.membershipName;
   const planName = sale.packageName || sale.membershipName || (isMembership ? 'Monthly Membership' : 'Car Wash Service');
   const price = Number(sale.price || sale.total || sale.amount || 0);
-  const receiptNo = sale.id || sale.bookingId || sale.receiptNo || 'OFS-2026-001';
+  const receiptNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
   const issuedDate = formatReceiptDate(sale.date || sale.createdAt);
   const validityRange = getReceiptValidityRange(sale, issuedDate);
 

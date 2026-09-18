@@ -141,11 +141,23 @@ export default function ManageOfflineSalesPage() {
     });
 
     const list = Array.from(map.values());
-    return list.sort((a, b) => {
+    const sorted = list.sort((a, b) => {
       const timeA = getSaleTime(a);
       const timeB = getSaleTime(b);
       if (timeA !== timeB) return timeA - timeB;
       return String(a.id || a.bookingId || '').localeCompare(String(b.id || b.bookingId || ''));
+    });
+
+    return sorted.map((s, index) => {
+      const seqPad = String(index + 1).padStart(2, '0');
+      const seqId = `OFS-TSH-${seqPad}`;
+      const finalId = (s.id && String(s.id).startsWith('OFS-TSH-')) ? s.id : ((s.bookingId && String(s.bookingId).startsWith('OFS-TSH-')) ? s.bookingId : seqId);
+      return {
+        ...s,
+        id: finalId,
+        bookingId: s.bookingId || finalId,
+        seqId: finalId
+      };
     });
   }, [bookings]);
 
