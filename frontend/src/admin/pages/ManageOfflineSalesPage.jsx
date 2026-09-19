@@ -122,24 +122,8 @@ export default function ManageOfflineSalesPage() {
         (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-') && (Number(b.price) > 0 || Number(b.total) > 0 || b.paymentMode === 'Cash' || b.paymentMode === 'UPI' || b.paymentMode === 'Card' || b.paymentMode === 'Net Banking'))
       )
     );
-    let fromStorage = [];
-    try {
-      const raw = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      fromStorage = raw.filter(s =>
-        s &&
-        s.id !== 'OFS-MTJX5GRW-3986' &&
-        s.bookingId !== 'OFS-MTJX5GRW-3986' &&
-        !String(s.id || s.bookingId || '').startsWith('WASH-')
-      );
-    } catch (e) {}
-
     const map = new Map();
     fromBookings.forEach(s => map.set(s.id || s.bookingId, s));
-    fromStorage.forEach(s => {
-      const key = s.id || s.bookingId;
-      if (!map.has(key)) map.set(key, s);
-    });
-
     const list = Array.from(map.values());
     const sorted = list.sort((a, b) => {
       const timeA = getSaleTime(a);

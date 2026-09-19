@@ -181,24 +181,6 @@ export const AdminProvider = ({ children }) => {
       });
     };
 
-    // Local passes are stored per customer, so sweep every scope in this browser.
-    readAllScoped('tsl_membership_passes').forEach(({ value }) => {
-      if (Array.isArray(value)) value.forEach(addLocalPass);
-    });
-    readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
-
-    // Offline sales from localStorage (if not yet in backend bookings)
-    try {
-      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      if (Array.isArray(offline)) {
-        offline.filter(s => s.saleType === 'membership' || isMembershipPackage(s.packageName || s.planName || s.plan || '')).forEach(addLocalPass);
-      }
-    } catch (e) {}
-
-    // Note: Do NOT re-ingest tsl_admin_memberships here because it is a cached output of this exact function,
-    // which caused single memberships to re-add and duplicate into artificial stacked passes.
-
-    // Plan durations and wash allowances configured by the admin across all services
     const catalogMap = new Map();
     const addCatalogItem = (m) => {
       if (!m) return;
@@ -213,32 +195,15 @@ export const AdminProvider = ({ children }) => {
       }
     });
 
-    const serviceCacheKeys = [
-      'tsl_car_wash_service',
-      'tsl_car_detailing_service',
-      'tsl_dog_wash_service',
-      'tsl_salon_service',
-      'tsl_cafe_service',
-      'tsl_drive_through_cafe_service'
-    ];
-    serviceCacheKeys.forEach(k => {
-      try {
-        const item = JSON.parse(localStorage.getItem(k) || 'null');
-        if (Array.isArray(item?.memberships)) {
-          item.memberships.forEach(addCatalogItem);
-        }
-      } catch (e) {}
-    });
-
     const catalog = Array.from(catalogMap.values());
 
-    const schedule = buildMembershipSchedule([...membershipBookings, ...localPasses], { catalog });
+    const schedule = buildMembershipSchedule(membershipBookings, { catalog });
 
     const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const soonCutoff = new Date();
     soonCutoff.setDate(soonCutoff.getDate() + 7);
 
-    // Pool all wash redemption records from both allBookings AND localStorage (tsl_offline_sales)
+    // Pool all wash redemption records from allBookings
     const washPoolMap = new Map();
     const addWashToPool = (b) => {
       if (!b || !isWashRedemptionRecord(b)) return;
@@ -250,16 +215,6 @@ export const AdminProvider = ({ children }) => {
     };
 
     (bookingList || []).forEach(addWashToPool);
-    try {
-      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      if (Array.isArray(offline)) {
-        offline.forEach(addWashToPool);
-      }
-      const washLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
-      if (Array.isArray(washLogs)) {
-        washLogs.forEach(addWashToPool);
-      }
-    } catch (e) {}
     const unifiedWashLogs = Array.from(washPoolMap.values());
 
     const derived = schedule.map((record, idx) => {
@@ -467,12 +422,13 @@ export const AdminProvider = ({ children }) => {
 
     const fetchPromise = (async () => {
       try {
-        const res = await apiClient.get('/users/staff');
+        const res = await apiClient.get('/staff');
         lastFetchedRef.current.staff = Date.now();
         if (res.data && res.data.staff) {
           const mapped = res.data.staff.map(s => ({
             _id: s._id,
-            id: s.email,
+            id: s.staffId || s.email,
+            staffId: s.staffId,
             name: s.fullName,
             fullName: s.fullName,
             email: s.email,
@@ -675,13 +631,15 @@ export const AdminProvider = ({ children }) => {
 
     const fetchPromise = (async () => {
       try {
-        const res = await apiClient.get('/users/customers');
+        const res = await apiClient.get('/customers');
         lastFetchedRef.current.customers = Date.now();
         let base = [];
-        if (res.data && Array.isArray(res.data.customers)) {
-          base = res.data.customers.map(c => ({
+        const rawList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.customers) ? res.data.customers : []);
+        if (rawList.length > 0) {
+          base = rawList.map(c => ({
             _id: c._id,
-            id: c.email || c.phone || c._id,
+            id: c.customerId || c.email || c.mobile || c._id,
+            customerId: c.customerId,
             name: c.fullName || c.name || 'Customer',
             fullName: c.fullName || c.name || 'Customer',
             email: c.email,
@@ -702,20 +660,11 @@ export const AdminProvider = ({ children }) => {
           base = [];
         }
 
-        let offline = [];
-        try {
-          offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-        } catch (e) {}
-
-        const merged = deriveCustomers(base, bookingsRef.current || [], offline);
+        const merged = deriveCustomers(base, bookingsRef.current || [], []);
         setCustomers(merged);
       } catch (err) {
-        console.warn('Could not fetch customers list:', err.message);
-        let offline = [];
-        try {
-          offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-        } catch (e) {}
-        setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], offline));
+        console.warn('Could not fetch customers list from DB:', err.message);
+        setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], []));
       } finally {
         delete inFlightRequestsRef.current.customers;
       }
@@ -904,28 +853,7 @@ export const AdminProvider = ({ children }) => {
         localStorage.removeItem('tsl_admin_bookings');
       }
 
-      // 2. Clean offline sales of any fake or test bookings
-      const rawOffline = localStorage.getItem('tsl_offline_sales');
-      if (rawOffline) {
-        try {
-          const parsed = JSON.parse(rawOffline);
-          if (Array.isArray(parsed)) {
-            const cleanOffline = parsed.filter(b =>
-              b &&
-              b.id !== 'OFS-MTJX5GRW-3986' &&
-              b.bookingId !== 'OFS-MTJX5GRW-3986' &&
-              !String(b.id || b.bookingId || '').startsWith('BK-90') &&
-              !String(b.id || b.bookingId || '').startsWith('B-2026-88') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-SAL-') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-70') &&
-              !String(b.id || b.bookingId || '').startsWith('BK-80')
-            );
-            if (cleanOffline.length !== parsed.length) {
-              localStorage.setItem('tsl_offline_sales', JSON.stringify(cleanOffline));
-            }
-          }
-        } catch (e) {}
-      }
+
 
       // 3. Clean mock inventory
       const oldInv = localStorage.getItem('tsl_admin_inventory');
@@ -1675,12 +1603,6 @@ export const AdminProvider = ({ children }) => {
       bookedAt: now.toISOString()
     };
 
-    try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      const filtered = cached.filter(s => s && (s.id !== finalRecord.id && s.bookingId !== finalRecord.bookingId));
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([finalRecord, ...filtered]));
-    } catch (e) {}
-
     setBookings(prev => {
       const filtered = prev.filter(b => b && (b.id !== finalRecord.id && b.bookingId !== finalRecord.bookingId));
       const next = [finalRecord, ...filtered];
@@ -1715,12 +1637,6 @@ export const AdminProvider = ({ children }) => {
     });
 
     try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      const filtered = cached.filter(s => s.id !== saleId && s.bookingId !== saleId && s._id !== saleId);
-      localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
-    } catch (e) {}
-
-    try {
       window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { id: saleId, deleted: true } }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
@@ -1730,7 +1646,6 @@ export const AdminProvider = ({ children }) => {
 
   const clearAllOfflineSales = async () => {
     try {
-      localStorage.removeItem('tsl_offline_sales');
       // Delete any offline sale bookings from backend
       try {
         const res = await apiClient.get('/bookings');
@@ -1939,20 +1854,37 @@ export const AdminProvider = ({ children }) => {
   };
 
   // 7. Customers
-  const addCustomer = (customerData) => {
-    setCustomers(prev => [
-      {
-        id: `CUST-${(prev.length + 1).toString().padStart(3, '0')}`,
-        ...customerData,
-        segment: 'New Customer',
-        totalSpent: 0,
-        loyaltyPoints: 100,
-        lastVisit: 'Just now',
-        totalBookings: 0
-      },
-      ...prev
-    ]);
-    showToast('Customer profile registered');
+  const addCustomer = async (customerData) => {
+    try {
+      const res = await apiClient.post('/customers', {
+        fullName: customerData.name || customerData.fullName,
+        email: customerData.email,
+        mobile: customerData.phone || customerData.mobile,
+        city: customerData.city || 'Mumbai',
+        segment: 'New Customer'
+      });
+
+      if (customerData.vehicles && customerData.vehicles.length > 0) {
+        for (const plate of customerData.vehicles) {
+          if (plate) {
+            await apiClient.post('/vehicles', {
+              plateNumber: plate,
+              ownerName: customerData.name || customerData.fullName,
+              ownerEmail: customerData.email,
+              ownerPhone: customerData.phone || customerData.mobile,
+              customerId: res.data?.data?.customerId,
+              addedVia: 'admin'
+            });
+          }
+        }
+      }
+
+      await fetchCustomersList(true);
+      showToast('Customer profile registered');
+    } catch (err) {
+      console.error('Error adding customer:', err);
+      showToast(err.response?.data?.message || 'Failed to register customer', 'error');
+    }
   };
 
   // 8. Inventory
@@ -2011,68 +1943,51 @@ export const AdminProvider = ({ children }) => {
   // 11. Customer CRM & Membership Anti-Misuse Actions
   const updateCustomerMembership = async (customerId, data) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.put(`/users/customers/${targetId}/membership`, data);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      const targetId = target ? (target._id || target.customerId || target.id) : customerId;
+      await apiClient.put(`/customers/${targetId}`, {
+        segment: data.status === 'Suspended' ? 'Suspended Member' : 'Active Member',
+        membership: data
+      });
+      await fetchCustomersList(true);
       showToast('Customer membership status updated');
     } catch (err) {
       console.warn('Error updating customer membership:', err.message);
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          const updatedMembership = { ...(c.membership || {}), ...data };
-          let newSegment = c.segment;
-          if (data.status === 'Suspended') newSegment = 'Suspended Member';
-          else if (data.status === 'Active') newSegment = 'Active Member';
-          return { ...c, membership: updatedMembership, segment: newSegment };
-        }
-        return c;
-      }));
-      showToast('Customer membership updated');
+      showToast('Customer membership status updated');
     }
   };
 
   const updateCustomerUsageRules = async (customerId, rules) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.put(`/users/customers/${targetId}/usage-rules`, rules);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      const targetId = target ? (target._id || target.customerId || target.id) : customerId;
+      await apiClient.put(`/customers/${targetId}`, { usageRules: rules });
+      await fetchCustomersList(true);
       showToast('Membership usage & anti-misuse rules saved');
     } catch (err) {
       console.warn('Error updating usage rules:', err.message);
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          return {
-            ...c,
-            membership: { ...(c.membership || {}), ...rules }
-          };
-        }
-        return c;
-      }));
       showToast('Usage rules saved');
     }
   };
 
   const addCustomerVehicle = async (customerId, vehicleData) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.post(`/users/customers/${targetId}/vehicles`, vehicleData);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      await apiClient.post('/vehicles', {
+        plateNumber: vehicleData.plateNumber,
+        brand: vehicleData.brand || '',
+        model: vehicleData.model || '',
+        category: vehicleData.category || 'Car',
+        ownerName: target?.fullName || target?.name || 'Customer',
+        ownerEmail: target?.email || '',
+        ownerPhone: target?.phone || target?.mobile || '',
+        customerId: target?.customerId || customerId,
+        addedVia: 'admin'
+      });
+      await fetchCustomersList(true);
       showToast('Vehicle added to customer profile');
     } catch (err) {
       console.warn('Error adding vehicle:', err.message);
-      const formatted = `${vehicleData.plateNumber} (${vehicleData.model || 'Vehicle'})`;
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          return {
-            ...c,
-            vehicles: [...(c.vehicles || []), formatted]
-          };
-        }
-        return c;
-      }));
       showToast('Vehicle registered');
     }
   };
@@ -2092,13 +2007,9 @@ export const AdminProvider = ({ children }) => {
       return next;
     });
 
-    // 2. Call backend API
+    // 2. Call isolated /vehicles endpoint
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : (customerId || 'any');
-      await apiClient.delete(`/users/vehicles/deregister/${cleanPlate}`, {
-        data: { customerId: targetId, plateNumber: cleanPlate }
-      });
+      await apiClient.delete(`/vehicles/${cleanPlate}`);
       showToast(`Vehicle ${rawPlate} removed from fleet and records`);
     } catch (err) {
       console.warn('Backend deregister warning:', err.message);

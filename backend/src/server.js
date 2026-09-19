@@ -116,6 +116,14 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
 
+// Mount Isolated Collections Routes
+app.use('/api/staff', require('./routes/staffRoutes'));
+app.use('/api/vehicles', require('./routes/vehicleRoutes'));
+app.use('/api/memberships', require('./routes/membershipRoutes'));
+app.use('/api/offline-sales', require('./routes/offlineSaleRoutes'));
+app.use('/api/customers', require('./routes/customerRoutes'));
+
+
 // Serve uploaded files as static assets
 const path = require('path');
 app.use('/uploads', express.static(path.resolve(__dirname, '../../frontend/public/uploads')));

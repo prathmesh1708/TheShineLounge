@@ -38,28 +38,9 @@ export default function RevenueReportsPage() {
   const [timeRange, setTimeRange] = useState('This Month');
   const [isCaModalOpen, setIsCaModalOpen] = useState(false);
 
-  // Aggregate online bookings and offline POS counter sales
+  // Aggregate online bookings and offline POS counter sales from DB
   const allTransactions = useMemo(() => {
-    let localOffline = [];
-    try {
-      const raw = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localOffline = (Array.isArray(raw) ? raw : []).filter(s =>
-        s &&
-        s.id !== 'OFS-MTJX5GRW-3986' &&
-        s.bookingId !== 'OFS-MTJX5GRW-3986' &&
-        !String(s.id || s.bookingId || '').startsWith('WASH-')
-      );
-    } catch (e) {}
-
-    const list = [...(bookings || [])];
-    const existingIds = new Set(list.map(b => b.id || b.bookingId).filter(Boolean));
-    localOffline.forEach(sale => {
-      const id = sale.id || sale.bookingId;
-      if (!id || !existingIds.has(id)) {
-        list.push({ ...sale, isOfflineSale: true });
-      }
-    });
-    return list;
+    return [...(bookings || [])];
   }, [bookings]);
 
   // Compute dynamic financial metrics using calculationSettings

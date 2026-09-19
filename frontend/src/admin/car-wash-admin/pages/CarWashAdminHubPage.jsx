@@ -97,6 +97,7 @@ export default function CarWashAdminHubPage() {
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);
   const [dbStaff, setDbStaff] = useState([]);
+  const [dbVehicles, setDbVehicles] = useState([]);
   const [isLiveConnection, setIsLiveConnection] = useState(true);
 
   const fetchLiveService = async () => {
@@ -122,7 +123,7 @@ export default function CarWashAdminHubPage() {
 
   const fetchLiveStaff = async () => {
     try {
-      const res = await apiClient.get('/users/staff?serviceKey=car-wash');
+      const res = await apiClient.get('/staff?serviceKey=car-wash');
       if (res.data && Array.isArray(res.data.staff)) {
         setDbStaff(res.data.staff);
         try {
@@ -139,6 +140,23 @@ export default function CarWashAdminHubPage() {
       } catch (e) {}
     }
   };
+
+  const fetchLiveVehicles = async () => {
+    try {
+      const res = await apiClient.get('/vehicles');
+      if (res.data && Array.isArray(res.data.vehicles)) {
+        setDbVehicles(res.data.vehicles);
+      }
+    } catch (err) {
+      console.warn('Could not fetch live vehicles list:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveService();
+    fetchLiveStaff();
+    fetchLiveVehicles();
+  }, []);
 
   useEffect(() => {
     setActiveTabState(searchParams.get('tab') || 'overview');
@@ -162,26 +180,26 @@ export default function CarWashAdminHubPage() {
 
   // Unified roster combining AdminContext staff and live MongoDB staff
   const displayedStaffList = (() => {
-    const map = new Map();
-    (serviceStaff || []).forEach(s => {
-      if (!s) return;
-      const key = (s._id || s.id || s.email || '').toLowerCase().trim();
-      if (key) map.set(key, s);
-      if (s.email) map.set(s.email.toLowerCase().trim(), s);
-    });
-    (dbStaff || []).forEach(s => {
+    const staffMap = new Map();
+    const combined = [...(serviceStaff || []), ...(dbStaff || [])];
+
+    combined.forEach(s => {
       if (!s) return;
       const isDept = s.serviceKey === serviceKey || s.department === 'Car Wash' || (!s.serviceKey && (!s.department || s.department === 'General'));
       const isExcluded = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '');
-      if (isDept && !isExcluded) {
-        const key = (s._id || s.id || s.email || '').toLowerCase().trim();
-        const existing = map.get(key) || (s.email ? map.get(s.email.toLowerCase().trim()) : null);
-        const merged = existing ? { ...existing, ...s } : s;
-        if (key) map.set(key, merged);
-        if (s.email) map.set(s.email.toLowerCase().trim(), merged);
+      if (!isDept || isExcluded) return;
+
+      const uniqueKey = (s.email || s.staffId || s._id || s.id || '').toLowerCase().trim();
+      if (!uniqueKey) return;
+
+      if (staffMap.has(uniqueKey)) {
+        staffMap.set(uniqueKey, { ...staffMap.get(uniqueKey), ...s });
+      } else {
+        staffMap.set(uniqueKey, s);
       }
     });
-    return Array.from(new Set(map.values()));
+
+    return Array.from(staffMap.values());
   })();
 
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
@@ -217,116 +235,30 @@ export default function CarWashAdminHubPage() {
 
   const registeredVehiclesMap = {};
 
-  (bookings || []).forEach((b) => {
-    if (b.vehicleDeregistered) return;
-    const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
+  (dbVehicles || []).forEach(v => {
+    if (!v) return;
+    const plate = String(v.plateNumber || '').toUpperCase().trim();
     if (!plate) return;
 
     const cleanPlate = normalizePlate(plate);
     if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
-    const email = (b.customerEmail || '').toLowerCase().trim();
-    const matchedCust = findCustomerProfile(plate, email, b.phone || b.mobile);
-    const vehList = (Array.isArray(matchedCust?.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust?.vehicles) ? matchedCust.vehicles : []);
-    const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
+    const matchedCust = findCustomerProfile(plate, v.ownerEmail, v.ownerPhone);
+    const modelName = [v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle';
 
-    const name = b.customerName || matchedCust?.fullName || matchedCust?.name || 'Customer';
-    const phone = b.phone || b.mobile || matchedCust?.mobile || matchedCust?.phone || '';
-    let model = (b.vehicleType || b.vehicleModel || '').trim();
-    if (!model && typeof matchedVeh === 'object') {
-      model = (matchedVeh.model || matchedVeh.brand || matchedVeh.category || '').trim();
-    } else if (!model && typeof matchedVeh === 'string' && matchedVeh.includes('(')) {
-      const match = matchedVeh.match(/\((.*?)\)/);
-      if (match && match[1]) model = match[1].trim();
-    }
-    model = model || 'Vehicle';
-
-    const isWash = !isMembershipPackage(b.plan || b.packageName);
-
-    if (!registeredVehiclesMap[cleanPlate]) {
-      registeredVehiclesMap[cleanPlate] = {
-        plate,
-        model,
-        customerId: matchedCust?._id || matchedCust?.id || null,
-        ownerName: name,
-        ownerEmail: email || matchedCust?.email || '',
-        ownerPhone: phone,
-        packageName: b.packageName || b.plan || 'Car Wash',
-        totalWashes: isWash ? 1 : 0,
-        lastWashDate: isWash ? (b.date || '') : ''
-      };
-    } else {
-      if (isWash) {
-        registeredVehiclesMap[cleanPlate].totalWashes += 1;
-        if (b.date) {
-          registeredVehiclesMap[cleanPlate].lastWashDate = b.date;
-        }
-      }
-      if (!registeredVehiclesMap[cleanPlate].ownerPhone && phone) registeredVehiclesMap[cleanPlate].ownerPhone = phone;
-      if ((!registeredVehiclesMap[cleanPlate].model || registeredVehiclesMap[cleanPlate].model === 'Vehicle') && model !== 'Vehicle') {
-        registeredVehiclesMap[cleanPlate].model = model;
-      }
-    }
-  });
-
-  // Single source of truth: Ensure every membership holder is present in the registered fleet
-  (memberships || []).forEach(m => {
-    if (!m.vehicleNo || m.vehicleDeregistered) return;
-    const cleanPlate = normalizePlate(m.vehicleNo);
-    if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
-
-    if (!registeredVehiclesMap[cleanPlate]) {
-      const matchedCust = findCustomerProfile(m.vehicleNo, m.email, m.phone);
-      const vehList = (Array.isArray(matchedCust?.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust?.vehicles) ? matchedCust.vehicles : []);
-      const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
-      let model = (m.vehicleModel || '').trim();
-      if (!model && typeof matchedVeh === 'object') {
-        model = (matchedVeh.model || matchedVeh.brand || '').trim();
-      }
-      model = model || 'Vehicle';
-      registeredVehiclesMap[cleanPlate] = {
-        plate: m.vehicleNo,
-        model,
-        customerId: matchedCust?._id || matchedCust?.id || null,
-        ownerName: m.customerName || matchedCust?.fullName || matchedCust?.name || 'Member',
-        ownerEmail: m.email || matchedCust?.email || '',
-        ownerPhone: m.phone || matchedCust?.mobile || '',
-        packageName: m.planName || 'Monthly Membership',
-        totalWashes: m.washesUsed || 0,
-        lastWashDate: m.startDateLabel || m.startDate || '—'
-      };
-    }
-  });
-
-  // Also include vehicles registered under customer profiles
-  (customers || []).forEach(c => {
-    const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
-    custVehicles.forEach(cv => {
-      const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
-      const cleanPlate = normalizePlate(p);
-      if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
-
-      if (!registeredVehiclesMap[cleanPlate]) {
-        let modelName = 'Vehicle';
-        if (typeof cv === 'object') {
-          modelName = (cv.model || cv.brand || cv.category || 'Vehicle').trim();
-        } else if (typeof cv === 'string' && cv.includes('(')) {
-          const match = cv.match(/\((.*?)\)/);
-          if (match && match[1]) modelName = match[1].trim();
-        }
-        registeredVehiclesMap[cleanPlate] = {
-          plate: p.toUpperCase().trim(),
-          model: modelName,
-          customerId: c._id || c.id || null,
-          ownerName: c.fullName || c.name || 'Customer',
-          ownerEmail: (c.email || '').toLowerCase().trim(),
-          ownerPhone: c.mobile || c.phone || '',
-          packageName: c.membership?.planName || 'Registered Account',
-          totalWashes: 0,
-          lastWashDate: c.lastVisit || '—'
-        };
-      }
-    });
+    registeredVehiclesMap[cleanPlate] = {
+      _id: v._id,
+      vehicleId: v.vehicleId,
+      plate,
+      model: modelName,
+      customerId: v.customerId || matchedCust?._id || matchedCust?.id || null,
+      ownerName: v.ownerName || matchedCust?.fullName || matchedCust?.name || 'Customer',
+      ownerEmail: (v.ownerEmail || matchedCust?.email || '').toLowerCase().trim(),
+      ownerPhone: v.ownerPhone || matchedCust?.mobile || matchedCust?.phone || '',
+      packageName: 'Registered Account',
+      totalWashes: 0,
+      lastWashDate: v.updatedAt ? new Date(v.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+    };
   });
 
   // Attach live membership status and wash count if vehicle has an active plan
@@ -338,14 +270,13 @@ export default function CarWashAdminHubPage() {
       return false;
     });
     if (activeMem) {
-      veh.membershipName = activeMem.planName || veh.packageName;
-      veh.packageName = activeMem.planName || veh.packageName;
+      veh.membershipName = activeMem.planName || activeMem.packageName || veh.packageName;
+      veh.packageName = activeMem.planName || activeMem.packageName || veh.packageName;
       veh.membershipValidity = `${activeMem.startDateLabel || activeMem.startDate} → ${activeMem.expiryDateLabel || activeMem.expiryDate}`;
       veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
       veh.membershipStatus = activeMem.status;
-      veh.membershipId = activeMem.id;
+      veh.membershipId = activeMem.id || activeMem._id;
       veh.maxWashes = activeMem.maxWashes;
-      // Single source of truth: synchronize totalWashes with washesUsed for active memberships
       const synced = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
       veh.totalWashes = synced;
       veh.washesUsed = synced;
@@ -353,20 +284,17 @@ export default function CarWashAdminHubPage() {
   });
 
   const registeredVehiclesList = Object.values(registeredVehiclesMap).sort((a, b) => {
-    // 1. Prioritize active membership holders
     const aHasMem = Boolean(a.membershipName || a.membershipStatus === 'Active');
     const bHasMem = Boolean(b.membershipName || b.membershipStatus === 'Active');
     if (aHasMem && !bHasMem) return -1;
     if (!aHasMem && bHasMem) return 1;
 
-    // 2. Sort by latest service date descending
     const aTime = a.lastWashDate && a.lastWashDate !== '—' ? new Date(a.lastWashDate).getTime() : 0;
     const bTime = b.lastWashDate && b.lastWashDate !== '—' ? new Date(b.lastWashDate).getTime() : 0;
     if (aTime !== bTime && !isNaN(aTime) && !isNaN(bTime)) {
       return bTime - aTime;
     }
 
-    // 3. Fallback: alphabetical plate
     return (a.plate || '').localeCompare(b.plate || '');
   });
 
@@ -779,9 +707,13 @@ export default function CarWashAdminHubPage() {
     if (!vehicleToDelete) return;
     setIsDeletingVehicle(true);
     try {
+      const cleanPlate = normalizePlate(vehicleToDelete.plate);
+      await apiClient.delete(`/vehicles/${cleanPlate}`);
       const cust = findCustomerProfile(vehicleToDelete.plate, vehicleToDelete.ownerEmail, vehicleToDelete.ownerPhone);
       const custId = vehicleToDelete.customerId || cust?._id || cust?.id || 'any';
       await deleteCustomerVehicle(custId, vehicleToDelete.plate);
+      await fetchLiveVehicles();
+      showToast(`Vehicle ${vehicleToDelete.plate} deregistered from database`);
       setSelectedVehicleDetail(null);
       setVehicleToDelete(null);
     } catch (err) {
@@ -943,7 +875,7 @@ export default function CarWashAdminHubPage() {
     };
 
     try {
-      const res = await apiClient.post('/users/staff', newStaffData);
+      const res = await apiClient.post('/staff', newStaffData);
 
       if (res.data && res.data.success) {
         showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
@@ -1032,7 +964,7 @@ export default function CarWashAdminHubPage() {
     }
 
     try {
-      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      const res = await apiClient.put(`/staff/${sId}`, payload);
       if (res.data && res.data.success) {
         showToast?.('✅ Staff member updated successfully!');
       }
@@ -1055,7 +987,7 @@ export default function CarWashAdminHubPage() {
     if (!confirmDel) return;
 
     try {
-      await apiClient.delete(`/users/staff/${sId}`);
+      await apiClient.delete(`/staff/${sId}`);
       showToast?.('✅ Staff member deleted successfully!', 'error');
     } catch (err) {
       console.warn('Staff delete API error:', err);
