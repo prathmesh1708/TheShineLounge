@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Loader2, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { X, Download, Loader2, Copy, Check, Printer } from 'lucide-react';
 import ReceiptDocument, { formatReceiptDate, getReceiptValidityRange } from '../../../common/components/ReceiptDocument';
 import { downloadReceiptPdf, getReceiptPdfBlob, copyReceiptImageToClipboard } from '../../../common/utils/receiptPdfGenerator';
 import { apiClient } from '../../../common/utils/apiClient';
@@ -9,6 +9,10 @@ import { apiClient } from '../../../common/utils/apiClient';
 export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const receiptRef = useRef(null);
   const isProcessingRef = useRef(false);
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Extract and format clean customer phone number
   const getInitialPhone = () => {
@@ -281,26 +285,15 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Copy Receipt Image Button */}
+            {/* Print Invoice Button */}
             <button
-              onClick={handleCopyReceiptImage}
-              disabled={isCopyingImage || isGeneratingPdf}
-              className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 ${
-                copiedSuccess
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-[#1e3e62] border-slate-300 hover:bg-slate-50'
-              }`}
-              title="Copy receipt as image to clipboard for WhatsApp pasting (Cmd+V)"
+              onClick={handlePrint}
+              disabled={isGeneratingPdf}
+              className="px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 bg-white text-[#1e3e62] border-slate-300 hover:bg-slate-50"
+              title="Print official tax invoice"
             >
-              {isCopyingImage ? (
-                <Loader2 className="w-4 h-4 animate-spin text-[#1e3e62]" />
-              ) : copiedSuccess ? (
-                <Check className="w-4 h-4 text-white" />
-              ) : (
-                <ImageIcon className="w-4 h-4 text-[#1e3e62]" />
-              )}
-              <span className="hidden md:inline">{copiedSuccess ? 'Image Copied!' : 'Copy Image'}</span>
-              <span className="md:hidden">{copiedSuccess ? 'Copied' : 'Image'}</span>
+              <Printer className="w-4 h-4 text-[#1e3e62]" />
+              <span>Print</span>
             </button>
 
             {/* "Send via WhatsApp" Button */}
@@ -390,25 +383,15 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap sm:flex-nowrap">
-            {/* Quick Copy Image Button */}
+            {/* Print Invoice Button */}
             <button
-              onClick={handleCopyReceiptImage}
-              disabled={isCopyingImage || isGeneratingPdf}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 ${
-                copiedSuccess
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-slate-50 text-[#1e3e62] border-slate-300 hover:bg-slate-100'
-              }`}
-              title="Copy receipt image to clipboard"
+              onClick={handlePrint}
+              disabled={isGeneratingPdf}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border shadow-xs active:scale-95 disabled:opacity-60 bg-slate-50 text-[#1e3e62] border-slate-300 hover:bg-slate-100"
+              title="Print official tax invoice"
             >
-              {isCopyingImage ? (
-                <Loader2 className="w-4 h-4 animate-spin text-[#1e3e62]" />
-              ) : copiedSuccess ? (
-                <Check className="w-4 h-4 text-white" />
-              ) : (
-                <Copy className="w-4 h-4 text-[#1e3e62]" />
-              )}
-              <span>{copiedSuccess ? 'Image Copied!' : 'Copy Image'}</span>
+              <Printer className="w-4 h-4 text-[#1e3e62]" />
+              <span>Print</span>
             </button>
 
             {/* Send via WhatsApp */}
