@@ -519,7 +519,7 @@ export default function StaffInvoicingPage() {
       date: new Date().toLocaleString(),
       businessName: calcSettings?.businessName || 'The Shine Lounge Pvt Ltd',
       tradeName: calcSettings?.tradeName || 'The Shine Lounge',
-      gstin: calcSettings?.gstin || '27AABCT8742L1ZK',
+      gstin: calcSettings?.gstin || '06ABSCS4162M1ZO',
       pan: calcSettings?.pan || 'AABCT8742L',
       registeredAddress: calcSettings?.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'
     };

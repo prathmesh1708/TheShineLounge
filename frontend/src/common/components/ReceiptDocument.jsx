@@ -82,7 +82,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
   const paymentMode = sale.paymentMode || 'Cash';
   const customerPhone = formatReceiptPhone(sale.phone || sale.customerPhone || sale.mobile);
 
-  const gstNo = sale.gstNo || sale.gstin || sale.gstNumber || '23AAAAA0000A1Z5';
+  const gstNo = sale.gstNo || sale.gstin || sale.gstNumber || '06ABSCS4162M1ZO';
 
   const rawService = sale.serviceName || sale.serviceCategory || sale.service || sale.serviceKey;
   const serviceKeyMap = {

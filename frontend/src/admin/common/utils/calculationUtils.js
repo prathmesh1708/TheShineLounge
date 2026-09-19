@@ -5,7 +5,7 @@ export const defaultCalculationSettings = {
   // Business Legal & Tax Identification
   businessName: 'The Shine Lounge Pvt Ltd',
   tradeName: 'The Shine Lounge',
-  gstin: '27AABCT8742L1ZK',
+  gstin: '06ABSCS4162M1ZO',
   pan: 'AABCT8742L',
   stateCode: '06 - Haryana',
   registeredAddress: '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101',
