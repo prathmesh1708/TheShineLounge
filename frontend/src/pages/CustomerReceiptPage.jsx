@@ -73,29 +73,12 @@ export default function CustomerReceiptPage() {
             }
           }
         } catch (apiErr) {
-          console.warn('Could not fetch receipt from API, checking local storage:', apiErr);
+          console.warn('Could not fetch receipt from API:', apiErr);
         }
 
-        // 2. Fallback to localStorage offline sales
-        const localSalesRaw = localStorage.getItem('tsl_offline_sales') || localStorage.getItem('offline_sales');
-        if (localSalesRaw) {
-          try {
-            const parsed = JSON.parse(localSalesRaw);
-            if (Array.isArray(parsed)) {
-              const matched = parsed.find(
-                s => String(s.id).toLowerCase() === String(id).toLowerCase() ||
-                     String(s.bookingId).toLowerCase() === String(id).toLowerCase() ||
-                     String(s.receiptNo).toLowerCase() === String(id).toLowerCase()
-              );
-              if (matched && isMounted) {
-                setSale(matched);
-                setLoading(false);
-                return;
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing local sales:', e);
-          }
+        if (isMounted) {
+          setError('Receipt not found in database.');
+          setLoading(false);
         }
 
         if (isMounted) {

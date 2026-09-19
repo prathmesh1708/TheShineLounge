@@ -59,156 +59,13 @@ export const AdminProvider = ({ children }) => {
   // Global State
   const [stats, setStats] = useState(initialDashboardStats);
   const [services, setServices] = useState([]);
-  const [banners, setBanners] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_admin_banners');
-      return saved ? JSON.parse(saved) : initialBanners;
-    } catch (e) {
-      return initialBanners;
-    }
-  });
+  const [banners, setBanners] = useState(initialBanners);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('tsl_admin_banners', JSON.stringify(banners));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('salonDataChanged'));
-        window.dispatchEvent(new CustomEvent('carDetailingDataChanged'));
-      }
-    } catch (e) {
-      console.warn('Could not save banners to localStorage:', e);
-    }
-  }, [banners]);
-  const [memberships, setMemberships] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_admin_memberships');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const seen = new Set();
-          const clean = [];
-          for (const m of parsed) {
-            if (!m || String(m.id || '').startsWith('MEM-100')) continue;
-            const norm = normalizeMembershipId(m.id || m.bookingId || m.rawBookingId);
-            if (norm) {
-              if (seen.has(norm)) continue;
-              seen.add(norm);
-            }
-            clean.push(m);
-          }
-          return clean;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      const seen = new Set();
-      const clean = [];
-      for (const m of memberships) {
-        if (!m || String(m.id || '').startsWith('MEM-100')) continue;
-        const norm = normalizeMembershipId(m.id || m.bookingId || m.rawBookingId);
-        if (norm) {
-          if (seen.has(norm)) continue;
-          seen.add(norm);
-        }
-        clean.push(m);
-      }
-      localStorage.setItem('tsl_admin_memberships', JSON.stringify(clean));
-      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: clean }));
-    } catch (e) {
-      console.warn('Could not save memberships to localStorage:', e);
-    }
-  }, [memberships]);
-  const [staffList, setStaffList] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_admin_staff_list');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(s => !String(s.id || '').startsWith('STF-0'));
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('tsl_admin_staff_list', JSON.stringify(staffList));
-    } catch (e) {
-      console.warn('Could not save staffList to localStorage:', e);
-    }
-  }, [staffList]);
-
-  const [bookings, setBookings] = useState(() => {
-    try {
-      const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-        return cachedOffline.filter(b =>
-          b &&
-          b.id !== 'OFS-MTJX5GRW-3986' &&
-          b.bookingId !== 'OFS-MTJX5GRW-3986' &&
-          !String(b.id || '').startsWith('BK-90') &&
-          !String(b.id || '').startsWith('B-2026-88') &&
-          !String(b.id || '').startsWith('BK-SAL-')
-        );
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_admin_customers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      if (Array.isArray(customers) && customers.length > 0) {
-        localStorage.setItem('tsl_admin_customers', JSON.stringify(customers));
-      }
-    } catch (e) {}
-  }, [customers]);
-  const [inventory, setInventory] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tsl_admin_inventory');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(i =>
-            i &&
-            !String(i.id || '').startsWith('INV-10') &&
-            !String(i.id || '').startsWith('INV-20') &&
-            !String(i.id || '').startsWith('INV-30') &&
-            !String(i.id || '').startsWith('INV-40') &&
-            !String(i.id || '').startsWith('INV-50') &&
-            !String(i.id || '').startsWith('INV-60') &&
-            !String(i.id || '').startsWith('INV-0')
-          );
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('tsl_admin_inventory', JSON.stringify(inventory));
-    } catch (e) {
-      console.warn('Could not save inventory to localStorage:', e);
-    }
-  }, [inventory]);
+  const [memberships, setMemberships] = useState([]);
+  const [staffList, setStaffList] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [inventory, setInventory] = useState([]);
 
   const [coupons, setCoupons] = useState(initialCoupons);
   const [notifications, setNotifications] = useState(initialNotifications);
@@ -562,100 +419,6 @@ export const AdminProvider = ({ children }) => {
             };
           });
 
-          // Bi-directional sync of genuine offline sales between backend and localStorage
-          const backendOfflineSales = mapped.filter(b =>
-            !b.isDeleted &&
-            b.id !== 'OFS-MTJX5GRW-3986' &&
-            b.bookingId !== 'OFS-MTJX5GRW-3986' &&
-            !String(b.bookingId || b.id || '').startsWith('WASH-') &&
-            !String(b.bookingId || b.id || '').startsWith('BK-90') &&
-            !String(b.bookingId || b.id || '').startsWith('B-2026-88') &&
-            !String(b.bookingId || b.id || '').startsWith('BK-SAL-') &&
-            !String(b.bookingId || b.id || '').startsWith('BK-70') &&
-            !String(b.bookingId || b.id || '').startsWith('BK-80') &&
-            (
-              (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-              (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
-            )
-          );
-          try {
-            const rawCached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-            const cachedOffline = Array.isArray(rawCached) ? rawCached.filter(s =>
-              s &&
-              s.id !== 'OFS-MTJX5GRW-3986' &&
-              s.bookingId !== 'OFS-MTJX5GRW-3986' &&
-              !String(s.id || s.bookingId || '').startsWith('WASH-') &&
-              !String(s.id || s.bookingId || '').startsWith('BK-90') &&
-              !String(s.id || s.bookingId || '').startsWith('B-2026-88') &&
-              !String(s.id || s.bookingId || '').startsWith('BK-SAL-') &&
-              !String(s.id || s.bookingId || '').startsWith('BK-70') &&
-              !String(s.id || s.bookingId || '').startsWith('BK-80')
-            ) : [];
-
-            const combinedOfflineMap = new Map();
-            // Include backend offline sales
-            backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
-            // Include locally cached offline sales if not already from backend, and auto-sync them to MongoDB
-            cachedOffline.forEach(s => {
-              const key = s.id || s.bookingId;
-              if (!combinedOfflineMap.has(key)) {
-                combinedOfflineMap.set(key, s);
-                // Auto-sync missing offline sale to MongoDB
-                apiClient.post('/bookings', {
-                  bookingId: s.bookingId || s.id,
-                  serviceKey: s.serviceKey || 'car-wash',
-                  serviceName: s.serviceName || (s.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
-                  packageName: s.packageName || s.membershipName || 'Standard Service',
-                  price: Number(s.price || s.total || s.amount || 0),
-                  date: s.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-                  saleDate: s.saleDate || s.date,
-                  timeSlot: s.timeSlot || '09:00 AM - 09:30 AM',
-                  customerName: s.customerName || 'Valued Customer',
-                  customerEmail: s.customerEmail || '',
-                  phone: s.phone || '',
-                  vehicleNo: s.vehicleNo || '',
-                  vehicleType: s.vehicleModel || s.vehicleType || '',
-                  vehicleModel: s.vehicleModel || s.vehicleType || '',
-                  status: 'Completed',
-                  isOfflineSale: true,
-                  saleType: s.saleType || (s.membershipName ? 'membership' : 'service'),
-                  membershipName: s.membershipName || '',
-                  membershipValidity: s.membershipValidity || '',
-                  membershipExpiry: s.membershipExpiry || '',
-                  paymentMode: s.paymentMode || 'Cash',
-                  notes: s.notes || ''
-                }).catch(() => {});
-              }
-            });
-            const allOffline = Array.from(combinedOfflineMap.values());
-            localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
-
-            // Ensure all offline sales are in mapped list
-            allOffline.forEach(ofs => {
-              if (!mapped.some(m => m.id === ofs.id || m.bookingId === ofs.bookingId)) {
-                mapped.unshift(ofs);
-              }
-            });
-          } catch (e) {}
-
-          // Cache wash redemption logs in localStorage (tsl_wash_logs) so wash history persists across reloads
-          const washLogsFromMapped = mapped.filter(b => b && (String(b.id || b.bookingId || '').startsWith('WASH-') || isWashRedemptionRecord(b)));
-          try {
-            const cachedWashLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
-            const washMap = new Map();
-            cachedWashLogs.forEach(w => { if (w) washMap.set(w.id || w.bookingId, w); });
-            washLogsFromMapped.forEach(w => { if (w) washMap.set(w.id || w.bookingId, w); });
-            const allWashLogs = Array.from(washMap.values());
-            localStorage.setItem('tsl_wash_logs', JSON.stringify(allWashLogs));
-
-            // Merge cached wash logs into mapped array so no local washes are missing
-            allWashLogs.forEach(w => {
-              if (!mapped.some(m => m.id === w.id || m.bookingId === w.bookingId)) {
-                mapped.unshift(w);
-              }
-            });
-          } catch (e) {}
-
           const cleanBookings = mapped.filter(b => {
             if (!b) return false;
             const bId = String(b.id || b.bookingId || '').trim();
@@ -680,32 +443,7 @@ export const AdminProvider = ({ children }) => {
           setMemberships(deriveMembershipsFromBookings([]));
         }
       } catch (err) {
-        console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
-        try {
-          const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-          if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-            const cleanOffline = cachedOffline.filter(b => {
-              if (!b) return false;
-              const bId = String(b.id || b.bookingId || '').trim();
-              if (!bId && !b.customerName) return false;
-              if (bId.startsWith('WASH-')) return false;
-              if (
-                bId.startsWith('BK-90') ||
-                bId.startsWith('B-2026-88') ||
-                bId.startsWith('BK-SAL-') ||
-                bId.startsWith('BK-70') ||
-                bId.startsWith('BK-80') ||
-                bId === 'OFS-MTJX5GRW-3986'
-              ) {
-                return false;
-              }
-              return true;
-            });
-            setMemberships(deriveMembershipsFromBookings(cachedOffline));
-            setBookings(cleanOffline);
-            return;
-          }
-        } catch (e) {}
+        console.warn('Could not fetch bookings list from database:', err.message);
         setBookings([]);
         setMemberships([]);
       } finally {
@@ -2051,17 +1789,6 @@ export const AdminProvider = ({ children }) => {
       return next;
     });
 
-    try {
-      const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      if (Array.isArray(cachedOffline)) {
-        const filteredOffline = cachedOffline.filter(s => {
-          const sId = String(s.id || s.bookingId || s._id || '');
-          return !candidateIds.includes(sId);
-        });
-        localStorage.setItem('tsl_offline_sales', JSON.stringify(filteredOffline));
-      }
-    } catch (_) {}
-
     showToast('Booking deleted successfully');
   };
 
@@ -2113,7 +1840,7 @@ export const AdminProvider = ({ children }) => {
       }
       await fetchBookingsList();
     } catch (err) {
-      console.warn('Backend save error for membership wash, using local fallback:', err.message);
+      console.warn('Backend save error for membership wash:', err.message);
     }
 
     const localRecord = savedRecord ? {
@@ -2136,12 +1863,6 @@ export const AdminProvider = ({ children }) => {
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
-
-    try {
-      const existingLogs = JSON.parse(localStorage.getItem('tsl_wash_logs') || '[]');
-      const filtered = existingLogs.filter(l => l && l.id !== localRecord.id && l.bookingId !== localRecord.bookingId);
-      localStorage.setItem('tsl_wash_logs', JSON.stringify([localRecord, ...filtered]));
-    } catch (e) {}
 
     setCustomers(prev => deriveCustomers(prev, [localRecord], []));
 
