@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown } from 'lucide-react';
+import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
 
@@ -75,7 +75,9 @@ const initialFormState = {
   membershipName: '',
   validityDays: '30',
   customExpiryDate: '',
+  basePrice: '',
   price: '',
+  includeGst: false,
   paymentMode: 'Cash',
   saleDate: new Date().toISOString().split('T')[0],
   notes: ''

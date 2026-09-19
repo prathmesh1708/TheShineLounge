@@ -56,10 +56,8 @@ export default function AdminCalculationSettingsPage() {
   const simIgst = form.taxType === 'igst' ? simTax : 0;
 
   const simOverhead = (simTaxable * Number(form.operatingOverheadRate || 18.5)) / 100;
-  const simStaff = (simTaxable * Number(form.staffIncentiveRate || 7.5)) / 100;
   const simGateway = (simGross * Number(form.gatewaySurchargeRate || 1.8)) / 100;
-  const simDeprec = (simTaxable * Number(form.depreciationReserveRate || 2.2)) / 100;
-  const simTotalDeductions = simOverhead + simStaff + simGateway + simDeprec;
+  const simTotalDeductions = simOverhead + simGateway;
   const simNetProfit = Math.max(0, simTaxable - simTotalDeductions);
   const simMargin = simTaxable > 0 ? ((simNetProfit / simTaxable) * 100).toFixed(1) : 0;
 
@@ -75,7 +73,7 @@ export default function AdminCalculationSettingsPage() {
             <h1 className="text-xl font-extrabold text-gray-900">Financial Calculation Rules & Tax Engine</h1>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Configure GST slabs, tax modes, operational expense ratios, and staff performance incentives.
+            Configure GST slabs, tax modes, and operational expense ratios.
           </p>
         </div>
 
@@ -258,22 +256,6 @@ export default function AdminCalculationSettingsPage() {
 
               <div>
                 <label className="font-bold text-gray-700 block mb-1">
-                  Staff Performance Incentive Pool (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.staffIncentiveRate}
-                  onChange={(e) => setForm({ ...form, staffIncentiveRate: Number(e.target.value) })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-emerald-500"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Reserved for staff commission & bonus payouts (% of net turnover).
-                </p>
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">
                   Payment Gateway / POS Surcharge (%)
                 </label>
                 <input
@@ -285,22 +267,6 @@ export default function AdminCalculationSettingsPage() {
                 />
                 <p className="text-[10px] text-gray-400 mt-1">
                   Bank and UPI processing fee deduction (% of gross turnover).
-                </p>
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">
-                  Depreciation & Maintenance Reserve (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.depreciationReserveRate}
-                  onChange={(e) => setForm({ ...form, depreciationReserveRate: Number(e.target.value) })}
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-emerald-500"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  High-pressure pumps and equipment wear & tear reserve (% of net turnover).
                 </p>
               </div>
             </div>
@@ -320,43 +286,40 @@ export default function AdminCalculationSettingsPage() {
               </span>
             </div>
 
-            <p className="text-xs text-slate-300">
-              Test how an incoming customer bill will be split into GST, Overheads, Staff Share & Net Margin in real-time.
-            </p>
-
+            {/* Input Simulation Controls */}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-slate-300 block mb-1">Simulation Amount (₹)</label>
+                <label className="text-slate-400 block mb-1">Simulated Service Category</label>
+                <select
+                  value={simDept}
+                  onChange={(e) => setSimDept(e.target.value)}
+                  className="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs font-bold"
+                >
+                  <option value="car-wash">Car Wash (18%)</option>
+                  <option value="car-detailing">Car Detailing (18%)</option>
+                  <option value="cafe">Café (5%)</option>
+                  <option value="drive-through-cafe">Drive-Through Café (5%)</option>
+                  <option value="dog-wash">Dog Bath (18%)</option>
+                  <option value="salon">Men's Salon (18%)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 block mb-1">Simulated Gross Billing Amount (₹)</label>
                 <input
                   type="number"
                   value={simAmount}
                   onChange={(e) => setSimAmount(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl font-mono font-black text-amber-400 text-base focus:outline-none focus:border-amber-400"
+                  className="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-xs font-bold"
                 />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-300 block mb-1">Service Department</label>
-                <select
-                  value={simDept}
-                  onChange={(e) => setSimDept(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl font-bold text-white text-xs focus:outline-none focus:border-amber-400"
-                >
-                  <option value="car-wash">Car Wash (GST {form.categoryGstRates?.['car-wash'] ?? 18}%)</option>
-                  <option value="car-detailing">Car Detailing (GST {form.categoryGstRates?.['car-detailing'] ?? 18}%)</option>
-                  <option value="cafe">Lounge Café (GST {form.categoryGstRates?.['cafe'] ?? 5}%)</option>
-                  <option value="drive-through-cafe">Drive-Thru Café (GST {form.categoryGstRates?.['drive-through-cafe'] ?? 5}%)</option>
-                  <option value="dog-wash">Dog Bath (GST {form.categoryGstRates?.['dog-wash'] ?? 18}%)</option>
-                  <option value="salon">Men's Salon (GST {form.categoryGstRates?.['salon'] ?? 18}%)</option>
-                </select>
               </div>
             </div>
 
-            {/* Calculated Breakdown Card */}
-            <div className="p-3.5 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-300 pb-1.5 border-b border-slate-700">
+            {/* Computation Output breakdown */}
+            <div className="pt-2 border-t border-slate-700 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-300">
                 <span>Taxable Base ({form.gstPricingMode}):</span>
-                <span className="font-mono font-bold text-white">{formatINR(simTaxable)}</span>
+                <span className="font-mono text-white font-bold">{formatINR(simTaxable)}</span>
               </div>
               <div className="flex justify-between text-slate-300 pb-1.5 border-b border-slate-700">
                 <span>CGST ({(simRate / 2).toFixed(1)}%):</span>
@@ -368,15 +331,11 @@ export default function AdminCalculationSettingsPage() {
               </div>
               <div className="flex justify-between text-slate-300 pb-1.5 border-b border-slate-700">
                 <span>Total GST Output ({simRate}%):</span>
-                <span className="font-mono font-black text-amber-400">{formatINR(simTax)}</span>
+                <span className="font-mono text-amber-400 font-black">{formatINR(simTax)}</span>
               </div>
               <div className="flex justify-between text-slate-400 text-[11px] pt-1">
                 <span>Overhead Cost ({form.operatingOverheadRate}%):</span>
                 <span className="font-mono text-slate-300">-{formatINR(simOverhead)}</span>
-              </div>
-              <div className="flex justify-between text-slate-400 text-[11px]">
-                <span>Staff Incentive Pool ({form.staffIncentiveRate}%):</span>
-                <span className="font-mono text-slate-300">-{formatINR(simStaff)}</span>
               </div>
               <div className="flex justify-between text-slate-400 text-[11px]">
                 <span>Gateway Fee ({form.gatewaySurchargeRate}%):</span>

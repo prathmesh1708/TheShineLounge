@@ -225,22 +225,10 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
               <td>${formatINR(summary.operatingOverheads)}</td>
             </tr>
             <tr>
-              <td>Staff Performance Incentive Pool</td>
-              <td>${cs.staffIncentiveRate || 7.5}%</td>
-              <td>Net Taxable Base</td>
-              <td>${formatINR(summary.staffIncentives)}</td>
-            </tr>
-            <tr>
               <td>Payment Gateway & POS Surcharge</td>
               <td>${cs.gatewaySurchargeRate || 1.8}%</td>
               <td>Gross Turnover</td>
               <td>${formatINR(summary.gatewayFees)}</td>
-            </tr>
-            <tr>
-              <td>Equipment Depreciation & Capital Reserve</td>
-              <td>${cs.depreciationReserveRate || 2.2}%</td>
-              <td>Net Taxable Base</td>
-              <td>${formatINR(summary.depreciationReserve)}</td>
             </tr>
             <tr style="background:#f1f5f9;font-weight:800;">
               <td>Total Allowable Operational Expenditure</td>
@@ -469,22 +457,10 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
                     <td className="py-2 px-3 text-right font-mono">{formatINR(summary.operatingOverheads)}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Staff Performance Incentive Pool</td>
-                    <td className="py-2 px-3">{cs.staffIncentiveRate || 7.5}%</td>
-                    <td className="py-2 px-3 text-gray-500">Net Taxable Base</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.staffIncentives)}</td>
-                  </tr>
-                  <tr>
                     <td className="py-2 px-3 font-bold text-gray-900">Payment Gateway & Surcharge Fees</td>
                     <td className="py-2 px-3">{cs.gatewaySurchargeRate || 1.8}%</td>
                     <td className="py-2 px-3 text-gray-500">Gross Turnover</td>
                     <td className="py-2 px-3 text-right font-mono">{formatINR(summary.gatewayFees)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Equipment Depreciation Reserve</td>
-                    <td className="py-2 px-3">{cs.depreciationReserveRate || 2.2}%</td>
-                    <td className="py-2 px-3 text-gray-500">Net Taxable Base</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.depreciationReserve)}</td>
                   </tr>
                   <tr className="bg-emerald-50/60 font-bold text-emerald-900">
                     <td className="py-2.5 px-3" colSpan="3">

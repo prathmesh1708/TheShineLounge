@@ -103,7 +103,6 @@ export default function RevenueReportsPage() {
         [`State GST (SGST @ ${(summary.effectiveTaxRate / 2).toFixed(1)}%)`, summary.sgst, 'Output Tax Liability'],
         [`Total GST Output Liability (${summary.effectiveTaxRate}%)`, summary.totalGst, 'Statutory Tax Payable'],
         ['Operating Overheads', summary.operatingOverheads, `${cs.operatingOverheadRate || 18.5}% of net base`],
-        ['Staff Performance Incentives', summary.staffIncentives, `${cs.staffIncentiveRate || 7.5}% of net base`],
         ['Payment Gateway & Surcharge', summary.gatewayFees, `${cs.gatewaySurchargeRate || 1.8}% of gross turnover`],
         ['Net Operating Profit (EBITDA)', summary.netProfit, `Margin: ${summary.netProfitMargin}%`],
         ['Average Order Value (AOV)', summary.aov, 'Per customer ticket'],
