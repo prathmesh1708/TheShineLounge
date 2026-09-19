@@ -208,36 +208,64 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const availablePackages = useMemo(() => extractPlans(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
   const availableMemberships = useMemo(() => extractMemberships(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
 
+  const calcSettings = adminContext?.calculationSettings;
+  const activeGstRate = Number(
+    calcSettings?.categoryGstRates?.[form.serviceKey] ?? calcSettings?.defaultGstRate ?? 18
+  );
+
+  const baseVal = Number(form.basePrice || form.price || 0);
+  const gstAmount = form.includeGst ? Math.round((baseVal * activeGstRate) / 100) : 0;
+  const priceWithGst = Math.round(baseVal * (1 + activeGstRate / 100));
+
   const handleChange = (field, value) => {
     setForm(prev => {
       const updated = { ...prev, [field]: value };
-      // If service selection changed, update serviceName and reset package/membership
       if (field === 'serviceKey') {
         const match = SERVICE_OPTIONS.find(s => s.key === value);
         updated.serviceName = match ? match.serviceName : value;
         updated.packageName = '';
         updated.membershipName = '';
+        updated.basePrice = '';
         updated.price = '';
         setIsCustomPackage(false);
         setIsCustomMembership(false);
       }
+      if (field === 'price') {
+        updated.basePrice = value;
+      }
       return updated;
     });
+  };
+
+  const handleGstToggle = (shouldIncludeGst) => {
+    const currentBase = Number(form.basePrice || form.price || 0);
+    const newPrice = shouldIncludeGst
+      ? Math.round(currentBase * (1 + activeGstRate / 100))
+      : currentBase;
+    setForm(prev => ({
+      ...prev,
+      includeGst: shouldIncludeGst,
+      basePrice: currentBase ? String(currentBase) : prev.basePrice,
+      price: currentBase ? String(newPrice) : prev.price
+    }));
   };
 
   // Handle package selection from dropdown — auto-fill price but keep it editable
   const handlePackageSelect = (selectedValue) => {
     if (selectedValue === '__custom__') {
       setIsCustomPackage(true);
-      setForm(prev => ({ ...prev, packageName: '', price: '' }));
+      setForm(prev => ({ ...prev, packageName: '', basePrice: '', price: '' }));
       return;
     }
     setIsCustomPackage(false);
     const pkg = availablePackages.find(p => p.name === selectedValue);
+    const baseP = pkg ? pkg.price : 0;
+    const finalP = form.includeGst ? Math.round(baseP * (1 + activeGstRate / 100)) : baseP;
     setForm(prev => ({
       ...prev,
       packageName: selectedValue,
-      price: pkg ? String(pkg.price) : prev.price
+      basePrice: baseP ? String(baseP) : '',
+      price: baseP ? String(finalP) : prev.price
     }));
   };
 
@@ -245,15 +273,18 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const handleMembershipSelect = (selectedValue) => {
     if (selectedValue === '__custom__') {
       setIsCustomMembership(true);
-      setForm(prev => ({ ...prev, membershipName: '', price: '' }));
+      setForm(prev => ({ ...prev, membershipName: '', basePrice: '', price: '' }));
       return;
     }
     setIsCustomMembership(false);
     const mem = availableMemberships.find(m => m.name === selectedValue);
+    const baseP = mem ? mem.price : 0;
+    const finalP = form.includeGst ? Math.round(baseP * (1 + activeGstRate / 100)) : baseP;
     setForm(prev => ({
       ...prev,
       membershipName: selectedValue,
-      price: mem ? String(mem.price) : prev.price,
+      basePrice: baseP ? String(baseP) : '',
+      price: baseP ? String(finalP) : prev.price,
       validityDays: mem ? String(mem.duration) : prev.validityDays
     }));
   };
@@ -262,7 +293,6 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
     // Only allow digits
     const raw = e.target.value.replace(/\D/g, '');
     let clean = raw;
-    // If pasted e.g. with country code 91 or leading 0, cleanly trim to 10 digits
     if (raw.length > 10) {
       if (raw.startsWith('91') && raw.length === 12) {
         clean = raw.slice(2);
@@ -277,7 +307,6 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Guard against multiple concurrent clicks
     if (isSubmittingRef.current || submitting) return;
     const trimmedPhone = (form.phone || '').trim();
     if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || !form.vehicleNo || !form.price) return;
@@ -290,7 +319,19 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
       : countryCode;
     const finalPhone = `${activeCode} ${trimmedPhone}`;
 
-    const payload = { ...form, phone: finalPhone };
+    const bVal = Number(form.basePrice || form.price || 0);
+    const gAmt = form.includeGst ? Math.round((bVal * activeGstRate) / 100) : 0;
+    const finalTot = form.includeGst ? bVal + gAmt : bVal;
+
+    const payload = {
+      ...form,
+      phone: finalPhone,
+      includeGst: form.includeGst,
+      gstRate: form.includeGst ? activeGstRate : 0,
+      subtotal: bVal,
+      gstAmount: gAmt,
+      price: finalTot
+    };
 
     // Close the modal window IMMEDIATELY
     onClose();
@@ -655,6 +696,64 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Select Billing & Tax Mode Widget */}
+          <div>
+            <div className={sectionHeadingClass}>
+              <Receipt className="w-4 h-4 text-amber-500" />
+              Select Billing & Tax Mode
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Without GST Button */}
+              <button
+                type="button"
+                onClick={() => handleGstToggle(false)}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  !form.includeGst
+                    ? 'bg-[#1e293b] text-white border-blue-600 shadow-md ring-2 ring-blue-500/30'
+                    : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black">Without GST</span>
+                  {!form.includeGst && (
+                    <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                  )}
+                </div>
+                <p className={`text-xs mt-1 font-bold ${!form.includeGst ? 'text-blue-200' : 'text-gray-500'}`}>
+                  ₹{Number(form.basePrice || form.price || 0).toLocaleString('en-IN')} (Net Amount)
+                </p>
+                <span className={`text-[10px] block mt-0.5 ${!form.includeGst ? 'text-slate-400' : 'text-gray-400'}`}>
+                  Non-GST Commercial Receipt
+                </span>
+              </button>
+
+              {/* With GST Button */}
+              <button
+                type="button"
+                onClick={() => handleGstToggle(true)}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  form.includeGst
+                    ? 'bg-[#1e293b] text-white border-blue-600 shadow-md ring-2 ring-blue-500/30'
+                    : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black">With GST (+{activeGstRate}%)</span>
+                  {form.includeGst && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  )}
+                </div>
+                <p className={`text-xs mt-1 font-bold ${form.includeGst ? 'text-emerald-300' : 'text-gray-500'}`}>
+                  ₹{priceWithGst.toLocaleString('en-IN')} (+₹{gstAmount.toLocaleString('en-IN')} GST)
+                </p>
+                <span className={`text-[10px] block mt-0.5 ${form.includeGst ? 'text-slate-400' : 'text-gray-400'}`}>
+                  Tax Invoice with CGST/SGST Split
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Pricing & Payment */}

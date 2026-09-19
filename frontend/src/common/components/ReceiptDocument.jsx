@@ -76,6 +76,17 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
   const planName = sale.packageName || sale.membershipName || (isMembership ? 'Monthly Membership' : 'Car Wash Service');
   const price = Number(sale.price || sale.total || sale.amount || 0);
 
+  const hasGst = Boolean(sale.includeGst);
+  const gstRate = Number(sale.gstRate || 18);
+  const subtotal = sale.subtotal !== undefined
+    ? Number(sale.subtotal)
+    : (hasGst ? Math.round(price / (1 + gstRate / 100)) : price);
+  const gstAmount = sale.gstAmount !== undefined
+    ? Number(sale.gstAmount)
+    : (hasGst ? price - subtotal : 0);
+  const cgstAmount = Math.round(gstAmount / 2);
+  const sgstAmount = gstAmount - cgstAmount;
+
   const issuedDate = formatReceiptDate(sale.date || sale.createdAt);
   const validityRange = getReceiptValidityRange(sale, issuedDate);
   const receiptNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
@@ -184,7 +195,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                 lineHeight: 1.15
               }}
             >
-              {isMembership ? 'MEMBERSHIP RECEIPT' : 'SERVICE RECEIPT'}
+              {hasGst ? 'TAX INVOICE' : (isMembership ? 'MEMBERSHIP RECEIPT' : 'SERVICE RECEIPT')}
             </h1>
             <p
               style={{
@@ -481,9 +492,43 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                 fontWeight: 600
               }}
             >
-              <span>{planName}</span>
-              <span>Rs. {price.toLocaleString('en-IN')}</span>
+              <span>{planName} {hasGst ? '(Base Amount)' : ''}</span>
+              <span>Rs. {(hasGst ? subtotal : price).toLocaleString('en-IN')}</span>
             </div>
+
+            {hasGst && (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '13px',
+                    color: '#475569',
+                    marginTop: '8px',
+                    fontWeight: 500
+                  }}
+                >
+                  <span>CGST ({(gstRate / 2).toFixed(1)}%)</span>
+                  <span>Rs. {cgstAmount.toLocaleString('en-IN')}</span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '13px',
+                    color: '#475569',
+                    marginTop: '6px',
+                    fontWeight: 500
+                  }}
+                >
+                  <span>SGST ({(gstRate / 2).toFixed(1)}%)</span>
+                  <span>Rs. {sgstAmount.toLocaleString('en-IN')}</span>
+                </div>
+              </>
+            )}
 
             <div
               style={{
@@ -509,7 +554,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                   letterSpacing: '0.4px'
                 }}
               >
-                TOTAL PAID
+                TOTAL PAID {hasGst ? '(INCL. GST)' : ''}
               </span>
               <span
                 style={{
@@ -530,12 +575,25 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
               lineHeight: 1.6
             }}
           >
-            <p style={{ margin: '0 0 2px 0' }}>
-              Regular price: Rs. {price.toLocaleString('en-IN')} before applicable taxes.
-            </p>
-            <p style={{ margin: 0 }}>
-              Amount received via {paymentMode}: Rs. {price.toLocaleString('en-IN')}.
-            </p>
+            {hasGst ? (
+              <>
+                <p style={{ margin: '0 0 2px 0' }}>
+                  Base price: Rs. {subtotal.toLocaleString('en-IN')} + GST ({gstRate}%): Rs. {gstAmount.toLocaleString('en-IN')}.
+                </p>
+                <p style={{ margin: 0 }}>
+                  Amount received via {paymentMode}: Rs. {price.toLocaleString('en-IN')}. (GSTIN: {gstNo})
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 2px 0' }}>
+                  Commercial Receipt (Non-GST billing).
+                </p>
+                <p style={{ margin: 0 }}>
+                  Amount received via {paymentMode}: Rs. {price.toLocaleString('en-IN')}.
+                </p>
+              </>
+            )}
           </div>
         </div>
 

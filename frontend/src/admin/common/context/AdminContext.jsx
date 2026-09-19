@@ -1907,7 +1907,11 @@ export const AdminProvider = ({ children }) => {
       membershipValidity,
       membershipExpiry,
       paymentMode: formData.paymentMode || 'Cash',
-      notes: formData.notes || ''
+      notes: formData.notes || '',
+      includeGst: Boolean(formData.includeGst),
+      gstRate: Number(formData.gstRate || 0),
+      subtotal: Number(formData.subtotal || cleanPrice),
+      gstAmount: Number(formData.gstAmount || 0)
     };
 
     // Persist invoice directly to MongoDB
