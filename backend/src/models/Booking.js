@@ -198,6 +198,22 @@ const bookingSchema = new mongoose.Schema({
   receiptPdfBase64: {
     type: String,
     default: ''
+  },
+  includeGst: {
+    type: Boolean,
+    default: false
+  },
+  gstRate: {
+    type: Number,
+    default: 0
+  },
+  subtotal: {
+    type: Number,
+    default: 0
+  },
+  gstAmount: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true

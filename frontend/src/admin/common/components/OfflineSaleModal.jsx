@@ -77,7 +77,7 @@ const initialFormState = {
   customExpiryDate: '',
   basePrice: '',
   price: '',
-  includeGst: false,
+  includeGst: true,
   paymentMode: 'Cash',
   saleDate: new Date().toISOString().split('T')[0],
   notes: ''

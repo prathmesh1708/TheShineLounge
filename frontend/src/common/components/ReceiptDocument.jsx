@@ -76,7 +76,12 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
   const planName = sale.packageName || sale.membershipName || (isMembership ? 'Monthly Membership' : 'Car Wash Service');
   const price = Number(sale.price || sale.total || sale.amount || 0);
 
-  const hasGst = Boolean(sale.includeGst);
+  const hasGst = sale.includeGst === true ||
+                 sale.includeGst === 'true' ||
+                 sale.taxMode === 'with_gst' ||
+                 (sale.gstAmount !== undefined && Number(sale.gstAmount) > 0) ||
+                 (sale.subtotal !== undefined && Number(sale.subtotal) > 0 && Number(sale.subtotal) < price) ||
+                 (sale.includeGst !== false && sale.includeGst !== 'false' && (sale.gstRate !== undefined && Number(sale.gstRate) > 0));
   const gstRate = Number(sale.gstRate || 18);
   const subtotal = sale.subtotal !== undefined
     ? Number(sale.subtotal)

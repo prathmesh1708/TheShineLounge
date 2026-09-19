@@ -146,7 +146,11 @@ const createBooking = async (req, res) => {
       notes: req.body.notes || '',
       membershipName: req.body.membershipName || '',
       membershipValidity: req.body.membershipValidity || '',
-      membershipExpiry: req.body.membershipExpiry || ''
+      membershipExpiry: req.body.membershipExpiry || '',
+      includeGst: Boolean(req.body.includeGst),
+      gstRate: Number(req.body.gstRate || 0),
+      subtotal: Number(req.body.subtotal || price),
+      gstAmount: Number(req.body.gstAmount || 0)
     };
 
     const booking = await Booking.findOneAndUpdate(
