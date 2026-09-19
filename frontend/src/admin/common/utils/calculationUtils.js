@@ -3,7 +3,7 @@
 
 export const defaultCalculationSettings = {
   // Business Legal & Tax Identification
-  businessName: 'The Shine Lounge Pvt Ltd',
+  businessName: 'Shine N Sip Solutions Private Limited',
   tradeName: 'The Shine Lounge',
   gstin: '06ABSCS4162M1ZO',
   pan: 'AABCT8742L',

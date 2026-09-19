@@ -123,7 +123,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
 
         <div class="header-box">
           <div>
-            <div class="logo-text">${cs.businessName || 'The Shine Lounge Pvt Ltd'}</div>
+            <div class="logo-text">${cs.businessName || 'Shine N Sip Solutions Private Limited'}</div>
             <div class="sub-text">Trade Name: ${cs.tradeName || 'The Shine Lounge'} • GSTIN: <strong>${cs.gstin || '06ABSCS4162M1ZO'}</strong> • PAN: <strong>${cs.pan || 'AABCT8742L'}</strong></div>
             <div class="sub-text">${cs.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'}</div>
           </div>
@@ -259,7 +259,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
 
         <div class="section-heading">4. Statutory Declaration & Auditor Endorsement</div>
         <p style="font-size:10px;color:#475569;margin-bottom:15px;">
-          I/We confirm that the turnover and GST liability figures recorded above have been reconciled with the digital transaction register and counter POS logs of <strong>${cs.businessName || 'The Shine Lounge Pvt Ltd'}</strong> for the period ${timeRange}.
+          I/We confirm that the turnover and GST liability figures recorded above have been reconciled with the digital transaction register and counter POS logs of <strong>${cs.businessName || 'Shine N Sip Solutions Private Limited'}</strong> for the period ${timeRange}.
         </p>
 
         <div class="sign-box">

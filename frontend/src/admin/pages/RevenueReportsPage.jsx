@@ -92,7 +92,7 @@ export default function RevenueReportsPage() {
 
       const csvRows = [
         ['THE SHINE LOUNGE - EXECUTIVE FINANCIAL & GST AUDIT REPORT'],
-        [`Business: ${cs.businessName || 'The Shine Lounge Pvt Ltd'}`, `GSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}`, `PAN: ${cs.pan || 'AABCT8742L'}`],
+        [`Business: ${cs.businessName || 'Shine N Sip Solutions Private Limited'}`, `GSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}`, `PAN: ${cs.pan || 'AABCT8742L'}`],
         [`Time Range: ${timeRange}`, `Fiscal Year: ${cs.fiscalYear || 'FY 2025-26'}`, `Generated On: ${reportDate}`],
         [''],
         ['1. EXECUTIVE FINANCIAL SUMMARY'],

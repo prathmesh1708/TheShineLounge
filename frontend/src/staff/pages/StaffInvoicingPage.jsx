@@ -517,7 +517,7 @@ export default function StaffInvoicingPage() {
       paymentMethod,
       staffName: currentStaff?.name || 'Ground Staff',
       date: new Date().toLocaleString(),
-      businessName: calcSettings?.businessName || 'The Shine Lounge Pvt Ltd',
+      businessName: calcSettings?.businessName || 'Shine N Sip Solutions Private Limited',
       tradeName: calcSettings?.tradeName || 'The Shine Lounge',
       gstin: calcSettings?.gstin || '06ABSCS4162M1ZO',
       pan: calcSettings?.pan || 'AABCT8742L',
