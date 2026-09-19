@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Download, ArrowLeft, Loader2, AlertCircle, Printer, FileCheck } from 'lucide-react';
 import ReceiptDocument from '../common/components/ReceiptDocument';
-import { downloadReceiptPdf, getReceiptPdfBlob } from '../common/utils/receiptPdfGenerator';
+import { downloadReceiptPdf, getReceiptPdfBlob, printReceiptDocument } from '../common/utils/receiptPdfGenerator';
 import { apiClient } from '../common/utils/apiClient';
 
 export default function CustomerReceiptPage() {
@@ -252,7 +252,7 @@ export default function CustomerReceiptPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={() => printReceiptDocument(receiptRef.current)}
             className="hidden sm:flex px-3.5 py-2.5 rounded-xl text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all items-center gap-1.5"
             title="Print this invoice"
           >

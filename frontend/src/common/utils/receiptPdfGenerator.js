@@ -203,4 +203,81 @@ export async function shareOrDownloadReceiptPdf(element, filename = 'Receipt.pdf
   }
 }
 
+/**
+ * Pixel-perfect A4 printing helper that renders the exact receipt document image into a dedicated print frame.
+ */
+export async function printReceiptDocument(element) {
+  if (!element) {
+    window.print();
+    return;
+  }
+
+  try {
+    const canvas = await getReceiptCanvas(element);
+    const imgData = canvas.toDataURL('image/png');
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Official Invoice Receipt</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 0;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background-color: #ffffff;
+              width: 100%;
+              height: 100%;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .print-container {
+              width: 100%;
+              max-width: 210mm;
+              margin: 0 auto;
+            }
+            img {
+              width: 100%;
+              height: auto;
+              display: block;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-container">
+            <img src="${imgData}" onload="setTimeout(function(){ window.focus(); window.print(); }, 200);" />
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      } catch (e) {}
+    }, 60000);
+  } catch (err) {
+    console.error('Failed to print receipt document via iframe, falling back to window.print():', err);
+    window.print();
+  }
+}
+
 

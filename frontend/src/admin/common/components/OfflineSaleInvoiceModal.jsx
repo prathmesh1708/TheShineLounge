@@ -2,16 +2,26 @@ import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, Loader2, Copy, Check, Printer } from 'lucide-react';
 import ReceiptDocument, { formatReceiptDate, getReceiptValidityRange } from '../../../common/components/ReceiptDocument';
-import { downloadReceiptPdf, getReceiptPdfBlob, copyReceiptImageToClipboard } from '../../../common/utils/receiptPdfGenerator';
+import { downloadReceiptPdf, getReceiptPdfBlob, copyReceiptImageToClipboard, printReceiptDocument } from '../../../common/utils/receiptPdfGenerator';
 import { apiClient } from '../../../common/utils/apiClient';
 
 
 export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const receiptRef = useRef(null);
   const isProcessingRef = useRef(false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!receiptRef.current || isPrinting) return;
+    try {
+      setIsPrinting(true);
+      await printReceiptDocument(receiptRef.current);
+    } catch (err) {
+      console.error('Print error:', err);
+      window.print();
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   // Extract and format clean customer phone number
