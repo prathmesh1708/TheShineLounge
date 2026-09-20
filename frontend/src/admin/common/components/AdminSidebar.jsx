@@ -11,6 +11,7 @@ import {
   UserCheck,
   Package,
   BarChart3,
+  Calculator,
   Ticket,
   Settings,
   ChevronLeft,
@@ -27,21 +28,28 @@ import {
   TrendingUp,
   Cpu,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  ShoppingBag,
+  X
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useAuth } from '../../../common/context/AuthContext';
 import TSLLogo from '../../../common/components/TSLLogo';
 
-export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
+export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, closeMobileSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { stats, bookings, staffList, banners, inventory } = useAdmin();
   const { user, logout } = useAuth();
 
+  // Auto-close mobile sidebar when route changes
+  useEffect(() => {
+    closeMobileSidebar?.();
+  }, [location.pathname, location.search]);
+
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
-    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback'].includes(location.pathname.replace('/admin/', ''))
+    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'calculations', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback', 'offline-sales'].includes(location.pathname.replace('/admin/', ''))
       ? location.pathname.replace('/admin/', '')
       : null;
 
@@ -60,6 +68,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
 
   const globalNavItems = [
     { label: 'All Bookings', path: '/admin/bookings', icon: CalendarCheck, badge: stats.pendingBookings },
+    { label: 'Offline Sales', path: '/admin/offline-sales', icon: ShoppingBag },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
     { label: 'Feedback & Support', path: '/admin/feedback', icon: HelpCircle },
@@ -67,6 +76,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
     { label: 'All Staff Roster', path: '/admin/staff', icon: UserCheck },
     { label: 'Global Inventory', path: '/admin/inventory', icon: Package, badge: stats.lowStockItems, badgeColor: 'bg-amber-500' },
     { label: 'Revenue & Reports', path: '/admin/reports', icon: BarChart3 },
+    { label: 'Calculation Rules', path: '/admin/calculations', icon: Calculator },
     { label: 'Offers & Coupons', path: '/admin/coupons', icon: Ticket },
     { label: 'Settings', path: '/admin/settings', icon: Settings }
   ];
@@ -187,43 +197,62 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
   };
 
   return (
-    <aside
-      className={`fixed top-0 left-0 bottom-0 z-40 transition-all duration-300 flex flex-col justify-between ${
-        isCollapsed ? 'w-20' : 'w-64'
-      }`}
-      style={{ backgroundColor: '#1e4a7e' }}
-    >
-      {/* Top Branding Section */}
-      <div>
-        <div className="h-16 px-4 flex items-center justify-between border-b border-blue-800/60">
-          {!isCollapsed && (
-            <div className="flex items-center gap-2.5">
-              <div className="w-11 h-11 flex items-center justify-center">
-                <TSLLogo className="w-11 h-11" />
-              </div>
-              <div>
-                <h1 className="font-extrabold text-sm text-white tracking-wide uppercase">THE SHINE LOUNGE</h1>
-                <span className="text-[10px] text-blue-200 font-semibold tracking-wider uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-amber-400" /> Admin Executive
-                </span>
-              </div>
-            </div>
-          )}
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-gray-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          onClick={closeMobileSidebar}
+        />
+      )}
 
-          {isCollapsed && (
-            <div className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center font-bold text-white shadow-sm" style={{ backgroundColor: '#e07b2a' }}>
-              TSL
-            </div>
-          )}
+      <aside
+        className={`fixed top-0 left-0 bottom-0 z-50 lg:z-40 transition-transform lg:transition-all duration-300 flex flex-col justify-between ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        } ${isCollapsed ? 'lg:w-20' : 'lg:w-64'} w-72 max-w-[85vw] shadow-2xl lg:shadow-none`}
+        style={{ backgroundColor: '#1e4a7e' }}
+      >
+        {/* Top Branding Section */}
+        <div>
+          <div className="h-16 px-4 flex items-center justify-between border-b border-blue-800/60">
+            {(!isCollapsed || mobileOpen) && (
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 flex items-center justify-center">
+                  <TSLLogo className="w-10 h-10" />
+                </div>
+                <div>
+                  <h1 className="font-extrabold text-xs sm:text-sm text-white tracking-wide uppercase">THE SHINE LOUNGE</h1>
+                  <span className="text-[10px] text-blue-200 font-semibold tracking-wider uppercase flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-amber-400" /> Admin Executive
+                  </span>
+                </div>
+              </div>
+            )}
 
-          <button
-            onClick={toggleSidebar}
-            className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors"
-            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-          </button>
-        </div>
+            {isCollapsed && !mobileOpen && (
+              <div className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center font-bold text-white shadow-sm" style={{ backgroundColor: '#e07b2a' }}>
+                TSL
+              </div>
+            )}
+
+            {/* Desktop Collapse Toggle */}
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors hidden lg:block"
+              title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+            >
+              {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            </button>
+
+            {/* Mobile Close Button */}
+            <button
+              onClick={closeMobileSidebar}
+              className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-blue-800/80 transition-colors lg:hidden"
+              title="Close Navigation Menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
         {/* Navigation Items List */}
         <div className="p-3 space-y-1.5 overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar">
@@ -368,5 +397,6 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar }) {
         </div>
       </div>
     </aside>
-  );
+  </>
+);
 }

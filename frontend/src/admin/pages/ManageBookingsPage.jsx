@@ -49,9 +49,22 @@ export default function ManageBookingsPage() {
       header: 'Customer Details',
       accessorKey: 'customerName',
       cell: (row) => (
-        <div>
-          <p className="font-bold text-gray-900">{row.customerName}</p>
-          <p className="text-[11px] text-gray-500">{row.phone}</p>
+        <div className="space-y-0.5">
+          <p className="font-extrabold text-gray-900 text-xs">
+            {row.customerName || 'Customer'}
+          </p>
+          {(row.phone || row.customerEmail) && (
+            <p className="text-[11px] font-medium text-gray-500">
+              {row.phone || row.customerEmail}
+            </p>
+          )}
+          {row.vehicleNo && (
+            <div className="pt-0.5">
+              <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono font-bold tracking-wider">
+                {row.vehicleNo}
+              </span>
+            </div>
+          )}
         </div>
       )
     },
@@ -117,12 +130,17 @@ export default function ManageBookingsPage() {
     {
       header: 'Total Amount',
       accessorKey: 'total',
-      cell: (row) => (
-        <div>
-          <span className="font-black text-gray-900 block">₹{row.total.toFixed(0)}</span>
-          <span className="text-[10px] text-gray-400 font-semibold">{row.paymentMode}</span>
-        </div>
-      )
+      cell: (row) => {
+        const amt = Number(row?.total ?? row?.price ?? row?.amount ?? 0);
+        return (
+          <div>
+            <span className="font-black text-gray-900 block">
+              ₹{isNaN(amt) ? '0' : amt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-[10px] text-gray-400 font-semibold">{row?.paymentMode || 'Cash'}</span>
+          </div>
+        );
+      }
     },
     {
       header: 'Assigned Staff',
@@ -184,8 +202,8 @@ export default function ManageBookingsPage() {
       <DataTable
         columns={columns}
         data={bookings}
-        searchPlaceholder="Search bookings by ID, customer name, service..."
-        searchKeys={['id', 'customerName', 'phone', 'service', 'vehicleNo']}
+        searchPlaceholder="Search bookings by ID, customer name, email, service..."
+        searchKeys={['id', 'customerName', 'phone', 'customerEmail', 'service', 'serviceName', 'vehicleNo', 'plan', 'packageName']}
         filterKey="status"
         filterOptions={['All', 'Pending', 'Confirmed', 'In Progress', 'Completed']}
       />
@@ -202,11 +220,14 @@ export default function ManageBookingsPage() {
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Customer Name</span>
-                <span className="font-extrabold text-gray-900">{selectedBooking.customerName}</span>
+                <span className="font-extrabold text-gray-900">{selectedBooking.customerName || 'Customer'}</span>
               </div>
               <div>
-                <span className="text-gray-400 font-bold block">Contact Phone</span>
-                <span className="font-extrabold text-gray-900">{selectedBooking.phone}</span>
+                <span className="text-gray-400 font-bold block">Contact Details</span>
+                <span className="font-extrabold text-gray-900 block">{selectedBooking.phone || '—'}</span>
+                {selectedBooking.customerEmail && (
+                  <span className="text-gray-500 font-medium text-[11px] block truncate">{selectedBooking.customerEmail}</span>
+                )}
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Selected Package</span>
@@ -222,7 +243,9 @@ export default function ManageBookingsPage() {
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Total Amount (Inc GST)</span>
-                <span className="font-extrabold text-gray-900">₹{selectedBooking.total.toFixed(2)}</span>
+                <span className="font-extrabold text-gray-900">
+                  ₹{Number(selectedBooking?.total ?? selectedBooking?.price ?? selectedBooking?.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
             </div>
 

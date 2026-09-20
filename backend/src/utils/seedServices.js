@@ -34,13 +34,13 @@ const initialServices = [
         price: 2499,
         duration: 30,
         durationType: 'days',
-        visitLimit: 4,
+        visitLimit: 50,
         oneVisitPerDay: true,
-        benefits: ['Up to 4 washes/month + interior car fragrance'],
+        benefits: ['50 washes/month + interior car fragrance'],
         renewable: true,
         upgradeAvailable: true,
         isPopular: false,
-        badge: ''
+        badge: 'PASS'
       },
       {
         name: 'Yearly Membership',
@@ -303,18 +303,57 @@ const initialServices = [
   }
 ];
 
+const Booking = require('../models/Booking');
+
 const seedServices = async () => {
   try {
     for (const serviceData of initialServices) {
       const existing = await Service.findOne({ slug: serviceData.slug, isDeleted: false });
-      if (existing) {
-        // Update the fields while keeping the document ID
-        await Service.updateOne({ slug: serviceData.slug }, { $set: serviceData });
-      } else {
+      if (!existing) {
         await Service.create(serviceData);
+      } else {
+        // Do NOT overwrite admin-customized memberships, packages, or pricing!
+        const updates = {};
+        if ((!existing.memberships || existing.memberships.length === 0) && serviceData.memberships?.length > 0) {
+          updates.memberships = serviceData.memberships;
+        }
+        if ((!existing.pricing || existing.pricing.length === 0) && serviceData.pricing?.length > 0) {
+          updates.pricing = serviceData.pricing;
+        }
+        if ((!existing.plans || existing.plans.length === 0) && serviceData.plans?.length > 0) {
+          updates.plans = serviceData.plans;
+        }
+        if (Object.keys(updates).length > 0) {
+          await Service.updateOne({ slug: serviceData.slug }, { $set: updates });
+        }
       }
     }
     console.log(`✅ Seeded & Synced ${initialServices.length} dynamic services successfully!`);
+
+    // Ensure initial offline sale is seeded
+    const existingSale = await Booking.findOne({ bookingId: 'OFS-MTJX5GRW-3986' });
+    if (!existingSale) {
+      await Booking.create({
+        bookingId: 'OFS-MTJX5GRW-3986',
+        customerName: 'Prathmesh Jawade',
+        customerEmail: 'prathmesh@gmail.com',
+        phone: '98098090',
+        serviceKey: 'car-wash',
+        serviceName: 'Car Wash',
+        packageName: 'Single Wash',
+        price: 499,
+        date: 'September 2, 2026',
+        timeSlot: '03:23 PM - 03:53 PM',
+        status: 'Completed',
+        paymentMode: 'Cash',
+        vehicleNo: 'MP09GG8790',
+        vehicleType: 'HYUNDAI i20',
+        isOfflineSale: true,
+        saleType: 'service',
+        notes: 'Walk-in counter sale'
+      });
+      console.log('✅ Seeded default offline sale OFS-MTJX5GRW-3986');
+    }
   } catch (error) {
     console.error('❌ Error seeding services:', error.message);
   }

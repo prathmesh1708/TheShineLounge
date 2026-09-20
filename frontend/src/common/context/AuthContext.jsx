@@ -29,17 +29,21 @@ export function AuthProvider({ children }) {
   // Validate existing token on mount (Route-Aware: Customer vs Admin)
   useEffect(() => {
     const validateSession = async () => {
-      const isPathAdmin = isStaffOrAdminPath();
+      const isPathAdmin = window.location.pathname.startsWith('/admin');
+      const isPathStaff = window.location.pathname.startsWith('/staff');
 
       let storedToken = localStorage.getItem('tsl_token');
       const customerToken = localStorage.getItem('tsl_customer_token');
       const adminToken = localStorage.getItem('tsl_admin_token');
+      const staffToken = localStorage.getItem('tsl_staff_token');
 
       // Select target token based on current route type
       let targetToken = storedToken;
       if (isPathAdmin && adminToken) {
         targetToken = adminToken;
-      } else if (!isPathAdmin && customerToken) {
+      } else if (isPathStaff && staffToken) {
+        targetToken = staffToken;
+      } else if (!isPathAdmin && !isPathStaff && customerToken) {
         targetToken = customerToken;
       }
 
@@ -62,9 +66,12 @@ export function AuthProvider({ children }) {
           localStorage.setItem('tsl_user', JSON.stringify(data.user));
 
           // Store scoped session backup
-          if (data.user.role === 'admin' || data.user.role === 'staff') {
+          if (data.user.role === 'admin') {
             localStorage.setItem('tsl_admin_token', targetToken);
             localStorage.setItem('tsl_admin_user', JSON.stringify(data.user));
+          } else if (data.user.role === 'staff') {
+            localStorage.setItem('tsl_staff_token', targetToken);
+            localStorage.setItem('tsl_staff_user', JSON.stringify(data.user));
           } else {
             localStorage.setItem('tsl_customer_token', targetToken);
             localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));
@@ -105,13 +112,17 @@ export function AuthProvider({ children }) {
     setUser(null);
     setToken(null);
 
-    const isPathAdmin = isStaffOrAdminPath();
-    const scopedTokenKey = isPathAdmin ? 'tsl_admin_token' : 'tsl_customer_token';
+    const isPathAdmin = window.location.pathname.startsWith('/admin');
+    const isPathStaff = window.location.pathname.startsWith('/staff');
+    const scopedTokenKey = isPathAdmin ? 'tsl_admin_token' : (isPathStaff ? 'tsl_staff_token' : 'tsl_customer_token');
     const scopedToken = localStorage.getItem(scopedTokenKey);
 
     if (isPathAdmin) {
       localStorage.removeItem('tsl_admin_token');
       localStorage.removeItem('tsl_admin_user');
+    } else if (isPathStaff) {
+      localStorage.removeItem('tsl_staff_token');
+      localStorage.removeItem('tsl_staff_user');
     } else {
       localStorage.removeItem('tsl_customer_token');
       localStorage.removeItem('tsl_customer_user');
@@ -132,9 +143,12 @@ export function AuthProvider({ children }) {
       localStorage.setItem('tsl_token', data.token);
       localStorage.setItem('tsl_user', JSON.stringify(data.user));
 
-      if (data.user?.role === 'admin' || data.user?.role === 'staff') {
+      if (data.user?.role === 'admin') {
         localStorage.setItem('tsl_admin_token', data.token);
         localStorage.setItem('tsl_admin_user', JSON.stringify(data.user));
+      } else if (data.user?.role === 'staff') {
+        localStorage.setItem('tsl_staff_token', data.token);
+        localStorage.setItem('tsl_staff_user', JSON.stringify(data.user));
       } else {
         localStorage.setItem('tsl_customer_token', data.token);
         localStorage.setItem('tsl_customer_user', JSON.stringify(data.user));

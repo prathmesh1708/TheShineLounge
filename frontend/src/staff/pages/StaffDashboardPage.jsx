@@ -1,13 +1,15 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles } from 'lucide-react';
+import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles, ShieldCheck } from 'lucide-react';
 import NotificationBell from '../../common/components/NotificationBell';
+import { isCarWashStaff } from '../common/utils/staffMembershipUtils';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
   const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose } = useStaff();
 
+  const isCarWash = isCarWashStaff(currentStaff);
   const staffKey = (currentStaff?.serviceKey || '').toLowerCase();
   const staffDept = (currentStaff?.department || '').toLowerCase();
   const isDriveThrough = staffKey === 'drive-through-cafe' || staffDept.includes('drive');
@@ -167,7 +169,7 @@ export default function StaffDashboardPage() {
       {/* Quick Action Grid */}
       <div>
         <h3 className="text-xs font-black text-gray-900 mb-2 uppercase tracking-wider">Quick Ground Actions</h3>
-        <div className="grid grid-cols-4 gap-2">
+        <div className={`grid ${isCarWash ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
           <button
             onClick={() => { setCameraPurpose('check-in'); setIsCameraOpen(true); }}
             className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
@@ -198,7 +200,19 @@ export default function StaffDashboardPage() {
             <span className="text-[10px] font-bold text-gray-800 leading-tight">Create Invoice</span>
           </button>
 
-
+          {/* Memberships Quick Box - Isolated strictly to Car Wash staff */}
+          {isCarWash && (
+            <button
+              onClick={() => navigate('/staff/memberships')}
+              className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
+              title="Car Wash Memberships & Passes"
+            >
+              <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <span className="text-[10px] font-bold text-gray-800 leading-tight">Memberships</span>
+            </button>
+          )}
         </div>
       </div>
 

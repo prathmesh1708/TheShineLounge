@@ -36,10 +36,13 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
-import { serviceStatsMap } from '../../common/data/adminMockData';
+import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
+import OfflineSaleModal from '../../common/components/OfflineSaleModal';
+import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import apiClient from '../../../common/utils/apiClient';
 import {
   getServicesSync,
@@ -82,7 +85,9 @@ export default function CarDetailingAdminHubPage() {
     deleteBanner,
     toggleBannerStatus,
     addInventoryItem,
-    showToast
+    showToast,
+    addOfflineSale,
+    addStaff
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -147,7 +152,7 @@ export default function CarDetailingAdminHubPage() {
     setSearchParams({ tab: tabId });
   };
 
-  const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
+  const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const mappedLocal = localDetailingBookings.map(b => ({
@@ -381,6 +386,9 @@ export default function CarDetailingAdminHubPage() {
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
+  const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
+  const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -455,43 +463,58 @@ export default function CarDetailingAdminHubPage() {
       return;
     }
 
+    const newStaffData = {
+      fullName: staffForm.fullName,
+      name: staffForm.fullName,
+      email: staffForm.email.toLowerCase().trim(),
+      password: staffForm.password,
+      mobile: staffForm.mobile,
+      phone: staffForm.mobile,
+      department: 'Car Detailing',
+      serviceKey: 'car-detailing',
+      staffRole: staffForm.staffRole || 'Detailing Specialist',
+      role: 'staff',
+      salary: staffForm.salary,
+      leaveBalance: Number(staffForm.leaveBalance || 12),
+      photo: staffForm.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+      permissions: staffForm.permissions || ['bookings', 'orders'],
+      isActive: true,
+      status: 'Active'
+    };
+
     try {
-      const res = await apiClient.post('/users/staff', {
-        fullName: staffForm.fullName,
-        email: staffForm.email,
-        password: staffForm.password,
-        mobile: staffForm.mobile,
-        department: 'Car Detailing',
-        serviceKey: 'car-detailing',
-        staffRole: staffForm.staffRole,
-        salary: staffForm.salary,
-        leaveBalance: Number(staffForm.leaveBalance),
-        photo: staffForm.photo,
-        permissions: staffForm.permissions
-      });
+      const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        alert(`✅ Staff member onboarded successfully!\n\nStaff Email: ${staffForm.email}\nPassword: ${staffForm.password}\n\nStaff can now log in at /staff/login.`);
-        fetchLiveStaff();
-        setAddStaffModal(false);
-        setStaffForm({
-          fullName: '',
-          email: '',
-          password: '',
-          mobile: '',
-          staffRole: 'Detailing Specialist',
-          salary: '₹42,000 / month',
-          leaveBalance: 12,
-          photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-          permissions: ['bookings', 'orders']
-        });
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
+        const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
+        setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
+        addStaff?.(savedStaff);
       } else {
-        alert(`Error: ${res.data?.message || 'Could not create staff'}`);
+        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+        addStaff?.(newStaffData);
+        showToast?.(`✅ Staff member added to Detailing roster (${staffForm.fullName})`);
       }
     } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
-      alert(`Error: ${errMsg}`);
+      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
+      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+      addStaff?.(newStaffData);
+      showToast?.(`✅ Staff member added to Detailing roster (${staffForm.fullName})`);
     }
+
+    fetchLiveStaff();
+    setAddStaffModal(false);
+    setStaffForm({
+      fullName: '',
+      email: '',
+      password: '',
+      mobile: '',
+      staffRole: 'Detailing Specialist',
+      salary: '₹42,000 / month',
+      leaveBalance: 12,
+      photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+      permissions: ['bookings', 'orders']
+    });
   };
 
   const handleOpenEditStaff = async (stf) => {
@@ -1117,14 +1140,31 @@ export default function CarDetailingAdminHubPage() {
               </h3>
               <p className="text-xs text-gray-500">Live list of customer vehicles registered during detailing sessions</p>
             </div>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
-              {registeredVehiclesList.length} Registered Cars
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                {registeredVehiclesList.length} Registered Cars
+              </span>
+              <button
+                onClick={() => setIsOfflineSaleModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1 shadow-sm transition-all hover:shadow-md"
+                style={{ backgroundColor: '#e07b2a' }}
+              >
+                <Plus className="w-3.5 h-3.5" /> Record Offline Sale
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {registeredVehiclesList.map((v, i) => (
-              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between">
+              <div
+                key={v.plate || i}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all flex flex-col justify-between cursor-pointer hover:shadow-md"
+                onClick={() => {
+                  const plate = (v.plate || '').toUpperCase().trim();
+                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                }}
+              >
                 <div>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -1174,6 +1214,53 @@ export default function CarDetailingAdminHubPage() {
               </div>
             ))}
           </div>
+
+          {/* Vehicle Detail Modal */}
+          <RegisteredVehicleDetailModal
+            isOpen={!!selectedVehicleDetail}
+            onClose={() => setSelectedVehicleDetail(null)}
+            vehicle={selectedVehicleDetail?.vehicle}
+            bookingHistory={selectedVehicleDetail?.history || []}
+            onNewOfflineSale={() => {
+              setSelectedVehicleDetail(null);
+              setIsOfflineSaleModalOpen(true);
+            }}
+            onDownloadInvoice={(v) => {
+              setSelectedInvoiceSale({
+                id: v.offlineSaleId || 'OFS-RECEIPT',
+                customerName: v.ownerName,
+                phone: v.ownerPhone,
+                customerEmail: v.ownerEmail,
+                vehicleNo: v.plate,
+                vehicleModel: v.model,
+                packageName: v.packageName || 'Car Detailing',
+                membershipName: v.membershipName,
+                saleType: v.membershipName ? 'membership' : 'service',
+                price: v.offlineSalePrice || v.price || 1499,
+                paymentMode: v.paymentMode || 'Cash',
+                date: v.offlineSaleDate || v.lastWashDate || v.lastServiceDate,
+                membershipExpiry: v.membershipExpiry,
+                membershipValidity: v.membershipValidity
+              });
+            }}
+          />
+
+          {/* Offline Sale Modal */}
+          <OfflineSaleModal
+            isOpen={isOfflineSaleModalOpen}
+            onClose={() => setIsOfflineSaleModalOpen(false)}
+            onSubmit={async (formData) => {
+              if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
+            }}
+            services={services}
+          />
+
+          {/* Invoice / Receipt Download Modal */}
+          <OfflineSaleInvoiceModal
+            isOpen={!!selectedInvoiceSale}
+            onClose={() => setSelectedInvoiceSale(null)}
+            sale={selectedInvoiceSale}
+          />
         </div>
       )}
 

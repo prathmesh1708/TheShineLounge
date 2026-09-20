@@ -1,7 +1,8 @@
 // Role-based access control middleware
 
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'superadmin' || role === 'manager') {
     return next();
   }
   return res.status(403).json({
@@ -11,7 +12,8 @@ const adminOnly = (req, res, next) => {
 };
 
 const staffOnly = (req, res, next) => {
-  if (req.user && (req.user.role === 'staff' || req.user.role === 'admin')) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'staff' || role === 'admin' || role === 'superadmin' || role === 'manager') {
     return next();
   }
   return res.status(403).json({
@@ -20,8 +22,43 @@ const staffOnly = (req, res, next) => {
   });
 };
 
+const canManageStaff = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized'
+    });
+  }
+
+  const role = String(req.user.role || '').toLowerCase();
+  const dept = String(req.user.department || '').toLowerCase();
+
+  // Super Admins, Admins, and Managers have full staff onboarding control
+  if (role === 'admin' || role === 'superadmin' || role === 'manager') {
+    return next();
+  }
+
+  // Department managers and staff with staff/admin permissions
+  if (
+    role === 'staff' &&
+    (req.user.permissions?.includes('staff') ||
+     req.user.permissions?.includes('orders') ||
+     req.user.permissions?.includes('bookings') ||
+     dept === 'management' ||
+     dept === 'manager')
+  ) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'Access denied. Admin only.'
+  });
+};
+
 const userOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'user') {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'user') {
     return next();
   }
   return res.status(403).json({
@@ -39,8 +76,9 @@ const hasPermission = (permissionName) => {
       });
     }
 
+    const role = String(req.user.role || '').toLowerCase();
     // Admin always has access
-    if (req.user.role === 'admin') {
+    if (role === 'admin' || role === 'superadmin') {
       return next();
     }
 
@@ -56,4 +94,4 @@ const hasPermission = (permissionName) => {
   };
 };
 
-module.exports = { adminOnly, staffOnly, userOnly, hasPermission };
+module.exports = { adminOnly, staffOnly, userOnly, hasPermission, canManageStaff };

@@ -47,6 +47,11 @@ export function cacheService(key, service) {
   if (!service) return false;
   try {
     localStorage.setItem(key, JSON.stringify(stripInlineMedia(service)));
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tsl_service_updated', { detail: { ...service, cacheKey: key } }));
+      }
+    } catch (_) {}
     return true;
   } catch (err) {
     // Quota is still exceeded, or storage is unavailable (private mode).

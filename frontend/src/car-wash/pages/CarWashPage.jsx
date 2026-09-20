@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { carwashMockData } from '../data/carwashMockData';
 import serviceApi from '../../common/services/serviceApi';
 import { cacheService } from '../../common/utils/serviceCache';
 import { useAuth } from '../../common/context/AuthContext';

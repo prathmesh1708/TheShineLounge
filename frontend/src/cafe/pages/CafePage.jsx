@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { servicesData } from '../../common/data/servicesData';
 import apiClient from '../../common/utils/apiClient';
 
 // Import local image assets
@@ -12,7 +11,6 @@ import gourmetDessert from '../../assets/images/gourmet_dessert.png';
 
 export default function CafePage() {
   const navigate = useNavigate();
-  const data = servicesData.cafe;
   
   // State variables for catalog flow
   const [activeCategory, setActiveCategory] = useState(null); // null = Home, otherwise name of category

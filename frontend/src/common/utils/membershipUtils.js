@@ -78,9 +78,24 @@ export function toISODateString(date) {
 export function findMembershipMeta(packageName, catalog) {
   if (!packageName || !Array.isArray(catalog)) return null;
   const purchased = String(packageName).toLowerCase().trim();
+  
+  // 1. Direct equality or substring containment match
+  const directMatch = catalog.find(m => {
+    const configured = String(m.name || m.title || '').toLowerCase().trim();
+    return configured && (purchased === configured || purchased.includes(configured) || configured.includes(purchased));
+  });
+  if (directMatch) return directMatch;
+
+  // 2. Keyword-based matching for passes (e.g. 'annual/yearly' or 'monthly')
+  const isPurchasedYearly = isYearlyPass(purchased);
+  const isPurchasedMonthly = purchased.includes('monthly') || purchased.includes('month');
+
   return catalog.find(m => {
     const configured = String(m.name || m.title || '').toLowerCase().trim();
-    return configured && (purchased.includes(configured) || configured.includes(purchased));
+    if (!configured) return false;
+    if (isPurchasedYearly && isYearlyPass(configured)) return true;
+    if (isPurchasedMonthly && (configured.includes('monthly') || configured.includes('month') || configured.includes('30 day'))) return true;
+    return false;
   }) || null;
 }
 
@@ -160,18 +175,30 @@ export function buildMembershipSchedule(bookings, options = {}) {
 
     const chainKey = membershipChainKey(booking);
     const previousEnd = chainEnds.get(chainKey);
-    const stacked = !!previousEnd && previousEnd > purchaseDate;
+
+    // Explicit active status or immediate passes must not be pushed into future years
+    const isExplicitlyActive = booking.status === 'Active' || booking.isActive === true;
+    const isExplicitlyQueued = booking.status === 'Queued' || booking.isQueued === true;
+
+    const stacked = !isExplicitlyActive && (isExplicitlyQueued || (Boolean(previousEnd) && previousEnd > purchaseDate));
     const startDate = stacked ? new Date(previousEnd) : purchaseDate;
     const expiryDate = addPassDuration(startDate, packageName, meta);
     chainEnds.set(chainKey, expiryDate);
 
     let status = 'Active';
-    if (expiryDate <= now) status = 'Expired';
-    else if (startDate > now) status = 'Queued';
+    if (booking.status === 'Cancelled') {
+      status = 'Cancelled';
+    } else if (expiryDate <= now) {
+      status = 'Expired';
+    } else if (isExplicitlyActive) {
+      status = 'Active';
+    } else if (startDate > now) {
+      status = 'Queued';
+    }
 
     const visitLimit = meta?.visitLimit !== undefined && meta.visitLimit !== null
       ? (Number(meta.visitLimit) === 999 ? 'Unlimited' : Number(meta.visitLimit))
-      : null;
+      : (booking.visitLimit !== undefined ? (Number(booking.visitLimit) === 999 ? 'Unlimited' : Number(booking.visitLimit)) : null);
 
     return {
       booking,

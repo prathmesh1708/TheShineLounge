@@ -20,6 +20,25 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
   const cgst = Math.round(gstAmount / 2);
   const sgst = gstAmount - cgst;
 
+  const handleSendWhatsApp = () => {
+    const rawNumber = booking.phone || booking.mobile || '';
+    let digits = String(rawNumber).replace(/\D/g, '');
+    if (digits.length === 10) digits = `91${digits}`;
+    const invId = booking.bookingId || booking.id || 'TSL-DET';
+    const customer = booking.customerName || booking.customer || 'Valued Customer';
+    const plate = booking.vehicleNo || 'Registered Vehicle';
+    const model = booking.vehicle || booking.vehicleModel || 'Car';
+    const service = booking.package || booking.serviceName || 'Car Detailing';
+    const date = booking.date || 'Today';
+    const time = booking.time || booking.timeSlot || '';
+    const amountStr = `₹${totalPrice.toLocaleString('en-IN')}`;
+
+    const message = `✨ *THE SHINE LOUNGE - DETAILING TAX INVOICE* ✨\n━━━━━━━━━━━━━━━━━━━━\n📄 *Invoice / Ref:* #${invId}\n📅 *Date:* ${date} ${time ? `(${time})` : ''}\n👤 *Customer:* ${customer}\n🚗 *Vehicle:* ${plate} (${model})\n✨ *Detailing Treatment:* ${service}\n💳 *Payment Status:* ${booking.paymentStatus || 'Paid'}\n💰 *Total Price (incl. GST):* ${amountStr}\n━━━━━━━━━━━━━━━━━━━━\n📍 *Location:* Plot 42, Senapati Bapat Marg, Mumbai 400013\n📞 *Concierge:* +91 98200 99999\n🌐 *Website:* https://theshinelounge.com\n\n🙏 _Thank you for trusting The Shine Lounge with your vehicle's gloss and protection!_`;
+
+    const url = `https://api.whatsapp.com/send?${digits ? `phone=${digits}&` : ''}text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm overflow-y-auto">
@@ -36,6 +55,17 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
               <span>Tax Invoice Preview</span>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleSendWhatsApp}
+                className="py-2 px-3.5 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                title="Send Invoice to WhatsApp"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
+                </svg>
+                <span className="hidden sm:inline">Send on WhatsApp</span>
+                <span className="sm:hidden">WhatsApp</span>
+              </button>
               <button
                 onClick={handlePrint}
                 className="py-2 px-4 bg-luxury-emerald text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-luxury-emeraldHover transition-all shadow-sm"

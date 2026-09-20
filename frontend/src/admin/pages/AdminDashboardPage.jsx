@@ -63,9 +63,9 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatsCard
           title="Total Lifetime Revenue"
-          value={stats.totalRevenue}
+          value={stats?.totalRevenue ?? 0}
           isCurrency={true}
-          growth={stats.revenueGrowth}
+          growth={stats?.revenueGrowth}
           icon={IndianRupee}
           iconBg="#fff7ed"
           iconColor="#e07b2a"
@@ -73,9 +73,9 @@ export default function AdminDashboardPage() {
         />
         <StatsCard
           title="Today's Sales"
-          value={stats.todaySales}
+          value={stats?.todaySales ?? 0}
           isCurrency={true}
-          growth={stats.todayGrowth}
+          growth={stats?.todayGrowth}
           icon={TrendingUp}
           iconBg="#eff6ff"
           iconColor="#1e4a7e"
@@ -83,9 +83,9 @@ export default function AdminDashboardPage() {
         />
         <StatsCard
           title="Monthly Sales (July)"
-          value={stats.monthlySales}
+          value={stats?.monthlySales ?? 0}
           isCurrency={true}
-          growth={stats.monthlyGrowth}
+          growth={stats?.monthlyGrowth}
           icon={IndianRupee}
           iconBg="#fff7ed"
           iconColor="#e07b2a"
@@ -93,9 +93,9 @@ export default function AdminDashboardPage() {
         />
         <StatsCard
           title="Annual Run-Rate"
-          value={stats.annualSales}
+          value={stats?.annualSales ?? 0}
           isCurrency={true}
-          growth={stats.annualGrowth}
+          growth={stats?.annualGrowth}
           icon={CreditCard}
           iconBg="#eff6ff"
           iconColor="#1e4a7e"
@@ -111,7 +111,7 @@ export default function AdminDashboardPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-gray-400 uppercase">Active Members</p>
-            <p className="text-lg font-black text-gray-900">{stats.activeMembers.toLocaleString('en-IN')}</p>
+            <p className="text-lg font-black text-gray-900">{Number(stats?.activeMembers || 0).toLocaleString('en-IN')}</p>
           </div>
         </div>
 
@@ -121,7 +121,7 @@ export default function AdminDashboardPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-gray-400 uppercase">Total Customers</p>
-            <p className="text-lg font-black text-gray-900">{stats.totalCustomers.toLocaleString('en-IN')}</p>
+            <p className="text-lg font-black text-gray-900">{Number(stats?.totalCustomers || 0).toLocaleString('en-IN')}</p>
           </div>
         </div>
 
@@ -131,7 +131,7 @@ export default function AdminDashboardPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-gray-400 uppercase">Pending Bookings</p>
-            <p className="text-lg font-black text-amber-600">{stats.pendingBookings}</p>
+            <p className="text-lg font-black text-amber-600">{stats?.pendingBookings ?? 0}</p>
           </div>
         </div>
 
@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold text-gray-400 uppercase">Low Stock Items</p>
-            <p className="text-lg font-black text-rose-600">{stats.lowStockItems}</p>
+            <p className="text-lg font-black text-rose-600">{stats?.lowStockItems ?? 0}</p>
           </div>
         </div>
       </div>
@@ -255,23 +255,33 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {bookings.slice(0, 5).map((b) => (
-                  <tr key={b.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="py-2.5 px-3 font-bold text-gray-900">{b.id}</td>
-                    <td className="py-2.5 px-3 font-semibold text-gray-700">{b.customerName}</td>
-                    <td className="py-2.5 px-3 font-medium text-gray-600">{b.service}</td>
-                    <td className="py-2.5 px-3 font-bold text-gray-900">₹{b.total.toFixed(0)}</td>
-                    <td className="py-2.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        b.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                        b.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                        b.status === 'Confirmed' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {b.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {(bookings || []).slice(0, 5).map((b, idx) => {
+                  const amt = Number(b?.total ?? b?.price ?? b?.amount ?? 0);
+                  const displayService = b?.service || b?.packageName || b?.membershipName || b?.plan || 'Service Wash';
+                  const displayCustomer = b?.customerName || b?.userName || 'Customer';
+                  const displayId = b?.id || b?.bookingId || `BK-${idx + 1}`;
+                  const displayStatus = b?.status || 'Completed';
+
+                  return (
+                    <tr key={displayId || idx} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="py-2.5 px-3 font-bold text-gray-900">{displayId}</td>
+                      <td className="py-2.5 px-3 font-semibold text-gray-700">{displayCustomer}</td>
+                      <td className="py-2.5 px-3 font-medium text-gray-600">{displayService}</td>
+                      <td className="py-2.5 px-3 font-bold text-gray-900">
+                        ₹{isNaN(amt) ? '0' : amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                          displayStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                          displayStatus === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                          displayStatus === 'Confirmed' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {displayStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

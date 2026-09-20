@@ -127,35 +127,90 @@ const seedRealData = async () => {
         email: 'prathmesh@gmail.com',
         password: hashedPassword,
         mobile: '+91 98200 99999',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MP09GG8790',
+            plateNormalized: 'MP09GG8790',
+            brand: 'Hyundai',
+            model: 'i20',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Amit Sharma',
         email: 'amit.sharma@gmail.com',
         password: hashedPassword,
         mobile: '+91 98111 22222',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH02CP4455',
+            plateNormalized: 'MH02CP4455',
+            brand: 'Tesla',
+            model: 'Model S',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Neha Kapoor',
         email: 'neha.k@gmail.com',
         password: hashedPassword,
         mobile: '+91 98333 44444',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH01AB1234',
+            plateNormalized: 'MH01AB1234',
+            brand: 'BMW',
+            model: '3 Series',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Rahul Verma',
         email: 'rahul.verma@gmail.com',
         password: hashedPassword,
         mobile: '+91 98444 55555',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH12FG5678',
+            plateNormalized: 'MH12FG5678',
+            brand: 'Audi',
+            model: 'A6',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       },
       {
         fullName: 'Sneha Patel',
         email: 'sneha.patel@gmail.com',
         password: hashedPassword,
         mobile: '+91 98555 66666',
-        role: 'user'
+        role: 'user',
+        vehicles: [
+          {
+            plateNumber: 'MH04DZ8989',
+            plateNormalized: 'MH04DZ8989',
+            brand: 'Hyundai',
+            model: 'Creta',
+            category: 'Car',
+            isPrimary: true,
+            addedVia: 'admin'
+          }
+        ]
       }
     ];
 
@@ -178,6 +233,7 @@ const seedRealData = async () => {
         timeSlot: '09:00 AM - 10:00 AM',
         customerName: 'Amit Sharma',
         customerEmail: 'amit.sharma@gmail.com',
+        phone: '+91 98111 22222',
         vehicleNo: 'MH-02-CP-4455',
         vehicleType: 'Tesla Model S',
         status: 'In Progress',
@@ -196,6 +252,7 @@ const seedRealData = async () => {
         timeSlot: '11:30 AM - 12:30 PM',
         customerName: 'Neha Kapoor',
         customerEmail: 'neha.k@gmail.com',
+        phone: '+91 98333 44444',
         vehicleNo: 'MH-01-AB-1234',
         vehicleType: 'BMW 3 Series',
         status: 'Confirmed',
@@ -214,6 +271,7 @@ const seedRealData = async () => {
         timeSlot: '02:00 PM - 03:00 PM',
         customerName: 'Rahul Verma',
         customerEmail: 'rahul.verma@gmail.com',
+        phone: '+91 98444 55555',
         vehicleNo: 'MH-12-FG-5678',
         vehicleType: 'Audi A6',
         status: 'Pending',
@@ -232,6 +290,7 @@ const seedRealData = async () => {
         timeSlot: '04:00 PM - 05:00 PM',
         customerName: 'Sneha Patel',
         customerEmail: 'sneha.patel@gmail.com',
+        phone: '+91 98555 66666',
         vehicleNo: 'MH-04-DZ-8989',
         vehicleType: 'Hyundai Creta',
         status: 'Completed',
@@ -250,6 +309,7 @@ const seedRealData = async () => {
         timeSlot: '10:00 AM - 01:00 PM',
         customerName: 'Prathmesh Jawade',
         customerEmail: 'prathmesh@gmail.com',
+        phone: '+91 98200 99999',
         vehicleNo: 'MH-02-EE-7777',
         vehicleType: 'Porsche Macan',
         status: 'Confirmed',

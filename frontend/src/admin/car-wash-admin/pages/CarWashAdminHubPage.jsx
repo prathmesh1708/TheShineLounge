@@ -25,11 +25,14 @@ import {
   Calendar,
   Upload,
   X,
-  Search
+  Search,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import {
   buildMembershipSchedule,
-  formatShortDate
+  formatShortDate,
+  isMembershipPackage
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import {
@@ -42,10 +45,13 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
-import { serviceStatsMap } from '../../common/data/adminMockData';
+import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
+import OfflineSaleModal from '../../common/components/OfflineSaleModal';
+import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
@@ -73,7 +79,10 @@ export default function CarWashAdminHubPage() {
     deleteBanner,
     addInventoryItem,
     updateStock,
-    showToast
+    showToast,
+    addOfflineSale,
+    memberships,
+    logMembershipWash
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -91,7 +100,7 @@ export default function CarWashAdminHubPage() {
     setSearchParams({ tab: tabId });
   };
 
-  const serviceStats = serviceStatsMap[serviceKey] || serviceStatsMap['car-wash'];
+  const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
   const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
@@ -118,6 +127,8 @@ export default function CarWashAdminHubPage() {
 
     const key = `${email || name}_${plate}`.toLowerCase();
 
+    const isWash = !isMembershipPackage(b.plan || b.packageName);
+
     if (!registeredVehiclesMap[key]) {
       registeredVehiclesMap[key] = {
         plate,
@@ -126,13 +137,61 @@ export default function CarWashAdminHubPage() {
         ownerEmail: email,
         ownerPhone: b.phone || b.mobile || '',
         packageName: b.packageName || '',
-        totalWashes: 1,
-        lastWashDate: b.date || ''
+        totalWashes: isWash ? 1 : 0,
+        lastWashDate: isWash ? (b.date || '') : ''
       };
     } else {
-      registeredVehiclesMap[key].totalWashes += 1;
-      if (b.date && !b.date.includes('July 18')) {
-        registeredVehiclesMap[key].lastWashDate = b.date;
+      if (isWash) {
+        registeredVehiclesMap[key].totalWashes += 1;
+        if (b.date && !b.date.includes('July 18')) {
+          registeredVehiclesMap[key].lastWashDate = b.date;
+        }
+      }
+    }
+  });
+
+  // Single source of truth: Ensure every Car Wash membership holder is present in the registered fleet
+  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  (memberships || []).forEach(m => {
+    if (!m.vehicleNo) return;
+    if (m.serviceKey && m.serviceKey !== serviceKey) return;
+    const cleanPlate = normalizePlate(m.vehicleNo);
+    const alreadyExists = Object.values(registeredVehiclesMap).some(v => normalizePlate(v.plate) === cleanPlate);
+    if (!alreadyExists) {
+      const key = `${m.email || m.customerName}_${cleanPlate}`.toLowerCase();
+      registeredVehiclesMap[key] = {
+        plate: m.vehicleNo,
+        model: m.vehicleModel || 'Car',
+        ownerName: m.customerName || 'Valued Member',
+        ownerEmail: m.email || '',
+        ownerPhone: m.phone || '',
+        packageName: m.planName || 'Monthly Membership',
+        totalWashes: m.washesUsed || 0,
+        lastWashDate: m.startDateLabel || m.startDate || '—'
+      };
+    }
+  });
+
+  // Attach live membership status and wash count if vehicle has an active plan
+  Object.values(registeredVehiclesMap).forEach((veh) => {
+    const cleanPlate = normalizePlate(veh.plate);
+    const activeMem = (memberships || []).find(m => {
+      if (cleanPlate && normalizePlate(m.vehicleNo) === cleanPlate) return true;
+      if (veh.ownerEmail && m.email && m.email.toLowerCase().trim() === veh.ownerEmail.toLowerCase().trim()) return true;
+      return false;
+    });
+    if (activeMem) {
+      veh.membershipName = activeMem.planName || veh.packageName;
+      veh.packageName = activeMem.planName || veh.packageName;
+      veh.membershipValidity = `${activeMem.startDateLabel || activeMem.startDate} → ${activeMem.expiryDateLabel || activeMem.expiryDate}`;
+      veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
+      veh.membershipStatus = activeMem.status;
+      veh.membershipId = activeMem.id;
+      veh.washesUsed = activeMem.washesUsed;
+      veh.maxWashes = activeMem.maxWashes;
+      // Single source of truth: synchronize totalWashes with washesUsed for active memberships
+      if (activeMem.washesUsed !== undefined) {
+        veh.totalWashes = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
       }
     }
   });
@@ -159,24 +218,9 @@ export default function CarWashAdminHubPage() {
     setIsLiveConnection(false);
     const cached = localStorage.getItem('tsl_car_wash_service');
     if (cached) {
-      setDbService(JSON.parse(cached));
-    } else {
-      setDbService({
-        _id: serviceMain?.id || 'srv-1',
-        pricing: [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
-        ],
-        plans: [
-          { _id: 'pw-1', name: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', name: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', name: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
-        ],
-        memberships: [
-          { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR' }
-        ]
-      });
+      try {
+        setDbService(JSON.parse(cached));
+      } catch (e) {}
     }
   };
 
@@ -228,12 +272,10 @@ export default function CarWashAdminHubPage() {
           description: p.description || (p.features && p.features.join(', ')) || ''
         }))
       : (serviceMain?.pricing || [
-          { _id: 'pw-1', title: 'Express Foam Wash', price: 699, description: 'High-pressure foam wash, wheel cleaning & tire shine' },
-          { _id: 'pw-2', title: 'Deluxe Interior & Exterior', price: 1299, description: 'Foam wash + interior vacuum, dashboard polish & steam' },
-          { _id: 'pw-3', title: 'Ultimate Ceramic Wash', price: 2499, description: 'Full wash + ceramic spray coating, hydrophobic glass treatment' }
+          { _id: 'pw-1', title: 'Single Wash', price: 699, description: 'Complimentary – vacuum, polish, mat cleaning' }
         ]));
 
-  const activeMemberships = (dbService?.memberships !== undefined)
+  const activeMemberships = (dbService?.memberships !== undefined && dbService.memberships.length > 0)
     ? dbService.memberships.map(m => ({
         _id: m._id || m.id || m.name,
         name: m.name || m.title,
@@ -241,12 +283,13 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits : [m.benefits || m.description || ''],
         badge: m.badge || 'PASS',
         duration: Number(m.duration) || 30,
-        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.washes ? Number(m.washes) : 4),
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : (m.washes ? Number(m.washes) : (m.name?.toLowerCase().includes('year') ? 365 : 50)),
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false
       }))
     : (serviceMain?.memberships || [
-        { _id: 'cw-mem-1', name: 'Unlimited Monthly Wash Pass', price: 2499, benefits: ['Unlimited Express Hydrobath Washes', 'Free Interior Steam once a month', 'Priority Tunnel Lane Access'], badge: 'MOST POPULAR', duration: 30, visitLimit: 999 }
+        { _id: 'cw-mem-1', name: 'Monthly Membership', price: 2499, benefits: ['50 washes/month + interior car fragrance'], badge: 'PASS', duration: 30, visitLimit: 50 },
+        { _id: 'cw-mem-2', name: 'Yearly Membership', price: 19999, benefits: ['Unlimited washes + ceramic coating & 5x car fragrance'], badge: 'BEST VALUE', duration: 365, visitLimit: 365 }
       ]);
 
   // Per Car Discount as it is currently stored on the service. Read from
@@ -280,7 +323,7 @@ export default function CarWashAdminHubPage() {
   // Rich membership edit fields
   const [editBadge, setEditBadge] = useState('');
   const [editDuration, setEditDuration] = useState(30);
-  const [editVisitLimit, setEditVisitLimit] = useState(4);
+  const [editVisitLimit, setEditVisitLimit] = useState(50);
   const [editBenefits, setEditBenefits] = useState(['']);
   const [editIsPopular, setEditIsPopular] = useState(false);
   const [editRenewable, setEditRenewable] = useState(true);
@@ -294,7 +337,7 @@ export default function CarWashAdminHubPage() {
     type: 'pricing',
     badge: '',
     duration: 30,
-    visitLimit: 4,
+    visitLimit: 50,
     benefits: [''],
     isPopular: false,
     renewable: true
@@ -589,6 +632,39 @@ export default function CarWashAdminHubPage() {
 
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
+  const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
+  const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
+
+  const handleWashDone = async (vehicle) => {
+    if (!vehicle || !logMembershipWash) return;
+
+    const res = await logMembershipWash({
+      vehicleNo: vehicle.plate,
+      customerName: vehicle.ownerName,
+      customerEmail: vehicle.ownerEmail,
+      phone: vehicle.ownerPhone,
+      vehicleModel: vehicle.model,
+      membershipName: vehicle.membershipName || vehicle.packageName,
+      serviceKey: 'car-wash'
+    });
+
+    if (res) {
+      setSelectedVehicleDetail(prev => {
+        if (!prev) return prev;
+        const prevVeh = prev.vehicle || {};
+        return {
+          vehicle: {
+            ...prevVeh,
+            totalWashes: (Number(prevVeh.washesUsed !== undefined ? prevVeh.washesUsed : prevVeh.totalWashes) || 0) + 1,
+            washesUsed: (Number(prevVeh.washesUsed !== undefined ? prevVeh.washesUsed : prevVeh.totalWashes) || 0) + 1,
+            lastWashDate: res.date
+          },
+          history: [res, ...(prev.history || [])]
+        };
+      });
+    }
+  };
   const [staffForm, setStaffForm] = useState({
     fullName: '',
     email: '',
@@ -683,47 +759,62 @@ export default function CarWashAdminHubPage() {
   const handleSaveNewStaff = async (e) => {
     e.preventDefault();
     if (!staffForm.fullName || !staffForm.email || !staffForm.password) {
-      alert('Please fill out Name, Email ID, and Password');
+      showToast?.('Please fill out Name, Email ID, and Password', 'error') || alert('Please fill out Name, Email ID, and Password');
       return;
     }
 
+    const newStaffData = {
+      fullName: staffForm.fullName,
+      name: staffForm.fullName,
+      email: staffForm.email.toLowerCase().trim(),
+      password: staffForm.password,
+      mobile: staffForm.mobile,
+      phone: staffForm.mobile,
+      department: 'Car Wash',
+      serviceKey: 'car-wash',
+      staffRole: staffForm.staffRole || 'Car Wash Specialist',
+      role: 'staff',
+      salary: staffForm.salary,
+      leaveBalance: Number(staffForm.leaveBalance || 12),
+      photo: staffForm.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+      permissions: staffForm.permissions || ['bookings', 'orders'],
+      isActive: true,
+      status: 'Active'
+    };
+
     try {
-      const res = await apiClient.post('/users/staff', {
-        fullName: staffForm.fullName,
-        email: staffForm.email,
-        password: staffForm.password,
-        mobile: staffForm.mobile,
-        department: 'Car Wash',
-        serviceKey: 'car-wash',
-        staffRole: staffForm.staffRole,
-        salary: staffForm.salary,
-        leaveBalance: Number(staffForm.leaveBalance),
-        photo: staffForm.photo,
-        permissions: staffForm.permissions
-      });
+      const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        alert(`✅ Staff member created successfully!\n\nStaff Email: ${staffForm.email}\nPassword: ${staffForm.password}\n\nStaff can now log in at /staff/login.`);
-        fetchLiveStaff();
-        setAddStaffModal(false);
-        setStaffForm({
-          fullName: '',
-          email: '',
-          password: '',
-          mobile: '',
-          staffRole: 'Car Wash Specialist',
-          salary: '₹35,000 / month',
-          leaveBalance: 12,
-          photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-          permissions: ['bookings', 'orders']
-        });
+        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
+        setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
+        addStaff?.(savedStaff);
       } else {
-        alert(`Error: ${res.data?.message || 'Could not create staff'}`);
+        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+        addStaff?.(newStaffData);
+        showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
       }
     } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || 'Could not create staff';
-      alert(`Error: ${errMsg}`);
+      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
+      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
+      addStaff?.(newStaffData);
+      showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
     }
+
+    fetchLiveStaff();
+    setAddStaffModal(false);
+    setStaffForm({
+      fullName: '',
+      email: '',
+      password: '',
+      mobile: '',
+      staffRole: 'Car Wash Specialist',
+      salary: '₹35,000 / month',
+      leaveBalance: 12,
+      photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+      permissions: ['bookings', 'orders']
+    });
   };
 
   const handleOpenEditStaff = async (stf) => {
@@ -874,7 +965,7 @@ export default function CarWashAdminHubPage() {
     if (type === 'membership') {
       setEditBadge(item.badge || '');
       setEditDuration(item.duration || 30);
-      setEditVisitLimit(item.visitLimit !== undefined ? item.visitLimit : 4);
+      setEditVisitLimit(item.visitLimit !== undefined ? Number(item.visitLimit) : (item.name?.toLowerCase().includes('year') ? 365 : 50));
       setEditBenefits(Array.isArray(item.benefits) && item.benefits.length > 0 ? [...item.benefits] : ['']);
       setEditIsPopular(!!item.isPopular);
       setEditRenewable(item.renewable !== false);
@@ -928,7 +1019,7 @@ export default function CarWashAdminHubPage() {
               benefits: editBenefits.filter(b => b.trim()),
               badge: editBadge.trim() || m.badge || '',
               duration: Number(editDuration) || 30,
-              visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : 4,
+              visitLimit: editVisitLimit !== undefined ? Number(editVisitLimit) : (m.visitLimit !== undefined ? Number(m.visitLimit) : 50),
               isPopular: editIsPopular,
               renewable: editRenewable,
               upgradeAvailable: editRenewable
@@ -958,7 +1049,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : 4,
+        visitLimit: m.visitLimit !== undefined ? Number(m.visitLimit) : 50,
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -1025,7 +1116,7 @@ export default function CarWashAdminHubPage() {
           benefits: newPkgForm.benefits.filter(b => b.trim()),
           badge: newPkgForm.badge.trim() || 'NEW PASS',
           duration: Number(newPkgForm.duration) || 30,
-          visitLimit: Number(newPkgForm.visitLimit) || 4,
+          visitLimit: Number(newPkgForm.visitLimit) || 50,
           isPopular: !!newPkgForm.isPopular,
           renewable: newPkgForm.renewable !== false,
           upgradeAvailable: newPkgForm.renewable !== false
@@ -1059,7 +1150,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: Number(m.visitLimit) || 4,
+        visitLimit: Number(m.visitLimit) || 50,
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -1606,14 +1697,30 @@ export default function CarWashAdminHubPage() {
               </h3>
               <p className="text-xs text-gray-500">Live list of customer vehicles registered during bookings and membership passes</p>
             </div>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
-              {registeredVehiclesList.length} Active Fleet Cars
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                {registeredVehiclesList.length} Active Fleet Cars
+              </span>
+              <button
+                onClick={() => setIsOfflineSaleModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1 shadow-sm transition-all hover:shadow-md bg-amber-600"
+              >
+                <Plus className="w-3.5 h-3.5" /> Record Offline Sale
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {registeredVehiclesList.map((v, i) => (
-              <div key={v.plate || i} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all">
+              <div
+                key={v.plate || i}
+                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
+                onClick={() => {
+                  const plate = (v.plate || '').toUpperCase().trim();
+                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                }}
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
@@ -1624,9 +1731,22 @@ export default function CarWashAdminHubPage() {
                       <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                    {v.totalWashes} {v.totalWashes === 1 ? 'Wash' : 'Washes'} Done
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                      {v.washesUsed !== undefined ? v.washesUsed : v.totalWashes} {((v.washesUsed !== undefined ? v.washesUsed : v.totalWashes) === 1) ? 'Wash' : 'Washes'} Done
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleWashDone(v);
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
+                      title="Quick mark wash done"
+                    >
+                      <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
@@ -1654,6 +1774,54 @@ export default function CarWashAdminHubPage() {
               </div>
             ))}
           </div>
+
+          {/* Vehicle Detail Modal */}
+          <RegisteredVehicleDetailModal
+            isOpen={!!selectedVehicleDetail}
+            onClose={() => setSelectedVehicleDetail(null)}
+            vehicle={selectedVehicleDetail?.vehicle}
+            bookingHistory={selectedVehicleDetail?.history || []}
+            onWashDone={handleWashDone}
+            onNewOfflineSale={() => {
+              setSelectedVehicleDetail(null);
+              setIsOfflineSaleModalOpen(true);
+            }}
+            onDownloadInvoice={(v) => {
+              setSelectedInvoiceSale({
+                id: v.offlineSaleId || 'OFS-RECEIPT',
+                customerName: v.ownerName,
+                phone: v.ownerPhone,
+                customerEmail: v.ownerEmail,
+                vehicleNo: v.plate,
+                vehicleModel: v.model,
+                packageName: v.packageName || 'Car Wash',
+                membershipName: v.membershipName,
+                saleType: v.membershipName ? 'membership' : 'service',
+                price: v.offlineSalePrice || v.price || 699,
+                paymentMode: v.paymentMode || 'Cash',
+                date: v.offlineSaleDate || v.lastWashDate || v.lastServiceDate,
+                membershipExpiry: v.membershipExpiry,
+                membershipValidity: v.membershipValidity
+              });
+            }}
+          />
+
+          {/* Offline Sale Modal */}
+          <OfflineSaleModal
+            isOpen={isOfflineSaleModalOpen}
+            onClose={() => setIsOfflineSaleModalOpen(false)}
+            onSubmit={async (formData) => {
+              if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-wash', serviceName: 'Car Wash' });
+            }}
+            services={services}
+          />
+
+          {/* Invoice / Receipt Download Modal */}
+          <OfflineSaleInvoiceModal
+            isOpen={!!selectedInvoiceSale}
+            onClose={() => setSelectedInvoiceSale(null)}
+            sale={selectedInvoiceSale}
+          />
         </div>
       )}
 

@@ -330,9 +330,20 @@ export default function ProfilePage() {
     return bookings.filter(b => {
       if (b.packageName && isMembershipPkg(b.packageName)) return false;
       if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
+
       const passPlate = normalizePlate(record.vehicleNo);
       const washPlate = normalizePlate(b.vehicleNo);
-      if (passPlate && washPlate && passPlate !== washPlate) return false;
+      const passEmail = (record.customerEmail || profile.email || '').toLowerCase().trim();
+      const washEmail = (b.customerEmail || '').toLowerCase().trim();
+
+      let isMatch = false;
+      if (passPlate) {
+        isMatch = Boolean(washPlate && washPlate === passPlate);
+      } else if (passEmail) {
+        isMatch = Boolean(washEmail && washEmail === passEmail);
+      }
+      if (!isMatch) return false;
+
       const washedOn = parseFlexibleDate(b.date);
       if (!washedOn) return false;
       return washedOn >= record.startDate && washedOn < record.expiryDate;
