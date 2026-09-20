@@ -17,85 +17,12 @@ export default function StaffDashboardPage() {
   const myStaffId = String(currentStaff?.id || '');
   const myStaffName = (currentStaff?.name || '').toLowerCase();
 
-  const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-
-  // A job belongs to me when the admin assigned it to me or when customer requested me.
-  const isMine = (job) => {
-    const isSalonJob = job.serviceKey === 'salon' || (job.serviceName && job.serviceName.toLowerCase().includes('salon'));
-    
-    if (isSalonJob) {
-      let requestedStylist = job.staffName || job.assignedStaffName || job.stylist || '';
-      const vehicleStr = (job.vehicleNo || '').toLowerCase();
-      if (!requestedStylist && vehicleStr.includes('stylist:')) {
-        requestedStylist = job.vehicleNo.split(/stylist:/i)[1].trim();
-      } else if (vehicleStr.includes('stylist:')) {
-        const vStylist = job.vehicleNo.split(/stylist:/i)[1].trim();
-        if (vStylist && normalize(vStylist) !== 'anyspecialist') {
-          requestedStylist = vStylist;
-        }
-      }
-
-      const normStylist = normalize(requestedStylist);
-      const normMyName = normalize(myStaffName);
-      const normMyId = normalize(myStaffId);
-      const jobStaffId = normalize(job.staffId || job.assignedStaffId || '');
-
-      // Check if job is assigned to me by staff ID
-      if (jobStaffId && jobStaffId !== 'stflive' && jobStaffId !== 'stf05' && jobStaffId !== 'stf07') {
-        if (jobStaffId === normMyId) return true;
-        if (jobStaffId !== normMyId) return false;
-      }
-
-      // Check if requested stylist matches my name
-      if (normStylist && normStylist === normMyName) return true;
-
-      // If requested stylist specifically targets ANOTHER active staff member (e.g. Raasi, Tahir), hide from me
-      const knownOtherStaff = ['raasi', 'tahir', 'tahirkhan', 'sameer', 'sameermerchant', 'vikash', 'vikas'];
-      if (normStylist && knownOtherStaff.includes(normStylist) && normStylist !== normMyName) {
-        return false;
-      }
-
-      // Otherwise (for "Any Specialist", generic stylists, or unassigned salon orders), show to all salon staff
-      return true;
-    }
-
-    const jobStaffId = String(job.staffId || '');
-    if (!jobStaffId) return true;
-    if (jobStaffId === myStaffId) return true;
-    return Boolean(job.staffName) && job.staffName.toLowerCase() === myStaffName;
-  };
-
-  // Filter jobs strictly to the logged-in staff member's department
-  const departmentJobs = jobs.filter(j => {
-    if (isDriveThrough) {
-      return j.serviceKey === 'drive-through-cafe' || (j.serviceName && j.serviceName.toLowerCase().includes('drive'));
-    }
-    if (staffKey === 'cafe' || staffDept.includes('café') || staffDept.includes('cafe')) {
-      return j.serviceKey === 'cafe' || (j.serviceName && j.serviceName.toLowerCase().includes('cafe') && !j.serviceName.toLowerCase().includes('drive'));
-    }
-    if (staffKey === 'car-detailing' || staffDept.includes('detail')) {
-      return j.serviceKey === 'car-detailing' || (j.serviceName && j.serviceName.toLowerCase().includes('detail'));
-    }
-    if (staffKey === 'dog-wash' || staffDept.includes('dog')) {
-      return j.serviceKey === 'dog-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('dog'));
-    }
-    if (staffKey === 'salon' || staffDept.includes('salon')) {
-      return j.serviceKey === 'salon' || (j.serviceName && j.serviceName.toLowerCase().includes('salon'));
-    }
-    if (staffKey === 'car-wash' || staffDept.includes('wash')) {
-      return j.serviceKey === 'car-wash' || (j.serviceName && j.serviceName.toLowerCase().includes('wash'));
-    }
-    return j.serviceKey === staffKey;
+  // Jobs are already filtered strictly to this staff member's department and assignment by StaffContext
+  const filteredJobs = [...jobs].sort((a, b) => {
+    const aTime = a.expectedAt ? new Date(a.expectedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const bTime = b.expectedAt ? new Date(b.expectedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    return bTime - aTime;
   });
-
-  // Newest arrivals first, and only what this staff member is responsible for.
-  const filteredJobs = departmentJobs
-    .filter(isMine)
-    .sort((a, b) => {
-      const aTime = a.expectedAt ? new Date(a.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
-      const bTime = b.expectedAt ? new Date(b.expectedAt).getTime() : Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
-    });
 
   const isJobCompleted = (job) => {
     const finalStepIndex = SERVICE_FINAL_STEP_INDEX[job.serviceKey];

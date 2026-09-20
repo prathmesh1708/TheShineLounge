@@ -91,18 +91,7 @@ export default function BookingsPage() {
         console.warn('Could not load active bookings from backend:', err.message);
       }
 
-      // Merge bookings created in this browser, from this customer's own scope.
-      try {
-        const localBookings = readScoped('tsl_user_bookings', userEmail, []);
-        if (Array.isArray(localBookings) && localBookings.length > 0) {
-          const apiIds = new Set(combinedRawBookings.map(b => b.bookingId || b.id || b._id));
-          localBookings.filter(isMine).forEach(lb => {
-            if (!apiIds.has(lb.bookingId) && !apiIds.has(lb.id)) {
-              combinedRawBookings.unshift(lb);
-            }
-          });
-        }
-      } catch (e) {}
+
 
       const mapped = combinedRawBookings.map(b => {
         const rawDate = b.date || '';

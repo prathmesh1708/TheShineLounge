@@ -3,13 +3,15 @@ import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import {
   isMembershipPackage,
+  isWashRedemptionRecord,
   buildMembershipSchedule,
   findMembershipMeta,
   parseFlexibleDate,
   addPassDuration,
   startOfDay,
   formatLongDate,
-  toISODateString
+  toISODateString,
+  normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
@@ -132,7 +134,6 @@ export const AdminProvider = ({ children }) => {
     try {
       const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
       if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-        const offlineIds = new Set(cachedOffline.map(o => o.id || o.bookingId).filter(Boolean));
         return [...cachedOffline];
       }
     } catch (e) {}
@@ -148,16 +149,21 @@ export const AdminProvider = ({ children }) => {
     bookingsRef.current = bookings;
   }, [bookings]);
 
+
   const servicesRef = useRef(services);
   useEffect(() => {
     servicesRef.current = services;
   }, [services]);
 
+  // Request deduplication & stale-time cache refs
+  const inFlightRequestsRef = useRef({});
+  const lastFetchedRef = useRef({});
+
   // Business Settings State
   const [settings, setSettings] = useState({
     businessName: 'The Shine Lounge',
     tagline: 'Premium Multi-Service Automotive & Lifestyle Lounge',
-    address: 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai 400013',
+    address: '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101',
     contactPhone: '+91 98200 99999',
     contactEmail: 'admin@theshinelounge.com',
     workingHours: '08:00 AM - 10:00 PM (Mon - Sun)',
@@ -210,13 +216,23 @@ export const AdminProvider = ({ children }) => {
     const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
 
     // Purchases made offline (or before the API call landed) live in localStorage.
-    const knownIds = new Set(membershipBookings.map(b => b.bookingId || b.id).filter(Boolean));
+    const knownIds = new Set();
+    membershipBookings.forEach(b => {
+      [b.bookingId, b.id, b._id].filter(Boolean).forEach(id => {
+        const norm = normalizeMembershipId(id);
+        if (norm) knownIds.add(norm);
+      });
+    });
+
     const localPasses = [];
     const addLocalPass = (pass) => {
       if (!pass || (!pass.packageName && !pass.planName && !pass.plan)) return;
-      const passId = pass.bookingId || pass.id || pass.passId;
-      if (passId && knownIds.has(passId)) return;
-      if (passId) knownIds.add(passId);
+      const passPlate = String(pass.vehicleNo || pass.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (pass.vehicleDeregistered || (passPlate && (deregisteredPlates || []).includes(passPlate))) return;
+      const passId = pass.bookingId || pass.id || pass.passId || pass._id;
+      const normPassId = normalizeMembershipId(passId);
+      if (normPassId && knownIds.has(normPassId)) return;
+      if (normPassId) knownIds.add(normPassId);
       const pkg = pass.packageName || pass.planName || pass.plan;
       const passPrice = Number(pass.amount !== undefined && pass.amount !== null ? pass.amount : (pass.price !== undefined && pass.price !== null ? pass.price : (pass.total || 0)));
       localPasses.push({
@@ -239,28 +255,6 @@ export const AdminProvider = ({ children }) => {
       });
     };
 
-    // Local passes are stored per customer, so sweep every scope in this browser.
-    readAllScoped('tsl_membership_passes').forEach(({ value }) => {
-      if (Array.isArray(value)) value.forEach(addLocalPass);
-    });
-    readAllScoped('tsl_active_membership').forEach(({ value }) => addLocalPass(value));
-
-    // Offline sales and admin memberships
-    try {
-      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      if (Array.isArray(offline)) {
-        offline.filter(s => s.saleType === 'membership' || isMembershipPackage(s.packageName || s.planName || s.plan || '')).forEach(addLocalPass);
-      }
-    } catch (e) {}
-
-    try {
-      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
-      if (Array.isArray(adminMems)) {
-        adminMems.forEach(addLocalPass);
-      }
-    } catch (e) {}
-
-    // Plan durations and wash allowances configured by the admin across all services
     const catalogMap = new Map();
     const addCatalogItem = (m) => {
       if (!m) return;
@@ -275,30 +269,27 @@ export const AdminProvider = ({ children }) => {
       }
     });
 
-    const serviceCacheKeys = [
-      'tsl_car_wash_service',
-      'tsl_car_detailing_service',
-      'tsl_dog_wash_service',
-      'tsl_salon_service',
-      'tsl_cafe_service',
-      'tsl_drive_through_cafe_service'
-    ];
-    serviceCacheKeys.forEach(k => {
-      try {
-        const item = JSON.parse(localStorage.getItem(k) || 'null');
-        if (Array.isArray(item?.memberships)) {
-          item.memberships.forEach(addCatalogItem);
-        }
-      } catch (e) {}
-    });
-
     const catalog = Array.from(catalogMap.values());
 
-    const schedule = buildMembershipSchedule([...membershipBookings, ...localPasses], { catalog });
+    const schedule = buildMembershipSchedule(membershipBookings, { catalog });
 
     const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const soonCutoff = new Date();
     soonCutoff.setDate(soonCutoff.getDate() + 7);
+
+    // Pool all wash redemption records from allBookings
+    const washPoolMap = new Map();
+    const addWashToPool = (b) => {
+      if (!b || !isWashRedemptionRecord(b)) return;
+      const id = b.id || b.bookingId || b._id;
+      const key = id ? (normalizeMembershipId(id) || String(id)) : null;
+      if (key && washPoolMap.has(key)) return;
+      if (key) washPoolMap.set(key, b);
+      else washPoolMap.set(`ANON-${washPoolMap.size}`, b);
+    };
+
+    (bookingList || []).forEach(addWashToPool);
+    const unifiedWashLogs = Array.from(washPoolMap.values());
 
     const derived = schedule.map((record, idx) => {
       const meta = findMembershipMeta(record.packageName, catalog);
@@ -313,10 +304,8 @@ export const AdminProvider = ({ children }) => {
             ? record.visitLimit
             : (isUnlimited ? 999 : (record.isYearly ? 48 : 4)));
 
-      // Calculate washes used by matching vehicle plate or customer contact
-      const washesUsed = bookingList.filter(b => {
-        const name = b.plan || b.packageName;
-        if (isMembershipPackage(name)) return false;
+      // Calculate washes used by matching vehicle plate or customer contact against unified wash logs
+      const washesUsed = unifiedWashLogs.filter(b => {
         if ((b.serviceKey || 'car-wash') !== record.serviceKey) return false;
 
         const passPlate = normalizePlate(record.vehicleNo);
@@ -338,11 +327,17 @@ export const AdminProvider = ({ children }) => {
 
         if (!isMatch) return false;
 
-        const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt);
-        if (!washedOn) return true;
+        const washedOn = parseFlexibleDate(b.date || b.createdAt || b.bookedAt || b.saleDate);
+        if (!washedOn) return false;
         // Count washes on or after purchase date up to expiry
-        const effectiveStart = record.startDate <= new Date() ? record.startDate : (record.purchaseDate || record.startDate);
-        return washedOn >= effectiveStart && washedOn <= record.expiryDate;
+        const effectiveStart = record.startDate ? parseFlexibleDate(record.startDate) : null;
+        const effectiveEnd = record.expiryDate ? parseFlexibleDate(record.expiryDate) : null;
+        if (effectiveStart) effectiveStart.setHours(0, 0, 0, 0);
+        if (effectiveEnd) effectiveEnd.setHours(23, 59, 59, 999);
+
+        if (effectiveStart && washedOn < effectiveStart) return false;
+        if (effectiveEnd && washedOn > effectiveEnd) return false;
+        return true;
       }).length;
 
       let status = record.status;
@@ -352,13 +347,14 @@ export const AdminProvider = ({ children }) => {
       return {
         id: rawId
           ? (rawId.startsWith('MEM-') ? rawId : `MEM-${rawId.replace('B-2026-', '')}`)
-          : `MEM-${1005 + idx}`,
-        customerName: record.customerName,
-        phone: record.phone || record.customerEmail || '+91 98200 99887',
-        email: record.customerEmail,
-        // Empty, not a sample plate. This row is a membership card an operator
-        // checks a car against at the gate.
-        vehicleNo: record.vehicleNo || '',
+          : (record._id ? `MEM-${String(record._id).slice(-6)}` : `MEM-${idx + 1}`),
+        bookingId: record.bookingId || record.id || record._id || rawId,
+        rawBookingId: rawId,
+        customerName: record.customerName || 'Valued Member',
+        phone: record.phone || record.mobile || '',
+        email: record.customerEmail || '',
+        // Empty if vehicle was deregistered/deleted
+        vehicleNo: (record.vehicleDeregistered || (record.vehicleNo && deregisteredPlates.includes(normalizePlate(record.vehicleNo)))) ? '' : (record.vehicleNo || ''),
         vehicleModel: record.vehicleType || 'Car',
         planName: record.packageName,
         serviceKey: record.serviceKey,
@@ -377,192 +373,174 @@ export const AdminProvider = ({ children }) => {
       };
     });
 
-    // Newest purchases first. Memberships are derived purely from real
-    // bookings now -- no demo records are mixed in.
-    derived.reverse();
-    return derived;
+    // Deduplicate derived passes to ensure no duplicate twin rows with matching ID ever display
+    const seenDerived = new Set();
+    const uniqueDerived = [];
+    for (const d of derived) {
+      const norm = normalizeMembershipId(d.id || d.bookingId || d.rawBookingId);
+      if (norm) {
+        if (seenDerived.has(norm)) continue;
+        seenDerived.add(norm);
+      }
+      uniqueDerived.push(d);
+    }
+
+    // Newest purchases first (no mock data appended)
+    uniqueDerived.reverse();
+    return uniqueDerived;
   };
 
-  const fetchBookingsList = async () => {
-    try {
-      let mapped = [];
-      const res = await apiClient.get('/bookings');
-      if (res.data && res.data.bookings) {
-        const liveDateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        const now = new Date();
-        const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const defaultSlot = `${liveTimeStart} - ${liveTimeEnd}`;
+  const fetchBookingsList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.bookings && now - lastFetchedRef.current.bookings < 15000) {
+      return;
+    }
+    if (inFlightRequestsRef.current.bookings) {
+      return inFlightRequestsRef.current.bookings;
+    }
 
-        mapped = res.data.bookings.map(b => {
-          const rawDate = b.date || '';
-          const isLegacyDate = !rawDate || rawDate.includes('July 18') || rawDate.includes('2026-07-18');
-          const displayDate = isLegacyDate ? liveDateStr : rawDate;
+    const fetchPromise = (async () => {
+      try {
+        let mapped = [];
+        const res = await apiClient.get('/bookings');
+        lastFetchedRef.current.bookings = Date.now();
+        if (res.data && res.data.bookings) {
+          mapped = res.data.bookings.map(b => {
+            const rawDate = b.date || b.saleDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '');
+            const rawTime = b.timeSlot || '';
 
-          const rawTime = b.timeSlot || '';
-          const isLegacyTime = !rawTime || rawTime === '02:00 PM - 02:30 PM';
-          const displayTime = isLegacyTime ? defaultSlot : rawTime;
-
-          return {
-            _id: b._id,
-            id: b.bookingId,
-            bookingId: b.bookingId,
-            customerName: b.customerName || b.userName || b.name || (b.customerEmail ? b.customerEmail.split('@')[0] : 'Valued Customer'),
-            customerEmail: b.customerEmail || b.email || '',
-            vehicleNo: b.vehicleNo || b.vehiclePlate || '',
-            vehicleType: b.vehicleType || b.vehicleModel || '',
-            location: b.location || 'Main Branch',
-            phone: b.phone || b.mobile || b.customerPhone || '',
-            serviceKey: b.serviceKey,
-            serviceName: b.serviceName || b.service || 'Service',
-            service: b.serviceName || b.service || 'Service',
-            plan: b.packageName || b.plan || 'Standard',
-            packageName: b.packageName || b.plan || 'Standard',
-            // Ordering key for two passes bought on the same day (buy, upgrade).
-            date: displayDate,
-            timeSlot: formatBookingDateTime(displayTime, displayDate),
-            total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
-            price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
-            status: b.status || 'Pending',
-            staffAssigned: b.assignedStaffName || 'Not Assigned',
-            assignedStaffId: b.assignedStaffId,
-            assignedStaffName: b.assignedStaffName || '',
-            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-            notes: b.notes || '',
-            photos: b.photos || [],
-            paymentMode: b.paymentMode || 'UPI',
-            isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
-            saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
-            vehicleModel: b.vehicleModel || b.vehicleType || '',
-            membershipName: b.membershipName || '',
-            membershipValidity: b.membershipValidity || '',
-            membershipExpiry: b.membershipExpiry || '',
-            createdAt: b.createdAt || b.bookedAt || b.date,
-            bookedAt: b.bookedAt || b.createdAt
-          };
-        });
-
-        // Bi-directional sync of offline sales between backend and localStorage
-        const backendOfflineSales = mapped.filter(b => b.isOfflineSale || (b.bookingId && String(b.bookingId).startsWith('OFS-')));
-        try {
-          const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-          const combinedOfflineMap = new Map();
-          // Include backend offline sales
-          backendOfflineSales.forEach(s => combinedOfflineMap.set(s.id || s.bookingId, s));
-          // Include locally cached offline sales if not already from backend
-          cachedOffline.forEach(s => {
-            const key = s.id || s.bookingId;
-            if (!combinedOfflineMap.has(key)) combinedOfflineMap.set(key, s);
+            return {
+              _id: b._id,
+              id: b.bookingId,
+              bookingId: b.bookingId,
+              customerName: b.customerName || b.userName || b.name || (b.customerEmail ? b.customerEmail.split('@')[0] : 'Valued Customer'),
+              customerEmail: b.customerEmail || b.email || '',
+              vehicleNo: b.vehicleNo || b.vehiclePlate || '',
+              vehicleType: b.vehicleType || b.vehicleModel || '',
+              location: b.location || 'Main Branch',
+              phone: b.phone || b.mobile || b.customerPhone || '',
+              serviceKey: b.serviceKey,
+              serviceName: b.serviceName || b.service || 'Service',
+              service: b.serviceName || b.service || 'Service',
+              plan: b.packageName || b.plan || 'Standard',
+              packageName: b.packageName || b.plan || 'Standard',
+              date: rawDate,
+              timeSlot: rawTime,
+              total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+              price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
+              status: b.status || 'Pending',
+              staffAssigned: b.assignedStaffName || 'Not Assigned',
+              assignedStaffId: b.assignedStaffId,
+              assignedStaffName: b.assignedStaffName || '',
+              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+              notes: b.notes || '',
+              photos: b.photos || [],
+              paymentMode: b.paymentMode || 'UPI',
+              isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
+              saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
+              vehicleModel: b.vehicleModel || b.vehicleType || '',
+              membershipName: b.membershipName || '',
+              membershipValidity: b.membershipValidity || '',
+              membershipExpiry: b.membershipExpiry || '',
+              vehicleDeregistered: Boolean(b.vehicleDeregistered),
+              createdAt: b.createdAt || b.bookedAt || b.date,
+              bookedAt: b.bookedAt || b.createdAt
+            };
           });
-          const allOffline = Array.from(combinedOfflineMap.values());
-          localStorage.setItem('tsl_offline_sales', JSON.stringify(allOffline));
 
-          // Ensure all offline sales are in mapped list
-          allOffline.forEach(ofs => {
-            if (!mapped.some(m => m.id === ofs.id || m.bookingId === ofs.bookingId)) {
-              mapped.unshift(ofs);
+          const cleanBookings = mapped.filter(b => {
+            if (!b) return false;
+            const bId = String(b.id || b.bookingId || '').trim();
+            if (!bId && !b.customerName) return false;
+            if (
+              bId.startsWith('BK-90') ||
+              bId.startsWith('B-2026-88') ||
+              bId.startsWith('BK-SAL-') ||
+              bId.startsWith('BK-70') ||
+              bId.startsWith('BK-80') ||
+              bId === 'OFS-MTJX5GRW-3986'
+            ) {
+              return false;
             }
+            return true;
           });
-        } catch (e) {}
 
-        setMemberships(deriveMembershipsFromBookings(mapped));
-      } else {
-        setMemberships(deriveMembershipsFromBookings([]));
+          setMemberships(deriveMembershipsFromBookings(mapped));
+          setBookings(cleanBookings);
+        } else {
+          setBookings([]);
+          setMemberships(deriveMembershipsFromBookings([]));
+        }
+      } catch (err) {
+        console.warn('Could not fetch bookings list from database:', err.message);
+        setBookings([]);
+        setMemberships([]);
+      } finally {
+        delete inFlightRequestsRef.current.bookings;
       }
+    })();
 
-      // Merge client-side salon bookings from localStorage if available
-      let localSalonBookings = [];
-      try {
-        const storedSalon = localStorage.getItem('salon_bookings') || localStorage.getItem('shine_salon_bookings');
-        if (storedSalon) {
-          const parsedSalon = JSON.parse(storedSalon);
-          if (Array.isArray(parsedSalon)) {
-            localSalonBookings = parsedSalon.map((b, idx) => {
-              const bDate = b.date || new Date().toISOString().split('T')[0];
-              const bTime = b.timeSlot || b.time || '01:30 PM';
-              const formattedSlot = formatBookingDateTime(bTime, bDate);
-              return {
-                _id: b.id || b.bookingId || `BK-SAL-${idx}`,
-                id: b.bookingId || b.id || `BK-${7000 + idx}`,
-                customerName: b.customerName || b.user || 'Salon Client',
-                customerEmail: b.customerEmail || b.email || '',
-                vehicleNo: b.vehicleNo || (b.stylist ? `Stylist: ${b.stylist}` : 'Any Specialist'),
-                vehicleType: b.vehicleType || 'Salon Client',
-                location: b.location || 'Shine Lounge Salon',
-                phone: b.phone || b.mobile || '',
-                serviceKey: 'salon',
-                serviceName: b.serviceName || 'Men\'s Salon',
-                plan: b.packageName || b.package || b.service || 'Executive Haircut',
-                date: bDate,
-                timeSlot: formattedSlot,
-                total: b.price || b.total || b.amount || 0,
-                status: b.status === 'Upcoming' ? 'Confirmed' : (b.status || 'Confirmed'),
-                staffAssigned: b.stylist || b.staffAssigned || 'Not Assigned',
-                notes: b.notes || '',
-                createdAt: b.createdAt || b.bookedAt || bDate,
-                bookedAt: b.bookedAt || b.createdAt
-              };
-            });
-          }
-        }
-      } catch (e) {}
-
-      const apiIds = new Set(mapped.flatMap(b => [b.id, b._id, b.bookingId].filter(Boolean)));
-      const notAlreadyLive = (b) => !apiIds.has(b.id) && !apiIds.has(b._id) && !apiIds.has(b.bookingId);
-
-      const combinedBookings = [
-        ...mapped,
-        ...localSalonBookings.filter(notAlreadyLive)
-      ];
-
-      const finalBookings = combinedBookings;
-      setBookings(finalBookings);
-      setMemberships(deriveMembershipsFromBookings(finalBookings));
-    } catch (err) {
-      console.warn('Could not fetch bookings list, preserving local offline sales:', err.message);
-      try {
-        const cachedOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-        if (Array.isArray(cachedOffline) && cachedOffline.length > 0) {
-          setBookings(cachedOffline);
-          setMemberships(deriveMembershipsFromBookings(cachedOffline));
-          return;
-        }
-      } catch (e) {}
-      setBookings([]);
-      setMemberships([]);
-    }
+    inFlightRequestsRef.current.bookings = fetchPromise;
+    return fetchPromise;
   };
 
-  const fetchStaffList = async () => {
-    try {
-      const res = await apiClient.get('/users/staff');
-      if (res.data && res.data.staff) {
-        const mapped = res.data.staff.map(s => ({
-          _id: s._id,
-          id: s.email,
-          name: s.fullName,
-          fullName: s.fullName,
-          email: s.email,
-          mobile: s.mobile || '',
-          department: s.department || 'Car Wash',
-          staffRole: s.staffRole || 'Specialist',
-          serviceKey: s.serviceKey || '',
-          salary: s.salary || '',
-          leaveBalance: s.leaveBalance || 12,
-          photo: s.photo || '',
-          permissions: s.permissions || [],
-          isActive: s.isActive
-        }));
-        setStaffList(mapped);
-      }
-    } catch (err) {
-      console.warn('Could not fetch staff list:', err.message);
+
+  const fetchStaffList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.staff && now - lastFetchedRef.current.staff < 60000) {
+      return;
     }
+    if (inFlightRequestsRef.current.staff) {
+      return inFlightRequestsRef.current.staff;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await apiClient.get('/staff');
+        lastFetchedRef.current.staff = Date.now();
+        if (res.data && res.data.staff) {
+          const mapped = res.data.staff.map(s => ({
+            _id: s._id,
+            id: s.staffId || s.email,
+            staffId: s.staffId,
+            name: s.fullName,
+            fullName: s.fullName,
+            email: s.email,
+            mobile: s.mobile || '',
+            department: s.department || 'Car Wash',
+            staffRole: s.staffRole || 'Specialist',
+            serviceKey: s.serviceKey || '',
+            salary: s.salary || '',
+            leaveBalance: s.leaveBalance || 12,
+            photo: s.photo || '',
+            permissions: s.permissions || [],
+            isActive: s.isActive
+          }));
+          setStaffList(mapped);
+        }
+      } catch (err) {
+        console.warn('Could not fetch staff list:', err.message);
+      } finally {
+        delete inFlightRequestsRef.current.staff;
+      }
+    })();
+
+    inFlightRequestsRef.current.staff = fetchPromise;
+    return fetchPromise;
   };
 
   // Derives enriched customers combining backend CRM accounts, live bookings & offline sales
   const deriveCustomers = (baseCustomers = [], bookingList = [], offlineSalesList = []) => {
     const customerMap = new Map();
+
+    const sanitizeCustomerEmail = (email) => {
+      if (!email) return '';
+      const em = String(email).trim().toLowerCase();
+      if (em.endsWith('@theshinelounge.com') && !em.startsWith('admin') && !em.startsWith('support')) {
+        return '';
+      }
+      return email;
+    };
 
     const normalizeKey = (email, phone, name) => {
       const e = (email || '').toLowerCase().trim();
@@ -576,12 +554,28 @@ export const AdminProvider = ({ children }) => {
     // 1. Seed base customers
     (baseCustomers || []).forEach(c => {
       if (!c) return;
-      const key = normalizeKey(c.email, c.phone || c.mobile, c.name || c.fullName);
+      const cleanEmail = sanitizeCustomerEmail(c.email);
+      const key = normalizeKey(cleanEmail, c.phone || c.mobile, c.name || c.fullName);
       if (key) {
+        const filteredVeh = (Array.isArray(c.vehicles) ? c.vehicles : []).filter(v => {
+          const p = String(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo || '')).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return !p || !(deregisteredPlates || []).includes(p);
+        });
+        const filteredRawVeh = (Array.isArray(c.rawVehicles) ? c.rawVehicles : []).filter(v => {
+          const p = String(typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '')).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return !p || !(deregisteredPlates || []).includes(p);
+        });
+        const updatedMem = c.membership ? {
+          ...c.membership,
+          vehicleNo: (c.membership.vehicleNo && (deregisteredPlates || []).includes(String(c.membership.vehicleNo).toUpperCase().replace(/[^A-Z0-9]/g, ''))) ? '' : c.membership.vehicleNo
+        } : null;
+
         customerMap.set(key, {
           ...c,
-          vehicles: Array.isArray(c.vehicles) ? [...c.vehicles] : [],
-          rawVehicles: Array.isArray(c.rawVehicles) ? [...c.rawVehicles] : []
+          email: cleanEmail,
+          vehicles: filteredVeh,
+          rawVehicles: filteredRawVeh,
+          membership: updatedMem
         });
       }
     });
@@ -598,9 +592,12 @@ export const AdminProvider = ({ children }) => {
     allTransactions.forEach(t => {
       if (!t) return;
       const tName = (t.customerName || t.fullName || t.name || '').trim();
-      const tEmail = (t.customerEmail || t.email || '').toLowerCase().trim();
+      const rawEmail = (t.customerEmail || t.email || '').toLowerCase().trim();
+      const tEmail = sanitizeCustomerEmail(rawEmail);
       const tPhone = String(t.phone || t.mobile || '').trim();
       const tPlate = (t.vehicleNo || t.vehiclePlate || '').toUpperCase().trim();
+      const cleanTPlate = tPlate.replace(/[^A-Z0-9]/g, '');
+      const isDereg = t.vehicleDeregistered || (cleanTPlate && (deregisteredPlates || []).includes(cleanTPlate));
       const tModel = t.vehicleType || t.vehicleModel || 'Car';
       const tPrice = Number(t.price !== undefined ? t.price : (t.amount !== undefined ? t.amount : (t.total || 0))) || 0;
       const tDate = t.date || (t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '');
@@ -614,10 +611,9 @@ export const AdminProvider = ({ children }) => {
       if (customerMap.has(key)) {
         const existing = customerMap.get(key);
 
-        // Update vehicle list
-        if (tPlate) {
-          const cleanPlate = tPlate.replace(/[^A-Z0-9]/g, '');
-          const hasPlate = existing.vehicles.some(v => v.replace(/[^A-Z0-9]/g, '').includes(cleanPlate));
+        // Update vehicle list if not deregistered
+        if (cleanTPlate && !isDereg) {
+          const hasPlate = existing.vehicles.some(v => v.replace(/[^A-Z0-9]/g, '').includes(cleanTPlate));
           if (!hasPlate) {
             existing.vehicles.push(`${tPlate}${tModel ? ` (${tModel})` : ''}`);
             existing.rawVehicles.push({ plateNumber: tPlate, model: tModel });
@@ -647,19 +643,19 @@ export const AdminProvider = ({ children }) => {
         }
       } else {
         // Create new customer record for this offline sale / booking customer
-        const vehList = tPlate ? [`${tPlate}${tModel ? ` (${tModel})` : ''}`] : [];
-        const rawVehList = tPlate ? [{ plateNumber: tPlate, model: tModel }] : [];
+        const vehList = (cleanTPlate && !isDereg) ? [`${tPlate}${tModel ? ` (${tModel})` : ''}`] : [];
+        const rawVehList = (cleanTPlate && !isDereg) ? [{ plateNumber: tPlate, model: tModel }] : [];
 
         customerMap.set(key, {
-          _id: t._id || `offline-cust-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          id: tEmail || tPhone || `CUST-${tName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'OFFLINE'}`,
+          _id: t.id || t.bookingId || `CUST-OFS-${Date.now()}`,
+          id: tEmail || tPhone || t.id || `CUST-${Date.now()}`,
           name: tName || 'Valued Customer',
           fullName: tName || 'Valued Customer',
-          email: tEmail || '',
-          phone: tPhone || '',
-          mobile: tPhone || '',
-          city: 'Mumbai',
-          segment: isMem ? 'Active Member' : 'Regular Customer',
+          email: tEmail,
+          phone: tPhone,
+          mobile: tPhone,
+          city: t.location || t.city || 'Gurgaon',
+          segment: isMem ? 'Active Member' : 'Offline Customer',
           totalSpent: tPrice,
           loyaltyPoints: Math.floor(tPrice / 100),
           vehicles: vehList,
@@ -670,14 +666,15 @@ export const AdminProvider = ({ children }) => {
             startDate: tDate || new Date().toISOString(),
             expiryDate: t.membershipExpiry || t.validUntil || ''
           } : null,
-          lastVisit: tDate || 'Just now',
-          createdAt: t.createdAt || new Date().toISOString()
+          lastVisit: tDate || new Date().toISOString().split('T')[0],
+          role: 'user',
+          createdAt: tDate || new Date().toISOString()
         });
       }
     });
 
-    // Also check if any customer holds an active membership from tsl_admin_memberships
-    (adminMems || []).forEach(m => {
+    // Cross-reference any active memberships in Admin Panel -> Memberships
+    adminMems.forEach(m => {
       if (!m) return;
       const key = normalizeKey(m.customerEmail || m.email, m.phone || m.mobile, m.customerName || m.name);
       if (key && customerMap.has(key)) {
@@ -697,72 +694,175 @@ export const AdminProvider = ({ children }) => {
     return Array.from(customerMap.values());
   };
 
-  const fetchCustomersList = async () => {
-    try {
-      const res = await apiClient.get('/users/customers');
-      let base = [];
-      if (res.data && Array.isArray(res.data.customers)) {
-        base = res.data.customers.map(c => ({
-          _id: c._id,
-          id: c.email || c.phone || c._id,
-          name: c.fullName || c.name || 'Customer',
-          fullName: c.fullName || c.name || 'Customer',
-          email: c.email,
-          phone: c.phone || c.mobile || '',
-          mobile: c.mobile || c.phone || '',
-          city: c.city || '',
-          segment: c.segment || 'Regular Customer',
-          totalSpent: Number(c.totalSpent) || 0,
-          loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor((Number(c.totalSpent) || 0) / 100),
-          vehicles: Array.isArray(c.vehicles) ? c.vehicles : [],
-          rawVehicles: Array.isArray(c.rawVehicles) ? c.rawVehicles : [],
-          membership: c.membership || null,
-          lastVisit: c.lastVisit || null,
-          role: c.role,
-          createdAt: c.createdAt
-        }));
-      } else {
-        base = [];
-      }
-
-      let offline = [];
-      try {
-        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      } catch (e) {}
-
-      const merged = deriveCustomers(base, bookingsRef.current || [], offline);
-      setCustomers(merged);
-    } catch (err) {
-      console.warn('Could not fetch customers list:', err.message);
-      let offline = [];
-      try {
-        offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      } catch (e) {}
-      setCustomers(prev => deriveCustomers(prev, bookingsRef.current || [], offline));
+  const fetchCustomersList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.customers && now - lastFetchedRef.current.customers < 30000) {
+      return;
     }
+    if (inFlightRequestsRef.current.customers) {
+      return inFlightRequestsRef.current.customers;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await apiClient.get('/customers');
+        lastFetchedRef.current.customers = Date.now();
+        let base = [];
+        const rawList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.customers) ? res.data.customers : []);
+        if (rawList.length > 0) {
+          base = rawList.map(c => ({
+            _id: c._id,
+            id: c.customerId || c.email || c.mobile || c._id,
+            customerId: c.customerId,
+            name: c.fullName || c.name || 'Customer',
+            fullName: c.fullName || c.name || 'Customer',
+            email: c.email,
+            phone: c.phone || c.mobile || '',
+            mobile: c.mobile || c.phone || '',
+            city: c.city || '',
+            segment: c.segment || 'Regular Customer',
+            totalSpent: Number(c.totalSpent) || 0,
+            loyaltyPoints: c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor((Number(c.totalSpent) || 0) / 100),
+            vehicles: Array.isArray(c.vehicles) ? c.vehicles : [],
+            rawVehicles: Array.isArray(c.rawVehicles) ? c.rawVehicles : [],
+            membership: c.membership || null,
+            lastVisit: c.lastVisit || null,
+            role: c.role,
+            createdAt: c.createdAt
+          }));
+        } else {
+          base = [];
+        }
+
+        const merged = deriveCustomers(base, bookingsRef.current || [], []);
+        setCustomers(merged);
+      } catch (err) {
+        console.warn('Could not fetch customers list from DB:', err.message);
+        setCustomers(prev => deriveCustomers(prev || [], bookingsRef.current || [], []));
+      } finally {
+        delete inFlightRequestsRef.current.customers;
+      }
+    })();
+
+    inFlightRequestsRef.current.customers = fetchPromise;
+    return fetchPromise;
   };
 
-  const fetchServicesList = async () => {
+
+  const fetchServicesList = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastFetchedRef.current.services && now - lastFetchedRef.current.services < 60000) {
+      return;
+    }
+    if (inFlightRequestsRef.current.services) {
+      return inFlightRequestsRef.current.services;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await serviceApi.getServices();
+        lastFetchedRef.current.services = Date.now();
+        if (res && res.services) {
+          setServices(res.services);
+          setMemberships(deriveMembershipsFromBookings(bookingsRef.current, res.services));
+        }
+      } catch (err) {
+        console.warn('Could not fetch services list:', err.message);
+      } finally {
+        delete inFlightRequestsRef.current.services;
+      }
+    })();
+
+    inFlightRequestsRef.current.services = fetchPromise;
+    return fetchPromise;
+  };
+
+  const [deregisteredPlates, setDeregisteredPlates] = useState(() => {
     try {
-      const res = await serviceApi.getServices();
-      if (res && res.services) {
-        setServices(res.services);
-        setMemberships(deriveMembershipsFromBookings(bookingsRef.current, res.services));
+      return JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const cleanLocalStorageOfDeregisteredPlates = (plates) => {
+    if (!Array.isArray(plates) || plates.length === 0) return;
+    const deregSet = new Set(plates.map(p => String(p).toUpperCase().replace(/[^A-Z0-9]/g, '')));
+
+    const cleanObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      let changed = false;
+      const next = { ...obj };
+      if (next.vehicleNo && deregSet.has(String(next.vehicleNo).toUpperCase().replace(/[^A-Z0-9]/g, ''))) {
+        next.vehicleNo = '';
+        next.vehicleDeregistered = true;
+        changed = true;
+      }
+      if (next.vehiclePlate && deregSet.has(String(next.vehiclePlate).toUpperCase().replace(/[^A-Z0-9]/g, ''))) {
+        next.vehiclePlate = '';
+        next.vehicleDeregistered = true;
+        changed = true;
+      }
+      return changed ? next : obj;
+    };
+
+    const cleanArray = (arr) => {
+      if (!Array.isArray(arr)) return arr;
+      return arr.map(item => {
+        if (typeof item === 'string') {
+          const cleanP = String(item).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (Array.from(deregSet).some(d => cleanP.includes(d))) return null;
+          return item;
+        }
+        return cleanObject(item);
+      }).filter(Boolean);
+    };
+
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('tsl_') && key !== 'tsl_deregistered_plates') {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || 'null');
+            if (Array.isArray(val)) {
+              const cleaned = cleanArray(val);
+              localStorage.setItem(key, JSON.stringify(cleaned));
+            } else if (val && typeof val === 'object') {
+              const cleaned = cleanObject(val);
+              localStorage.setItem(key, JSON.stringify(cleaned));
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+  };
+
+  const fetchDeregisteredPlates = async () => {
+    try {
+      const res = await apiClient.get('/users/vehicles/deregistered');
+      if (res.data && res.data.success && Array.isArray(res.data.plates)) {
+        setDeregisteredPlates(prev => {
+          const merged = Array.from(new Set([...prev, ...res.data.plates]));
+          try {
+            localStorage.setItem('tsl_deregistered_plates', JSON.stringify(merged));
+          } catch (_) {}
+          cleanLocalStorageOfDeregisteredPlates(merged);
+          return merged;
+        });
       }
     } catch (err) {
-      console.warn('Could not fetch services list:', err.message);
+      console.warn('Could not fetch backend deregistered plates:', err.message);
     }
   };
 
   useEffect(() => {
+    // Initial single on-demand fetch on mount (Zero background polling loops)
     fetchBookingsList();
     fetchStaffList();
     fetchCustomersList();
     fetchServicesList();
+    fetchDeregisteredPlates();
 
-    // Poll for live booking updates from staff every 5 seconds
-    const interval = setInterval(fetchBookingsList, 5000);
-    const handleLiveBooking = () => fetchBookingsList();
+    const handleLiveBooking = () => fetchBookingsList(true);
 
     // Listen for live service/package updates from any admin hub
     const handleServiceUpdated = (e) => {
@@ -782,31 +882,23 @@ export const AdminProvider = ({ children }) => {
       setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
     };
 
-    const handleStorageChange = (e) => {
-      handleLiveBooking();
-      if (!e || !e.key || e.key.startsWith('tsl_')) {
-        setMemberships(deriveMembershipsFromBookings(bookingsRef.current));
-      }
-    };
-
     const handleExternalWashOrSale = (e) => {
       const record = e?.detail;
-      if (record && !record.deleted) {
-        setBookings(prev => {
-          const key = record.id || record.bookingId;
-          if (prev.some(b => (b.id === key || b.bookingId === key))) return prev;
-          const next = [record, ...prev];
-          setMemberships(deriveMembershipsFromBookings(next));
-          return next;
-        });
-        setCustomers(prev => deriveCustomers(prev, [record], [record]));
-      } else {
-        handleLiveBooking();
+      if (!record) return;
+
+      if (!record.deleted && typeof record === 'object' && !Array.isArray(record)) {
+        const key = record.id || record.bookingId;
+        if (key && !bookingsRef.current.some(b => (b.id === key || b.bookingId === key))) {
+          const nextBookings = [record, ...bookingsRef.current];
+          setBookings(nextBookings);
+          setMemberships(deriveMembershipsFromBookings(nextBookings));
+        }
       }
-      fetchCustomersList();
+
+      const list = Array.isArray(record) ? record : [record];
+      setCustomers(prev => deriveCustomers(prev, list, list));
     };
 
-    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('tsl_booking_created', handleLiveBooking);
     window.addEventListener('salonDataChanged', handleLiveBooking);
     window.addEventListener('bookingAdded', handleLiveBooking);
@@ -814,13 +906,8 @@ export const AdminProvider = ({ children }) => {
     window.addEventListener('tsl_wash_logged', handleExternalWashOrSale);
     window.addEventListener('tsl_wash_used', handleExternalWashOrSale);
     window.addEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
-    window.addEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
-    window.addEventListener('tsl_customer_updated', handleLiveBooking);
-    window.addEventListener('tsl_vehicle_updated', handleLiveBooking);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('tsl_booking_created', handleLiveBooking);
       window.removeEventListener('salonDataChanged', handleLiveBooking);
       window.removeEventListener('bookingAdded', handleLiveBooking);
@@ -828,33 +915,238 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener('tsl_wash_logged', handleExternalWashOrSale);
       window.removeEventListener('tsl_wash_used', handleExternalWashOrSale);
       window.removeEventListener('tsl_offline_sales_updated', handleExternalWashOrSale);
-      window.removeEventListener('tsl_admin_memberships_updated', handleExternalWashOrSale);
-      window.removeEventListener('tsl_customer_updated', handleLiveBooking);
-      window.removeEventListener('tsl_vehicle_updated', handleLiveBooking);
     };
   }, []);
 
-  // Compute dynamic stats based on database records
+  // Clean up any stale mock keys in localStorage on initial boot
   useEffect(() => {
-    const pending = bookings.filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
-    const lowStock = inventory.filter(i => {
-      const qty = parseInt(i.quantity) || 0;
+    try {
+      // 1. Remove obsolete mock bookings storage
+      const oldB = localStorage.getItem('tsl_admin_bookings');
+      if (oldB) {
+        localStorage.removeItem('tsl_admin_bookings');
+      }
+
+
+
+      // 3. Clean mock inventory
+      const oldInv = localStorage.getItem('tsl_admin_inventory');
+      if (oldInv && (oldInv.includes('INV-10') || oldInv.includes('INV-20') || oldInv.includes('INV-0') || oldInv.includes('INV-30') || oldInv.includes('INV-40') || oldInv.includes('INV-50') || oldInv.includes('INV-60'))) {
+        try {
+          const parsed = JSON.parse(oldInv);
+          if (Array.isArray(parsed)) {
+            const cleanInv = parsed.filter(i =>
+              i &&
+              !String(i.id || '').startsWith('INV-10') &&
+              !String(i.id || '').startsWith('INV-20') &&
+              !String(i.id || '').startsWith('INV-30') &&
+              !String(i.id || '').startsWith('INV-40') &&
+              !String(i.id || '').startsWith('INV-50') &&
+              !String(i.id || '').startsWith('INV-60') &&
+              !String(i.id || '').startsWith('INV-0')
+            );
+            localStorage.setItem('tsl_admin_inventory', JSON.stringify(cleanInv));
+          }
+        } catch (e) {
+          localStorage.removeItem('tsl_admin_inventory');
+        }
+      }
+
+      // 4. Clean mock staff
+      const oldStaff = localStorage.getItem('tsl_admin_staff_list');
+      if (oldStaff && oldStaff.includes('STF-0')) {
+        localStorage.removeItem('tsl_admin_staff_list');
+      }
+
+      // 5. Clean mock customers
+      const oldCust = localStorage.getItem('tsl_admin_customers');
+      if (oldCust && oldCust.includes('CUST-0')) {
+        localStorage.removeItem('tsl_admin_customers');
+      }
+
+      // 6. Clean mock memberships
+      const oldMem = localStorage.getItem('tsl_admin_memberships');
+      if (oldMem && oldMem.includes('MEM-100')) {
+        try {
+          const parsed = JSON.parse(oldMem);
+          if (Array.isArray(parsed)) {
+            const cleanMem = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
+            localStorage.setItem('tsl_admin_memberships', JSON.stringify(cleanMem));
+          }
+        } catch (e) {
+          localStorage.removeItem('tsl_admin_memberships');
+        }
+      }
+
+      // 7. Clean mock car detailing bookings
+      const oldDet = localStorage.getItem('shine_car_detailing_bookings');
+      if (oldDet) {
+        try {
+          const parsed = JSON.parse(oldDet);
+          if (Array.isArray(parsed)) {
+            const cleanDet = parsed.filter(b => {
+              if (!b) return false;
+              const bId = (b.id || '').toString().toUpperCase();
+              if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(bId)) return false;
+              const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(plate)) return false;
+              return true;
+            });
+            if (cleanDet.length !== parsed.length) {
+              localStorage.setItem('shine_car_detailing_bookings', JSON.stringify(cleanDet));
+            }
+          }
+        } catch (e) {
+          localStorage.removeItem('shine_car_detailing_bookings');
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  // Compute dynamic stats based on live database records
+  useEffect(() => {
+    const pending = (bookings || []).filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
+    const lowStock = (inventory || []).filter(i => {
+      const qty = parseInt(i.currentStock ?? i.quantity) || 0;
       const min = parseInt(i.minStock) || 5;
       return qty <= min;
     }).length;
 
-    // Calculate dynamic revenue stats
-    const totalRev = bookings.reduce((sum, b) => b.status === 'Completed' ? sum + b.total : sum, 0);
+    // Calculate dynamic revenue stats from real paid or completed bookings
+    const totalRev = (bookings || []).reduce((sum, b) => {
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return isPaid ? sum + amt : sum;
+    }, 0);
 
-    setStats(prev => ({
-      ...prev,
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaySales = (bookings || []).reduce((sum, b) => {
+      const raw = b.date || b.createdAt || b.bookedAt || '';
+      const matchesToday = typeof raw === 'string' && raw.startsWith(todayStr);
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return (matchesToday && isPaid) ? sum + amt : sum;
+    }, 0);
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthlySales = (bookings || []).reduce((sum, b) => {
+      const raw = b.date || b.createdAt || b.bookedAt || '';
+      const d = new Date(raw);
+      const isCurrentMonth = !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      return (isCurrentMonth && isPaid) ? sum + amt : sum;
+    }, 0);
+
+    const activeMembersCount = (memberships || []).filter(m => m.status === 'active' || m.status === 'Active').length;
+
+    setStats({
+      totalRevenue: totalRev,
+      revenueGrowth: 0,
+      todaySales,
+      todayGrowth: 0,
+      monthlySales,
+      monthlyGrowth: 0,
+      annualSales: totalRev,
+      annualGrowth: 0,
+      activeMembers: activeMembersCount,
+      totalCustomers: (customers || []).length,
+      activeCustomers: (customers || []).length,
       pendingBookings: pending,
       lowStockItems: lowStock,
-      totalRevenue: totalRev,
-      activeCustomers: customers.length,
-      activeStaff: staffList.filter(s => s.isActive).length
-    }));
-  }, [bookings, inventory, customers, staffList]);
+      activeStaff: (staffList || []).filter(s => s.isActive !== false).length
+    });
+  }, [bookings, inventory, customers, staffList, memberships]);
+
+  // Dynamic 12-Month Revenue Trend calculated from real bookings
+  const dynamicRevenueTrendData = React.useMemo(() => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentYear = new Date().getFullYear();
+    const map = {};
+    monthNames.forEach(m => {
+      map[m] = { month: m, revenue: 0, bookings: 0 };
+    });
+
+    (bookings || []).forEach(b => {
+      const rawDate = b.date || b.createdAt || b.bookedAt;
+      if (!rawDate) return;
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return;
+      if (d.getFullYear() === currentYear) {
+        const mName = monthNames[d.getMonth()];
+        if (map[mName]) {
+          const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+          map[mName].revenue += amt;
+          map[mName].bookings += 1;
+        }
+      }
+    });
+
+    return Object.values(map);
+  }, [bookings]);
+
+  // Dynamic Service-wise Revenue Distribution
+  const dynamicServiceRevenueData = React.useMemo(() => {
+    const colorMap = {
+      'car-wash': '#e07b2a',
+      'car-detailing': '#1e4a7e',
+      'cafe': '#f59e0b',
+      'drive-through-cafe': '#3b82f6',
+      'dog-wash': '#10b981',
+      'salon': '#8b5cf6'
+    };
+    const titleMap = {
+      'car-wash': 'Car Wash',
+      'car-detailing': 'Car Detailing',
+      'cafe': 'Café',
+      'drive-through-cafe': 'Drive-Through Café',
+      'dog-wash': 'Dog Bath',
+      'salon': "Men's Salon"
+    };
+
+    const map = {};
+    (bookings || []).forEach(b => {
+      const key = b.serviceKey || 'car-wash';
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      if (!map[key]) {
+        map[key] = {
+          name: titleMap[key] || b.service || key,
+          value: 0,
+          color: colorMap[key] || '#6366f1'
+        };
+      }
+      map[key].value += amt;
+    });
+
+    const activeList = Object.values(map).filter(item => item.value > 0);
+    return activeList.length > 0 ? activeList : [
+      { name: 'Car Wash', value: 0, color: '#e07b2a' },
+      { name: 'Car Detailing', value: 0, color: '#1e4a7e' }
+    ];
+  }, [bookings]);
+
+  // Dynamic Payment Mode Distribution
+  const dynamicPaymentModeData = React.useMemo(() => {
+    const map = {};
+    (bookings || []).forEach(b => {
+      const mode = b.paymentMode || 'Cash';
+      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      if (!map[mode]) {
+        map[mode] = { mode, amount: 0, count: 0 };
+      }
+      map[mode].amount += amt;
+      map[mode].count += 1;
+    });
+
+    const result = Object.values(map);
+    return result.length > 0 ? result : [
+      { mode: 'UPI', amount: 0, count: 0 },
+      { mode: 'Cash', amount: 0, count: 0 }
+    ];
+  }, [bookings]);
+
 
   // --- CRUD ACTIONS ---
 
@@ -1087,18 +1379,112 @@ export const AdminProvider = ({ children }) => {
     showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
   };
 
+  const deleteMembership = async (membershipIdOrObj) => {
+    const mem = typeof membershipIdOrObj === 'object' ? membershipIdOrObj : { id: membershipIdOrObj };
+    const rawId = String(mem.id || '');
+    const bookingId = String(mem.bookingId || mem.rawBookingId || '');
+    const cleanId = rawId.replace(/^MEM-/, '');
+
+    const candidateIds = Array.from(new Set([rawId, bookingId, cleanId, mem._id].filter(Boolean)));
+
+    // 1. Delete from backend if booking exists
+    for (const idToDel of candidateIds) {
+      try {
+        await apiClient.delete(`/bookings/${idToDel}`);
+      } catch (_) {}
+    }
+
+    // 2. Remove from bookings state and derive memberships
+    setBookings(prev => {
+      const nextBookings = prev.filter(b => {
+        const bId = String(b.bookingId || b.id || b._id || '');
+        return !candidateIds.includes(bId);
+      });
+      return nextBookings;
+    });
+
+    // 3. Remove from offline sales in localStorage
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        const filtered = offline.filter(s => {
+          const sId = String(s.id || s.bookingId || s._id || '');
+          return !candidateIds.includes(sId);
+        });
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
+      }
+    } catch (_) {}
+
+    // 4. Remove from admin memberships in localStorage
+    try {
+      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+      if (Array.isArray(adminMems)) {
+        const filtered = adminMems.filter(m => {
+          const mId = String(m.id || m.bookingId || '');
+          return !candidateIds.includes(mId);
+        });
+        localStorage.setItem('tsl_admin_memberships', JSON.stringify(filtered));
+      }
+    } catch (_) {}
+
+    // 5. Remove from scoped passes in localStorage
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('tsl_membership_passes')) {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || '[]');
+            if (Array.isArray(val)) {
+              const filtered = val.filter(p => !candidateIds.includes(String(p.id || p.bookingId || p.passId || '')));
+              localStorage.setItem(key, JSON.stringify(filtered));
+            }
+          } catch (_) {}
+        }
+        if (key.includes('tsl_active_membership')) {
+          try {
+            const val = JSON.parse(localStorage.getItem(key) || 'null');
+            if (val && candidateIds.includes(String(val.id || val.bookingId || val.passId || ''))) {
+              localStorage.removeItem(key);
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+
+    // 6. Update memberships state directly
+    setMemberships(prev => {
+      return prev.filter(m => {
+        const mId = String(m.id || '');
+        const mBId = String(m.bookingId || '');
+        return !candidateIds.includes(mId) && !candidateIds.includes(mBId);
+      });
+    });
+
+    // 7. Dispatch events so all tabs and components re-sync
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: rawId, deleted: true } }));
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { id: rawId, deleted: true } }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (_) {}
+
+    showToast('Membership deleted successfully');
+  };
+
   // 5. Bookings
   const updateBookingStatus = async (id, newStatus) => {
     // 1. Optimistically update local state
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
-    showToast(`Booking ${id} status updated to ${newStatus}`);
+    setBookings(prev => prev.map(b => (b.id === id || b._id === id || b.bookingId === id) ? { ...b, status: newStatus } : b));
+    showToast(`Booking status updated to ${newStatus}`);
 
     // 2. Call PUT /bookings/:id in the backend
     try {
-      const match = bookings.find(b => b.id === id);
-      if (match && match._id) {
-        await apiClient.put(`/bookings/${match._id}`, { status: newStatus });
+      const match = bookings.find(b => b.id === id || b._id === id || b.bookingId === id);
+      const targetDbId = match?._id || id;
+      if (targetDbId) {
+        await apiClient.put(`/bookings/${targetDbId}`, { status: newStatus });
         fetchBookingsList();
+        try {
+          window.dispatchEvent(new CustomEvent('tsl_bookings_updated', { detail: { id, targetDbId, status: newStatus } }));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Error updating booking status in backend:', err.message);
@@ -1107,22 +1493,47 @@ export const AdminProvider = ({ children }) => {
 
   const assignStaffToBooking = async (id, staffName) => {
     // Find the staff user object from the staffList to get their ID
-    const staffUser = staffList.find(s => s.fullName === staffName || s.name === staffName || s.employeeId === staffName);
-    const staffId = staffUser?.id || staffUser?._id || null;
+    const staffUser = staffList.find(s => 
+      s.fullName === staffName || 
+      s.name === staffName || 
+      s.employeeId === staffName || 
+      s.email === staffName ||
+      (staffName && s.email && s.email.toLowerCase() === staffName.toLowerCase()) ||
+      (staffName && s.name && s.name.toLowerCase() === staffName.toLowerCase())
+    );
+    const staffId = staffUser?._id || staffUser?.id || null;
+    const finalStaffName = staffUser?.fullName || staffUser?.name || staffName || '';
 
     // 1. Optimistically update local state
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, staffAssigned: staffName, assignedStaffId: staffId } : b));
-    showToast(`Assigned ${staffName} to booking ${id}`);
+    setBookings(prev => prev.map(b => (b.id === id || b._id === id || b.bookingId === id) ? { 
+      ...b, 
+      staffAssigned: finalStaffName, 
+      assignedStaffName: finalStaffName, 
+      assignedStaff: finalStaffName,
+      staffName: finalStaffName,
+      assignedStaffId: staffId,
+      staffId: staffId
+    } : b));
+
+    if (finalStaffName) {
+      showToast(`Assigned ${finalStaffName} to booking`);
+    } else {
+      showToast('Unassigned staff member');
+    }
 
     // 2. Call PUT /bookings/:id in the backend
     try {
-      const match = bookings.find(b => b.id === id);
-      if (match && match._id) {
-        await apiClient.put(`/bookings/${match._id}`, { 
+      const match = bookings.find(b => b.id === id || b._id === id || b.bookingId === id);
+      const targetDbId = match?._id || id;
+      if (targetDbId) {
+        await apiClient.put(`/bookings/${targetDbId}`, { 
           assignedStaffId: staffId, 
-          assignedStaffName: staffName 
+          assignedStaffName: finalStaffName 
         });
         fetchBookingsList();
+        try {
+          window.dispatchEvent(new CustomEvent('tsl_bookings_updated', { detail: { id, targetDbId, staffId, staffName: finalStaffName } }));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Error assigning staff in backend:', err.message);
@@ -1146,7 +1557,7 @@ export const AdminProvider = ({ children }) => {
         timeSlot: bookingData.timeSlot || `${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(Date.now() + 30*60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
         customerName: bookingData.customerName,
         customerEmail: bookingData.customerEmail || 'customer@example.com',
-        vehicleNo: bookingData.vehicleNo || 'MH-01-AB-1234',
+        vehicleNo: bookingData.vehicleNo || '',
         vehicleType: bookingData.vehicleType || 'SUV'
       };
 
@@ -1177,7 +1588,17 @@ export const AdminProvider = ({ children }) => {
 
   // 5b. Offline Sales (manual counter POS)
   const addOfflineSale = async (formData) => {
-    const newId = `OFS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Count existing offline sales to derive next sequential ID (OFS-TSH-01, OFS-TSH-02, ...)
+    const existingOfflineCount = (bookings || []).filter(b =>
+      b && !b.isDeleted && (
+        b.isOfflineSale ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-'))
+      )
+    ).length;
+    const seqNum = existingOfflineCount + 1;
+    const seqPad = String(seqNum).padStart(2, '0');
+    const newId = `OFS-TSH-${seqPad}`;
     const now = new Date();
     const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : now;
     const dateStr = !isNaN(saleDateObj.getTime())
@@ -1199,69 +1620,81 @@ export const AdminProvider = ({ children }) => {
       membershipValidity = `${days} Days`;
     }
 
+    const cleanPrice = Number(String(formData.price || 0).replace(/[^0-9.]/g, '')) || 0;
+    const pName = formData.saleType === 'membership'
+      ? (formData.membershipName || 'Monthly Membership')
+      : (formData.packageName || 'Standard Service');
+
     const bookingPayload = {
       bookingId: newId,
       serviceKey: formData.serviceKey || 'car-wash',
-      serviceName: formData.serviceName || 'Car Wash',
-      packageName: formData.saleType === 'membership' ? formData.membershipName : formData.packageName,
-      price: Number(formData.price) || 0,
+      serviceName: formData.serviceName || (formData.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+      packageName: pName,
+      price: cleanPrice,
       date: dateStr,
       saleDate: formData.saleDate || now.toISOString().split('T')[0],
       timeSlot: `${timeStart} - ${timeEnd}`,
-      customerName: formData.customerName,
+      customerName: formData.customerName || 'Valued Customer',
       customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
       vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
-      vehicleType: formData.vehicleModel || '',
+      vehicleType: formData.vehicleModel || formData.vehicleType || '',
       phone: formData.phone || '',
       status: 'Completed',
       isOfflineSale: true,
-      saleType: formData.saleType,
+      saleType: formData.saleType || (formData.membershipName ? 'membership' : 'service'),
       vehicleModel: formData.vehicleModel || '',
-      membershipName: formData.saleType === 'membership' ? formData.membershipName : '',
+      membershipName: formData.saleType === 'membership' ? (formData.membershipName || pName) : '',
       membershipValidity,
       membershipExpiry,
       paymentMode: formData.paymentMode || 'Cash',
-      notes: formData.notes || ''
+      notes: formData.notes || '',
+      includeGst: Boolean(formData.includeGst),
+      gstRate: Number(formData.gstRate || 0),
+      subtotal: Number(formData.subtotal || cleanPrice),
+      gstAmount: Number(formData.gstAmount || 0)
     };
 
-    // Try saving to backend
+    // Persist invoice directly to MongoDB
+    let savedRecord = null;
     try {
-      await apiClient.post('/bookings', bookingPayload);
-      fetchBookingsList();
+      const res = await apiClient.post('/bookings', bookingPayload);
+      if (res && res.data && res.data.booking) {
+        savedRecord = {
+          ...res.data.booking,
+          id: res.data.booking.bookingId || res.data.booking._id
+        };
+      }
+      fetchBookingsList(true);
+      fetchCustomersList(true);
     } catch (err) {
-      console.warn('Offline sale backend save error, using local fallback:', err.message);
+      console.error('Offline sale MongoDB save error:', err.response?.data || err.message);
     }
 
-    // Always update local state and localStorage cache
-    const localRecord = {
+    const finalRecord = savedRecord || {
       id: newId,
       ...bookingPayload,
       createdAt: now.toISOString(),
       bookedAt: now.toISOString()
     };
 
-    try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
-    } catch (e) {}
-
     setBookings(prev => {
-      const next = [localRecord, ...prev];
+      const filtered = prev.filter(b => b && (b.id !== finalRecord.id && b.bookingId !== finalRecord.bookingId));
+      const next = [finalRecord, ...filtered];
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
 
-    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+    setCustomers(prev => deriveCustomers(prev, [finalRecord], [finalRecord]));
 
     try {
-      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: localRecord }));
-      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: localRecord }));
-      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: finalRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: finalRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: finalRecord }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
     showToast(`✅ Offline sale ${newId} recorded successfully!`);
-    return localRecord;
+    return finalRecord;
   };
 
   const deleteOfflineSale = async (saleId) => {
@@ -1278,17 +1711,74 @@ export const AdminProvider = ({ children }) => {
     });
 
     try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      const filtered = cached.filter(s => s.id !== saleId && s.bookingId !== saleId && s._id !== saleId);
-      localStorage.setItem('tsl_offline_sales', JSON.stringify(filtered));
-    } catch (e) {}
-
-    try {
       window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { id: saleId, deleted: true } }));
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
     showToast('Offline sale removed');
+  };
+
+  const clearAllOfflineSales = async () => {
+    try {
+      // Delete any offline sale bookings from backend
+      try {
+        const res = await apiClient.get('/bookings');
+        if (res.data?.success && Array.isArray(res.data?.bookings)) {
+          const ofsList = res.data.bookings.filter(b =>
+            !String(b.bookingId || b.id || '').startsWith('WASH-') &&
+            ((b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+             (b.id && String(b.id).startsWith('OFS-')) ||
+             (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-')))
+          );
+          for (const s of ofsList) {
+            try {
+              await apiClient.delete(`/bookings/${s._id || s.id || s.bookingId}`);
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Backend clear offline sales error:', err.message);
+      }
+
+      setBookings(prev => {
+        const next = prev.filter(b =>
+          !String(b.bookingId || b.id || '').startsWith('OFS-') &&
+          !(b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-'))
+        );
+        setMemberships(deriveMembershipsFromBookings(next));
+        return next;
+      });
+
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: { cleared: true } }));
+      window.dispatchEvent(new Event('storage'));
+      showToast('All offline sales cleared');
+    } catch (e) {
+      console.error('Failed to clear offline sales:', e);
+    }
+  };
+
+  const deleteBooking = async (bookingIdOrObj) => {
+    const mem = typeof bookingIdOrObj === 'object' ? bookingIdOrObj : { id: bookingIdOrObj };
+    const rawId = String(mem.id || mem.bookingId || mem._id || '');
+    const bookingId = String(mem.bookingId || mem.rawBookingId || mem.id || '');
+    const candidateIds = Array.from(new Set([rawId, bookingId, mem._id].filter(Boolean)));
+
+    for (const idToDel of candidateIds) {
+      try {
+        await apiClient.delete(`/bookings/${idToDel}`);
+      } catch (_) {}
+    }
+
+    setBookings(prev => {
+      const next = prev.filter(b => {
+        const bId = String(b.bookingId || b.id || b._id || '');
+        return !candidateIds.includes(bId);
+      });
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
+
+    showToast('Booking deleted successfully');
   };
 
   // 5c. Log Completed Wash under Membership (re-calculates washesUsed in real time)
@@ -1324,39 +1814,46 @@ export const AdminProvider = ({ children }) => {
       vehicleModel: vehicleModel || 'Car',
       phone: phone || '',
       status: 'Completed',
-      isOfflineSale: true,
-      saleType: 'service',
+      isOfflineSale: false,
+      saleType: 'redemption',
       paymentMode: 'Membership',
       notes: `Wash completed and redeemed under active membership: ${membershipName || 'Pass'}`
     };
 
-    // Try saving to backend
+    let savedRecord = null;
+    // Save to backend database
     try {
-      await apiClient.post('/bookings', bookingPayload);
-      fetchBookingsList();
+      const res = await apiClient.post('/bookings', bookingPayload);
+      if (res.data && res.data.booking) {
+        savedRecord = res.data.booking;
+      }
+      await fetchBookingsList();
     } catch (err) {
-      console.warn('Backend save error for membership wash, using local fallback:', err.message);
+      console.warn('Backend save error for membership wash:', err.message);
     }
 
-    const localRecord = {
+    const localRecord = savedRecord ? {
+      id: savedRecord.bookingId || savedRecord._id,
+      _id: savedRecord._id,
+      ...savedRecord,
+      createdAt: savedRecord.createdAt || now.toISOString(),
+      bookedAt: savedRecord.createdAt || now.toISOString()
+    } : {
       id: newId,
+      _id: newId,
       ...bookingPayload,
       createdAt: now.toISOString(),
       bookedAt: now.toISOString()
     };
 
-    try {
-      const cached = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([localRecord, ...cached]));
-    } catch (e) {}
-
     setBookings(prev => {
-      const next = [localRecord, ...prev];
+      const exists = prev.some(b => b.bookingId === localRecord.bookingId || b.id === localRecord.id);
+      const next = exists ? prev : [localRecord, ...prev];
       setMemberships(deriveMembershipsFromBookings(next));
       return next;
     });
 
-    setCustomers(prev => deriveCustomers(prev, [localRecord], [localRecord]));
+    setCustomers(prev => deriveCustomers(prev, [localRecord], []));
 
     try {
       window.dispatchEvent(new CustomEvent('tsl_wash_logged', { detail: localRecord }));
@@ -1372,18 +1869,41 @@ export const AdminProvider = ({ children }) => {
 
   // 6. Staff
   const addStaff = (newStaff) => {
-    setStaffList(prev => [
-      ...prev,
-      {
-        // Prefer the real Mongo _id returned by the backend; only fall back to a
-        // synthetic placeholder id if the caller didn't have one (e.g. offline path).
-        id: newStaff._id || newStaff.id || `STF-${(prev.length + 1).toString().padStart(2, '0')}`,
-        ...newStaff,
-        status: 'Active',
-        joinedDate: new Date().toISOString().split('T')[0],
-        avatar: newStaff.avatar || newStaff.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
-      }
-    ]);
+    if (!newStaff) return;
+    const cleanStaff = {
+      id: newStaff._id || newStaff.id || newStaff.email || `STF-${Date.now()}`,
+      _id: newStaff._id || newStaff.id,
+      name: newStaff.fullName || newStaff.name || 'Staff Member',
+      fullName: newStaff.fullName || newStaff.name || 'Staff Member',
+      email: newStaff.email || '',
+      mobile: newStaff.mobile || newStaff.phone || '',
+      department: newStaff.department || 'Car Wash',
+      staffRole: newStaff.staffRole || newStaff.role || 'Specialist',
+      serviceKey: newStaff.serviceKey || 'car-wash',
+      salary: newStaff.salary || '',
+      leaveBalance: newStaff.leaveBalance !== undefined ? newStaff.leaveBalance : 12,
+      photo: newStaff.photo || newStaff.avatar || newStaff.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      avatar: newStaff.avatar || newStaff.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      permissions: Array.isArray(newStaff.permissions) ? newStaff.permissions : ['bookings', 'orders'],
+      status: newStaff.status || (newStaff.isActive !== false ? 'Active' : 'Inactive'),
+      isActive: newStaff.isActive !== false,
+      joinedDate: newStaff.joinedDate || new Date().toISOString().split('T')[0]
+    };
+
+    setStaffList(prev => {
+      const email = cleanStaff.email?.toLowerCase();
+      const filtered = prev.filter(s => {
+        if (cleanStaff._id && s._id === cleanStaff._id) return false;
+        if (email && s.email?.toLowerCase() === email) return false;
+        return true;
+      });
+      return [cleanStaff, ...filtered];
+    });
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: cleanStaff }));
+    } catch (e) {}
+
     showToast('New staff member added!');
   };
 
@@ -1408,20 +1928,37 @@ export const AdminProvider = ({ children }) => {
   };
 
   // 7. Customers
-  const addCustomer = (customerData) => {
-    setCustomers(prev => [
-      {
-        id: `CUST-${(prev.length + 1).toString().padStart(3, '0')}`,
-        ...customerData,
-        segment: 'New Customer',
-        totalSpent: 0,
-        loyaltyPoints: 100,
-        lastVisit: 'Just now',
-        totalBookings: 0
-      },
-      ...prev
-    ]);
-    showToast('Customer profile registered');
+  const addCustomer = async (customerData) => {
+    try {
+      const res = await apiClient.post('/customers', {
+        fullName: customerData.name || customerData.fullName,
+        email: customerData.email,
+        mobile: customerData.phone || customerData.mobile,
+        city: customerData.city || 'Mumbai',
+        segment: 'New Customer'
+      });
+
+      if (customerData.vehicles && customerData.vehicles.length > 0) {
+        for (const plate of customerData.vehicles) {
+          if (plate) {
+            await apiClient.post('/vehicles', {
+              plateNumber: plate,
+              ownerName: customerData.name || customerData.fullName,
+              ownerEmail: customerData.email,
+              ownerPhone: customerData.phone || customerData.mobile,
+              customerId: res.data?.data?.customerId,
+              addedVia: 'admin'
+            });
+          }
+        }
+      }
+
+      await fetchCustomersList(true);
+      showToast('Customer profile registered');
+    } catch (err) {
+      console.error('Error adding customer:', err);
+      showToast(err.response?.data?.message || 'Failed to register customer', 'error');
+    }
   };
 
   // 8. Inventory
@@ -1480,78 +2017,138 @@ export const AdminProvider = ({ children }) => {
   // 11. Customer CRM & Membership Anti-Misuse Actions
   const updateCustomerMembership = async (customerId, data) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.put(`/users/customers/${targetId}/membership`, data);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      const targetId = target ? (target._id || target.customerId || target.id) : customerId;
+      await apiClient.put(`/customers/${targetId}`, {
+        segment: data.status === 'Suspended' ? 'Suspended Member' : 'Active Member',
+        membership: data
+      });
+      await fetchCustomersList(true);
       showToast('Customer membership status updated');
     } catch (err) {
       console.warn('Error updating customer membership:', err.message);
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          const updatedMembership = { ...(c.membership || {}), ...data };
-          let newSegment = c.segment;
-          if (data.status === 'Suspended') newSegment = 'Suspended Member';
-          else if (data.status === 'Active') newSegment = 'Active Member';
-          return { ...c, membership: updatedMembership, segment: newSegment };
-        }
-        return c;
-      }));
-      showToast('Customer membership updated');
+      showToast('Customer membership status updated');
     }
   };
 
   const updateCustomerUsageRules = async (customerId, rules) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.put(`/users/customers/${targetId}/usage-rules`, rules);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      const targetId = target ? (target._id || target.customerId || target.id) : customerId;
+      await apiClient.put(`/customers/${targetId}`, { usageRules: rules });
+      await fetchCustomersList(true);
       showToast('Membership usage & anti-misuse rules saved');
     } catch (err) {
       console.warn('Error updating usage rules:', err.message);
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          return {
-            ...c,
-            membership: { ...(c.membership || {}), ...rules }
-          };
-        }
-        return c;
-      }));
       showToast('Usage rules saved');
     }
   };
 
   const addCustomerVehicle = async (customerId, vehicleData) => {
     try {
-      const target = customers.find(c => c._id === customerId || c.id === customerId);
-      const targetId = target ? (target._id || target.id) : customerId;
-      await apiClient.post(`/users/customers/${targetId}/vehicles`, vehicleData);
-      await fetchCustomersList();
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      await apiClient.post('/vehicles', {
+        plateNumber: vehicleData.plateNumber,
+        brand: vehicleData.brand || '',
+        model: vehicleData.model || '',
+        category: vehicleData.category || 'Car',
+        ownerName: target?.fullName || target?.name || 'Customer',
+        ownerEmail: target?.email || '',
+        ownerPhone: target?.phone || target?.mobile || '',
+        customerId: target?.customerId || customerId,
+        addedVia: 'admin'
+      });
+      await fetchCustomersList(true);
       showToast('Vehicle added to customer profile');
     } catch (err) {
       console.warn('Error adding vehicle:', err.message);
-      const formatted = `${vehicleData.plateNumber} (${vehicleData.model || 'Vehicle'})`;
-      setCustomers(prev => prev.map(c => {
-        if (c._id === customerId || c.id === customerId) {
-          return {
-            ...c,
-            vehicles: [...(c.vehicles || []), formatted]
-          };
-        }
-        return c;
-      }));
       showToast('Vehicle registered');
     }
+  };
+
+  const deleteCustomerVehicle = async (customerId, plateNumber) => {
+    const rawPlate = String(plateNumber || '').trim();
+    if (!rawPlate) return;
+    const cleanPlate = rawPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    // 1. Persist immediately to state and localStorage deregistered plates list
+    setDeregisteredPlates(prev => {
+      const next = Array.from(new Set([...prev, cleanPlate]));
+      try {
+        localStorage.setItem('tsl_deregistered_plates', JSON.stringify(next));
+      } catch (e) {}
+      cleanLocalStorageOfDeregisteredPlates(next);
+      return next;
+    });
+
+    // 2. Call isolated /vehicles endpoint
+    try {
+      await apiClient.delete(`/vehicles/${cleanPlate}`);
+      showToast(`Vehicle ${rawPlate} removed from fleet and records`);
+    } catch (err) {
+      console.warn('Backend deregister warning:', err.message);
+      showToast(`Vehicle ${rawPlate} removed from fleet`);
+    }
+
+    // 3. Immediately update in-memory state
+    setCustomers(prev => prev.map(c => {
+      const filteredVehicles = (c.vehicles || []).filter(v => {
+        const vClean = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return !vClean.includes(cleanPlate);
+      });
+      const filteredRaw = (c.rawVehicles || []).filter(v => {
+        const p = typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '');
+        return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '') !== cleanPlate;
+      });
+      return {
+        ...c,
+        vehicles: filteredVehicles,
+        rawVehicles: filteredRaw
+      };
+    }));
+
+    setBookings(prev => prev.map(b => {
+      const bPlate = String(b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (bPlate === cleanPlate) {
+        return { ...b, vehicleDeregistered: true };
+      }
+      return b;
+    }));
+
+    setMemberships(prev => prev.map(m => {
+      const mPlate = String(m.vehicleNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (mPlate === cleanPlate) {
+        return { ...m, vehicleNo: '' };
+      }
+      return m;
+    }));
+
+    try {
+      const offline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
+      if (Array.isArray(offline)) {
+        const updatedOffline = offline.map(s => {
+          const sPlate = String(s.vehicleNo || s.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (sPlate === cleanPlate) {
+            return { ...s, vehicleDeregistered: true };
+          }
+          return s;
+        });
+        localStorage.setItem('tsl_offline_sales', JSON.stringify(updatedOffline));
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent('tsl_vehicle_updated', { detail: { plate: cleanPlate } }));
+    fetchCustomersList();
+    fetchBookingsList(true);
+    fetchDeregisteredPlates();
   };
 
   return (
     <AdminContext.Provider value={{
       stats,
-      revenueTrendData,
-      serviceRevenueData,
-      paymentModeData,
+      revenueTrendData: dynamicRevenueTrendData,
+      serviceRevenueData: dynamicServiceRevenueData,
+      paymentModeData: dynamicPaymentModeData,
       services,
       banners,
       memberships,
@@ -1581,11 +2178,14 @@ export const AdminProvider = ({ children }) => {
       composeNotification,
       updateMembershipStatus,
       renewMembership,
+      deleteMembership,
       updateBookingStatus,
       assignStaffToBooking,
       addBooking,
+      deleteBooking,
       addOfflineSale,
       deleteOfflineSale,
+      clearAllOfflineSales,
       logMembershipWash,
       addStaff,
       updateStaff,
@@ -1595,6 +2195,9 @@ export const AdminProvider = ({ children }) => {
       updateCustomerMembership,
       updateCustomerUsageRules,
       addCustomerVehicle,
+      deleteCustomerVehicle,
+      deregisteredPlates,
+      fetchDeregisteredPlates,
       addInventoryItem,
       updateStock,
       addCoupon,

@@ -34,6 +34,7 @@ import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import AdminModal from '../../common/components/AdminModal';
 import apiClient from '../../../common/utils/apiClient';
+import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 
 export default function CafeAdminHubPage() {
   const serviceKey = 'cafe';
@@ -68,9 +69,7 @@ export default function CafeAdminHubPage() {
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(normalizeTab(searchParams.get('tab')));
-    }
+    setActiveTabState(normalizeTab(searchParams.get('tab')));
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {
@@ -81,7 +80,8 @@ export default function CafeAdminHubPage() {
   const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
+  // Wash redemptions are membership usage, not new bookings.
+  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey && !isWashRedemptionRecord(b));
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
 
@@ -462,24 +462,20 @@ export default function CafeAdminHubPage() {
       const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        // Fallback to local admin context
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Cafe roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Cafe roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',

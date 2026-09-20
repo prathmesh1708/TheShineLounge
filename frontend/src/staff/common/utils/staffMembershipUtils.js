@@ -1,4 +1,4 @@
-import { isMembershipPackage, parseFlexibleDate } from '../../../common/utils/membershipUtils';
+import { isMembershipPackage, isWashRedemptionRecord, parseFlexibleDate, normalizeMembershipId } from '../../../common/utils/membershipUtils';
 import apiClient from '../../../common/utils/apiClient';
 
 /**
@@ -133,11 +133,10 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   const now = new Date();
 
   // 1. Gather all offline sales (localStorage + props)
-  const storageSales = getLocalOfflineSales();
+  const storageSales = getLocalOfflineSales().filter(s => s && s.id !== 'OFS-MTJX5GRW-3986' && s.bookingId !== 'OFS-MTJX5GRW-3986');
   const allOfflineSalesMap = new Map();
   storageSales.forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
-  (offlineSales || []).forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
-
+  (offlineSales || []).filter(s => s && s.id !== 'OFS-MTJX5GRW-3986' && s.bookingId !== 'OFS-MTJX5GRW-3986').forEach(s => allOfflineSalesMap.set(s.id || s.bookingId, s));
 
   // 2. Identify all completed wash records (e.g., WASH-...)
   const allWashLogs = [];
@@ -146,15 +145,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     if (!b) return;
     const bId = b.id || b.bookingId || '';
     if (bId && washLogIds.has(bId)) return;
-    const isWashRecord = (
-      bId.startsWith('WASH-') ||
-      b.packageName === 'Ground Wash (Completed)' ||
-      b.packageName === 'Express Wash (Redeemed)' ||
-      (b.paymentMode === 'Membership' && b.status === 'Completed') ||
-      (b.paymentMode === 'Membership Pass' && b.status === 'Completed') ||
-      (b.notes && b.notes.toLowerCase().includes('wash completed'))
-    );
-    if (isWashRecord) {
+    if (isWashRedemptionRecord(b)) {
       if (bId) washLogIds.add(bId);
       allWashLogs.push(b);
     }
@@ -194,8 +185,54 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     }
   });
 
-  // 4. Pool of all memberships (Admin Panel Memberships + props + localStorage)
+  // 4. Pool of all memberships (MongoDB bookings + Admin Panel Memberships + props + localStorage, no mock data)
   const combinedMembershipsMap = new Map();
+
+  // Ingest live memberships directly from MongoDB bookings array
+  (bookings || []).forEach(b => {
+    if (!b) return;
+    const bId = String(b.id || b.bookingId || '');
+    if (
+      bId.startsWith('BK-90') ||
+      bId.startsWith('B-2026-88') ||
+      bId.startsWith('BK-SAL-') ||
+      bId.startsWith('BK-70') ||
+      bId.startsWith('BK-80') ||
+      bId.startsWith('JOB-700') ||
+      bId.startsWith('DT-2026-10')
+    ) {
+      return;
+    }
+    const isMem = b.saleType === 'membership' || isMembershipPackage(b.packageName || b.planName || b.plan || b.serviceName || b.membershipName);
+    const sKey = (b.serviceKey || '').toLowerCase();
+    const isCarWashOrDetailing = !sKey || sKey === 'car-wash' || sKey === 'carwash' || sKey === 'car-detailing';
+
+    if (isMem && isCarWashOrDetailing) {
+      const mKey = normalizeMembershipId(b.id || b.bookingId || b._id) || normalizePlate(b.vehicleNo);
+      if (mKey) {
+        const priceVal = Number(b.price !== undefined && b.price !== null ? b.price : (b.amount !== undefined && b.amount !== null ? b.amount : (b.total || 2499)));
+        combinedMembershipsMap.set(mKey, {
+          id: b.id || b.bookingId || b._id,
+          bookingId: b.bookingId || b.id || b._id,
+          customerName: b.customerName || 'Valued Member',
+          phone: b.phone || b.mobile || '',
+          email: b.customerEmail || b.email || '',
+          vehicleNo: b.vehicleNo || '',
+          vehicleModel: b.vehicleModel || b.vehicleType || 'Car',
+          planName: b.membershipName || b.packageName || b.planName || b.plan || 'Monthly Membership',
+          serviceKey: b.serviceKey || 'car-wash',
+          startDate: b.saleDate || b.date || 'Today',
+          expiryDate: b.membershipExpiry || b.expiryDate || '',
+          washesUsed: b.washesUsed || 0,
+          maxWashes: b.maxWashes || catalogLimits['monthly membership'] || 30,
+          status: b.status || 'Active',
+          amount: priceVal,
+          price: priceVal,
+          total: priceVal
+        });
+      }
+    }
+  });
 
   // Pull live data from Admin Panel -> Membership
   try {
@@ -203,9 +240,15 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     if (adminMemRaw) {
       const parsed = JSON.parse(adminMemRaw);
       if (Array.isArray(parsed)) {
-        parsed.forEach(m => {
+        parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100')).forEach(m => {
           if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
-            combinedMembershipsMap.set(m.id || m.vehicleNo, m);
+            const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
+            if (mKey) {
+              combinedMembershipsMap.set(mKey, {
+                ...(combinedMembershipsMap.get(mKey) || {}),
+                ...m
+              });
+            }
           }
         });
       }
@@ -213,33 +256,42 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   } catch (e) {}
 
   (memberships || []).forEach(m => {
-    if (m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
-      combinedMembershipsMap.set(m.id || m.vehicleNo, m);
+    if (!m.serviceKey || m.serviceKey === 'car-wash' || m.serviceKey === 'car-detailing') {
+      const mKey = normalizeMembershipId(m.id || m.bookingId) || normalizePlate(m.vehicleNo);
+      if (mKey) {
+        combinedMembershipsMap.set(mKey, {
+          ...(combinedMembershipsMap.get(mKey) || {}),
+          ...m
+        });
+      }
     }
   });
 
   // Also include offline sales with saleType === 'membership'
   allOfflineSalesMap.forEach((s) => {
-    if (s.saleType === 'membership') {
-      const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
-      combinedMembershipsMap.set(s.id || s.bookingId, {
-        id: s.id || s.bookingId,
-        customerName: s.customerName,
-        phone: s.phone,
-        email: s.customerEmail || '',
-        vehicleNo: s.vehicleNo,
-        vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
-        planName: s.membershipName || s.packageName || s.planName || 'Monthly Membership',
-        serviceKey: s.serviceKey || 'car-wash',
-        startDate: s.date || s.saleDate,
-        expiryDate: s.membershipExpiry || '',
-        washesUsed: 0,
-        maxWashes: catalogLimits['monthly membership'] || 30,
-        status: 'Active',
-        amount: priceVal,
-        price: priceVal,
-        total: priceVal
-      });
+    if (s.saleType === 'membership' || isMembershipPackage(s.packageName || s.planName || s.plan || '')) {
+      const sKey = normalizeMembershipId(s.id || s.bookingId) || normalizePlate(s.vehicleNo);
+      if (sKey && !combinedMembershipsMap.has(sKey)) {
+        const priceVal = Number(s.amount !== undefined && s.amount !== null ? s.amount : (s.price !== undefined && s.price !== null ? s.price : (s.total || 2499)));
+        combinedMembershipsMap.set(sKey, {
+          id: s.id || s.bookingId,
+          customerName: s.customerName || 'Valued Member',
+          phone: s.phone || s.mobile || '',
+          email: s.customerEmail || s.email || '',
+          vehicleNo: s.vehicleNo || '',
+          vehicleModel: s.vehicleModel || s.vehicleType || 'Car',
+          planName: s.membershipName || s.packageName || s.planName || s.plan || 'Monthly Membership',
+          serviceKey: s.serviceKey || 'car-wash',
+          startDate: s.date || s.saleDate || 'Today',
+          expiryDate: s.membershipExpiry || s.expiryDate || '',
+          washesUsed: 0,
+          maxWashes: catalogLimits['monthly membership'] || 30,
+          status: 'Active',
+          amount: priceVal,
+          price: priceVal,
+          total: priceVal
+        });
+      }
     }
   });
 
@@ -269,20 +321,36 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   const passItems = [];
   const processedPassKeys = new Set();
 
-  // Helper to find wash count for a vehicle
-  const getWashesForVehicle = (cleanPlate, customerName = '', customerPhone = '', baselineWashes = 0) => {
+  // Helper to find wash count for a vehicle within the pass's valid duration
+  const getWashesForVehicle = (cleanPlate, customerName = '', customerPhone = '', baselineWashes = 0, startDateVal = null, expiryDateVal = null) => {
+    const sDate = startDateVal ? parseFlexibleDate(startDateVal) : null;
+    const eDate = expiryDateVal ? parseFlexibleDate(expiryDateVal) : null;
+    if (sDate) sDate.setHours(0, 0, 0, 0);
+    if (eDate) eDate.setHours(23, 59, 59, 999);
+
     const matchingLogs = allWashLogs.filter(w => {
       const wPlate = normalizePlate(w.vehicleNo);
-      if (cleanPlate && wPlate && wPlate === cleanPlate) return true;
+      let isMatch = false;
+      if (cleanPlate && wPlate && wPlate === cleanPlate) isMatch = true;
       if (customerPhone) {
         const wPhone = String(w.phone || '').replace(/\D/g, '').slice(-10);
         const cPhone = String(customerPhone).replace(/\D/g, '').slice(-10);
-        if (wPhone && cPhone && wPhone === cPhone) return true;
+        if (wPhone && cPhone && wPhone === cPhone) isMatch = true;
       }
-      return false;
+      if (!isMatch) return false;
+
+      // STRICT VALIDITY WINDOW: Only count washes logged on or after the pass start/purchase date, up to its expiry
+      if (sDate) {
+        const wDate = parseFlexibleDate(w.date || w.saleDate || w.createdAt || w.bookedAt);
+        if (wDate) {
+          if (wDate < sDate) return false;
+          if (eDate && wDate > eDate) return false;
+        }
+      }
+      return true;
     });
 
-    const totalUsed = baselineWashes + matchingLogs.length;
+    const totalUsed = matchingLogs.length > 0 ? matchingLogs.length : (Number(baselineWashes) || 0);
     const latestWash = matchingLogs[0];
     const lastDate = latestWash ? (latestWash.date || latestWash.saleDate || 'Today') : '';
 
@@ -317,19 +385,29 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
       maxWashes = catalogLimits['quarterly pass'] || 12;
     }
 
+    const startDateStr = mem.startDateLabel || mem.startDate || '01 Jun 2026';
+    const expiryDateStr = mem.expiryDateLabel || mem.expiryDate || '31 Jul 2026';
+
     const baselineWashes = Number(mem.washesUsed) || 0;
-    const washData = getWashesForVehicle(cleanPlate, mem.customerName, mem.phone, baselineWashes);
+    const washData = getWashesForVehicle(cleanPlate, mem.customerName, mem.phone, baselineWashes, startDateStr, expiryDateStr);
 
     const isUnlimited = maxWashes === 999 || maxWashes === 'Unlimited';
     const isExhausted = !isUnlimited && washData.washesUsed >= maxWashes;
-    let status = mem.status || 'Active';
-    if (isExhausted) status = 'Exhausted';
+    const parsedExpiry = parseFlexibleDate(expiryDateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let status = 'Active';
+    if (mem.status === 'Cancelled' || mem.status === 'Revoked') {
+      status = mem.status;
+    } else if (parsedExpiry && parsedExpiry < today) {
+      status = 'Expired';
+    } else if (isExhausted) {
+      status = 'Exhausted';
+    }
 
     const passKey = `MEM_${cleanPlate || mem.id}`;
     processedPassKeys.add(passKey);
-
-    const startDateStr = mem.startDateLabel || mem.startDate || '01 Jun 2026';
-    const expiryDateStr = mem.expiryDateLabel || mem.expiryDate || '31 Jul 2026';
 
     passItems.push({
       id: mem.id || `MEM-${Date.now()}`,
@@ -413,7 +491,20 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
 
     if (isMembership) {
       // Offline membership sale
-      const washData = getWashesForVehicle(cleanPlate, ownerName, phone, 0);
+      const washData = getWashesForVehicle(cleanPlate, ownerName, phone, 0, rec.date, rec.membershipExpiry);
+      const parsedExpiry = parseFlexibleDate(rec.membershipExpiry);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let status = 'Active';
+      if (rec.status === 'Cancelled' || rec.status === 'Revoked') {
+        status = rec.status;
+      } else if (parsedExpiry && parsedExpiry < today) {
+        status = 'Expired';
+      } else if (washData.washesUsed >= (catalogLimits['monthly membership'] || 30)) {
+        status = 'Exhausted';
+      }
+
       passItems.push({
         id: bId || `MEM-${Date.now()}`,
         vehicleNo: plate || '—',
@@ -431,7 +522,7 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
         expiryDate: rec.membershipExpiry || '30 Days',
         validity: rec.membershipValidity || '1 Month (30 Days)',
         lastWashDate: washData.lastWashDate || rec.date || '—',
-        status: 'Active',
+        status,
         washHistory: washData.washHistory,
         rawAmount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
         amount: Number(rec.amount !== undefined && rec.amount !== null ? rec.amount : (rec.price !== undefined && rec.price !== null ? rec.price : (rec.total || 2499))),
@@ -487,6 +578,8 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
   return passItems;
 }
 
+const recentWashLogMap = new Map();
+
 /**
  * Logs a completed wash for a vehicle directly by ground staff.
  * Updates backend /bookings, saves to tsl_offline_sales, and dispatches events.
@@ -499,6 +592,17 @@ export async function recordStaffWashDone({
   membershipName,
   serviceKey = 'car-wash'
 }) {
+  const normPlate = String(vehicleNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const nowMs = Date.now();
+  if (normPlate && recentWashLogMap.has(normPlate)) {
+    const lastTime = recentWashLogMap.get(normPlate);
+    if (nowMs - lastTime < 5000) {
+      console.warn(`Wash done debounced for ${normPlate} (clicked within 5s)`);
+      return null;
+    }
+  }
+  if (normPlate) recentWashLogMap.set(normPlate, nowMs);
+
   const newId = `WASH-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -564,7 +668,7 @@ export function getAdminMemberships() {
     const raw = localStorage.getItem('tsl_admin_memberships');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
     }
   } catch (e) {}
   return [];
@@ -610,7 +714,12 @@ export async function updateCarNumberAcrossSystem({
     const offlineSales = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
     let modifiedSales = false;
     const updatedSales = offlineSales.map(s => {
-      const matchesPass = passId && (s.id === passId || s.bookingId === passId);
+      const matchesPass = passId && (
+        s.id === passId ||
+        s.bookingId === passId ||
+        normalizeMembershipId(s.id) === normalizeMembershipId(passId) ||
+        normalizeMembershipId(s.bookingId) === normalizeMembershipId(passId)
+      );
       const matchesPlate = oldPlate && normalizePlate(s.vehicleNo) === normalizePlate(oldPlate);
       const matchesEmail = customerEmail && s.customerEmail && s.customerEmail.toLowerCase().trim() === customerEmail.toLowerCase().trim();
       if (matchesPass || matchesPlate || matchesEmail) {
@@ -631,10 +740,16 @@ export async function updateCarNumberAcrossSystem({
 
   // 3. Update Admin Panel -> Membership in localStorage
   try {
-    const adminMemberships = JSON.parse(localStorage.getItem('tsl_admin_memberships') || 'null') || [];
+    const adminRaw = localStorage.getItem('tsl_admin_memberships');
+    const adminMemberships = adminRaw ? (JSON.parse(adminRaw) || []).filter(m => m && !String(m.id || '').startsWith('MEM-100')) : [];
     let modifiedAdmin = false;
     const updatedAdmin = adminMemberships.map(m => {
-      const matchesPass = passId && (m.id === passId || m.bookingId === passId);
+      const matchesPass = passId && (
+        m.id === passId ||
+        m.bookingId === passId ||
+        normalizeMembershipId(m.id) === normalizeMembershipId(passId) ||
+        normalizeMembershipId(m.bookingId) === normalizeMembershipId(passId)
+      );
       const matchesPlate = oldPlate && normalizePlate(m.vehicleNo) === normalizePlate(oldPlate);
       const matchesEmail = customerEmail && m.email && m.email.toLowerCase().trim() === customerEmail.toLowerCase().trim();
       if (matchesPass || matchesPlate || matchesEmail) {

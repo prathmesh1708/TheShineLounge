@@ -141,6 +141,7 @@ export function StaffProvider({ children }) {
 
   // State
   const [jobs, setJobs] = useState([]);
+  const [allStaff, setAllStaff] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -248,7 +249,18 @@ export function StaffProvider({ children }) {
             timeSlot: b.timeSlot || b.time || '02:00 PM',
             amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
             total: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
+            price: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
             status: b.status || 'Confirmed',
+            isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && b.bookingId.startsWith('OFS-')),
+            saleType: b.saleType || (isMembershipPackage(b.packageName || b.package || b.membershipName || b.serviceName) ? 'membership' : 'service'),
+            membershipName: b.membershipName || '',
+            membershipValidity: b.membershipValidity || '',
+            membershipExpiry: b.membershipExpiry || '',
+            customerEmail: b.customerEmail || '',
+            packageName: b.packageName || b.package || b.serviceName || '',
+            bookingId: b.bookingId || b.id || b._id,
+            saleDate: b.saleDate || b.date || '',
+            paymentMode: b.paymentMode || '',
             stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
             notes: b.notes || '',
             photos: b.photos || [],
@@ -267,26 +279,35 @@ export function StaffProvider({ children }) {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          localDetailingJobs = parsed.map((b, idx) => ({
-            _id: b.id || `BK-DET-${idx}`,
-            id: b.id || `BK-${8000 + idx}`,
-            serviceKey: 'car-detailing',
-            serviceName: b.package || b.serviceName || 'Car Detailing Treatment',
-            planName: b.package || b.serviceName || 'Detailing Treatment',
-            vehicleNo: b.vehicleNo || 'MH02CD5678',
-            vehicleModel: b.vehicle || b.vehicleModel || 'BMW X5',
-            customerName: b.customerName || b.customer || 'Priya Patel',
-            phone: b.phone || '+91 98331 56789',
-            date: b.date || new Date().toISOString().split('T')[0],
-            timeSlot: b.time || '02:00 PM - 05:00 PM',
-            amount: b.price || 14999,
-            total: b.price || 14999,
-            status: b.status || 'Confirmed',
-            stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
-            notes: b.notes || 'Customer requested multi-stage ceramic gloss protection.',
-            staffId: b.staffId || currentStaff?.id || 'STF-05',
-            staffName: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : (currentStaff?.name || 'suryansh')
-          }));
+          localDetailingJobs = parsed
+            .filter(b => {
+              if (!b) return false;
+              const bId = (b.id || '').toString().toUpperCase();
+              if (['BK-9831', 'BK-8271', 'BK-5421', 'BK-9001', 'BK-9002'].includes(bId)) return false;
+              const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              if (['MP09AB1234', 'MP09CD5678', 'MP09EF9012'].includes(plate)) return false;
+              return true;
+            })
+            .map((b, idx) => ({
+              _id: b.id || `BK-DET-${idx}`,
+              id: b.id || `BK-${8000 + idx}`,
+              serviceKey: 'car-detailing',
+              serviceName: b.package || b.serviceName || 'Car Detailing Treatment',
+              planName: b.package || b.serviceName || 'Detailing Treatment',
+              vehicleNo: b.vehicleNo || '',
+              vehicleModel: b.vehicle || b.vehicleModel || '',
+              customerName: b.customerName || b.customer || 'Customer',
+              phone: b.phone || '',
+              date: b.date || new Date().toISOString().split('T')[0],
+              timeSlot: b.time || '02:00 PM - 05:00 PM',
+              amount: Number(b.price || b.amount || 0),
+              total: Number(b.price || b.amount || 0),
+              status: b.status || 'Confirmed',
+              stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
+              notes: b.notes || '',
+              staffId: b.staffId || currentStaff?.id || '',
+              staffName: (b.technician && b.technician !== 'Vikram Rathore') ? b.technician : (currentStaff?.name || '')
+            }));
         }
       }
     } catch (e) {}
@@ -414,7 +435,7 @@ export function StaffProvider({ children }) {
         const raw = localStorage.getItem('tsl_admin_memberships');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) adminMemberships = parsed;
+          if (Array.isArray(parsed)) adminMemberships = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
         }
       } catch (e) {}
 
@@ -587,6 +608,17 @@ export function StaffProvider({ children }) {
     }
   };
 
+  const fetchLiveStaffList = async () => {
+    try {
+      const res = await apiClient.get('/users/staff');
+      if (res.data && Array.isArray(res.data.staff)) {
+        setAllStaff(res.data.staff);
+      }
+    } catch (err) {
+      console.warn('Could not fetch staff list in StaffContext:', err.message);
+    }
+  };
+
   useEffect(() => {
     if (!currentStaff) return;
 
@@ -595,21 +627,27 @@ export function StaffProvider({ children }) {
     }
     fetchLiveJobs();
     fetchLiveCustomers();
+    fetchLiveStaffList();
 
-    // Listen for cross-portal customer & vehicle updates
-    const handleSync = () => fetchLiveCustomers();
+    // Listen for cross-portal customer, booking, and staff updates
+    const handleSync = () => {
+      fetchLiveCustomers();
+      fetchLiveJobs();
+      fetchLiveStaffList();
+    };
     window.addEventListener('tsl_customer_updated', handleSync);
     window.addEventListener('tsl_vehicle_updated', handleSync);
     window.addEventListener('tsl_admin_memberships_updated', handleSync);
+    window.addEventListener('tsl_bookings_updated', handleSync);
+    window.addEventListener('tsl_staff_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
-    // Poll so orders placed by customers land in the queue without a refresh.
-    const interval = setInterval(fetchLiveJobs, 10000);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('tsl_customer_updated', handleSync);
       window.removeEventListener('tsl_vehicle_updated', handleSync);
       window.removeEventListener('tsl_admin_memberships_updated', handleSync);
+      window.removeEventListener('tsl_bookings_updated', handleSync);
+      window.removeEventListener('tsl_staff_updated', handleSync);
       window.removeEventListener('storage', handleSync);
     };
   }, [currentStaff]);
@@ -880,13 +918,102 @@ export function StaffProvider({ children }) {
     } catch (e) {}
   };
 
-  // Filter Jobs Relevant strictly to Logged In Staff Role & Department
-  const staffJobs = jobs.filter(job => {
-    if (currentStaff.serviceKey === 'global' || currentStaff.role === 'Super Admin' || currentStaff.role === 'Branch Manager' || currentStaff.role === 'Cashier') {
+  // Filter Jobs strictly to the logged-in staff member:
+  // 1. Explicitly assigned by Admin (by staffId, staffName, or email)
+  // 2. If the department currently has ONLY ONE staff member registered, all tasks for that service auto-assign to them
+  // 3. If the department has MULTIPLE staff members, unassigned tasks remain hidden until Admin assigns them
+  const checkJobAssignment = (job) => {
+    if (!currentStaff) return false;
+    if (
+      currentStaff.serviceKey === 'global' ||
+      currentStaff.role === 'Super Admin' ||
+      currentStaff.role === 'Branch Manager' ||
+      currentStaff.role === 'Cashier'
+    ) {
       return true;
     }
-    return job.serviceKey === currentStaff.serviceKey;
-  });
+
+    const staffKey = (currentStaff.serviceKey || '').toLowerCase();
+    const staffDept = (currentStaff.department || '').toLowerCase();
+    const jobKey = (job.serviceKey || '').toLowerCase();
+
+    // 1. Department match
+    let deptMatch = false;
+    if (staffKey === 'drive-through-cafe' || staffDept.includes('drive')) {
+      deptMatch = jobKey === 'drive-through-cafe' || (job.serviceName && job.serviceName.toLowerCase().includes('drive'));
+    } else if (staffKey === 'cafe' || staffDept.includes('café') || staffDept.includes('cafe')) {
+      deptMatch = jobKey === 'cafe' || (job.serviceName && job.serviceName.toLowerCase().includes('cafe') && !job.serviceName.toLowerCase().includes('drive'));
+    } else if (staffKey === 'car-detailing' || staffDept.includes('detail')) {
+      deptMatch = jobKey === 'car-detailing' || (job.serviceName && job.serviceName.toLowerCase().includes('detail'));
+    } else if (staffKey === 'dog-wash' || staffDept.includes('dog')) {
+      deptMatch = jobKey === 'dog-wash' || (job.serviceName && job.serviceName.toLowerCase().includes('dog'));
+    } else if (staffKey === 'salon' || staffDept.includes('salon')) {
+      deptMatch = jobKey === 'salon' || (job.serviceName && job.serviceName.toLowerCase().includes('salon'));
+    } else if (staffKey === 'car-wash' || staffDept.includes('wash')) {
+      deptMatch = jobKey === 'car-wash' || (job.serviceName && job.serviceName.toLowerCase().includes('wash'));
+    } else {
+      deptMatch = jobKey === staffKey;
+    }
+
+    if (!deptMatch) return false;
+
+    // Normalization helper
+    const norm = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+    const myId = norm(currentStaff.id || currentStaff._id || currentStaff.employeeId);
+    const myName = norm(currentStaff.name || currentStaff.fullName);
+    const myEmail = norm(currentStaff.email);
+
+    const jobStaffId = norm(job.assignedStaffId || job.staffId);
+    const jobStaffName = norm(job.assignedStaffName || job.staffName || job.stylist);
+    const jobStaffEmail = norm(job.assignedStaffEmail || job.staffEmail);
+
+    // Explicit assignment by ID
+    if (jobStaffId && jobStaffId !== 'stflive' && jobStaffId !== 'stf05' && jobStaffId !== 'stf07') {
+      if (jobStaffId === myId) return true;
+      return false;
+    }
+
+    // Explicit assignment by Name
+    if (jobStaffName) {
+      if (jobStaffName === myName) return true;
+      // If it mentions another staff member in this department, hide from me
+      const isOtherStaff = allStaff.some(s => {
+        const otherName = norm(s.fullName || s.name);
+        return otherName && otherName === jobStaffName && otherName !== myName;
+      });
+      if (isOtherStaff) return false;
+    }
+
+    // Explicit assignment by Email
+    if (jobStaffEmail && myEmail) {
+      if (jobStaffEmail === myEmail) return true;
+      return false;
+    }
+
+    // Unassigned Job Handling:
+    // Check how many staff members are registered in this active department
+    const deptStaff = allStaff.filter(s => {
+      const sKey = (s.serviceKey || '').toLowerCase();
+      const sDept = (s.department || '').toLowerCase();
+      if (staffKey === 'car-wash' || staffDept.includes('wash')) return sKey === 'car-wash' || sDept.includes('wash');
+      if (staffKey === 'car-detailing' || staffDept.includes('detail')) return sKey === 'car-detailing' || sDept.includes('detail');
+      if (staffKey === 'dog-wash' || staffDept.includes('dog')) return sKey === 'dog-wash' || sDept.includes('dog');
+      if (staffKey === 'cafe' || staffDept.includes('cafe')) return sKey === 'cafe' || sDept.includes('cafe');
+      if (staffKey === 'drive-through-cafe' || staffDept.includes('drive')) return sKey === 'drive-through-cafe' || sDept.includes('drive');
+      if (staffKey === 'salon' || staffDept.includes('salon')) return sKey === 'salon' || sDept.includes('salon');
+      return sKey === staffKey;
+    });
+
+    // If there is ONLY ONE staff member in this department -> Give all tasks to this sole staff member!
+    if (deptStaff.length === 1) {
+      return true;
+    }
+
+    // If there are multiple staff members (or no staff), require Admin assignment
+    return false;
+  };
+
+  const staffJobs = jobs.filter(checkJobAssignment);
 
   // Filter Customers strictly relevant to the logged-in staff's serviceKey
   const getDigits = (str) => (str || '').replace(/[^\d]/g, '');
@@ -931,6 +1058,8 @@ export function StaffProvider({ children }) {
         logoutStaff,
         jobs: staffJobs,
         allJobs: jobs,
+        allStaff,
+        checkJobAssignment,
         updateJobStatus,
         customers: staffCustomers,
         allCustomers: customers,

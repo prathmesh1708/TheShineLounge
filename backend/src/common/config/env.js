@@ -1,4 +1,27 @@
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+// Locate and load .env from all possible directory structures (PM2, subfolder, root, or cwd)
+const candidateEnvPaths = [
+  path.resolve(__dirname, '../../../.env'), // backend/.env
+  path.resolve(__dirname, '../../../../.env'), // root .env
+  path.resolve(process.cwd(), 'backend/.env'),
+  path.resolve(process.cwd(), '.env')
+];
+
+let loadedEnvPath = null;
+for (const envPath of candidateEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    loadedEnvPath = envPath;
+    break;
+  }
+}
+
+if (!loadedEnvPath) {
+  dotenv.config();
+}
 
 const isProduction = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
 
@@ -16,7 +39,7 @@ const required = (name, devFallback) => {
 
 module.exports = {
   PORT: process.env.PORT || 5005,
-  MONGO_URI: required('MONGO_URI', undefined),
+  MONGO_URI: process.env.MONGO_URI || '',
   JWT_SECRET: required('JWT_SECRET', 'dev-only-insecure-jwt-secret'),
   ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@gmail.com',
   ADMIN_PASSWORD: required('ADMIN_PASSWORD', 'Admin!@#123'),

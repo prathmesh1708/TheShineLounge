@@ -3,12 +3,12 @@
 
 export const defaultCalculationSettings = {
   // Business Legal & Tax Identification
-  businessName: 'The Shine Lounge Pvt Ltd',
+  businessName: 'Shine N Sip Solutions Private Limited',
   tradeName: 'The Shine Lounge',
-  gstin: '27AABCT8742L1ZK',
+  gstin: '06ABSCS4162M1ZO',
   pan: 'AABCT8742L',
-  stateCode: '27 - Maharashtra',
-  registeredAddress: 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai, Maharashtra 400013',
+  stateCode: '06 - Haryana',
+  registeredAddress: '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101',
 
   // GST & Tax Presets
   defaultGstRate: 18, // 18% standard rate
@@ -37,9 +37,9 @@ export const defaultCalculationSettings = {
 
   // Operating Overhead & Deduction Rates (% of base/gross)
   operatingOverheadRate: 18.5, // 18.5% allocated to rent, power, water & consumables
-  staffIncentiveRate: 7.5, // 7.5% allocated to staff performance incentive pool
+  staffIncentiveRate: 0,
   gatewaySurchargeRate: 1.8, // 1.8% average card/UPI payment processing fee
-  depreciationReserveRate: 2.2, // 2.2% equipment depreciation & repair reserve
+  depreciationReserveRate: 0,
   fixedMonthlyOverhead: 150000, // ₹1,50,000 fixed overhead per month
 
   // Fiscal Year & Reporting
@@ -288,15 +288,13 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
 
   // Operating Deductions according to Admin Calculation Settings
   const overheadRate = Number(safeSettings.operatingOverheadRate || 18.5);
-  const staffRate = Number(safeSettings.staffIncentiveRate || 7.5);
   const gatewayRate = Number(safeSettings.gatewaySurchargeRate || 1.8);
-  const depreciationRate = Number(safeSettings.depreciationReserveRate || 2.2);
 
   const operatingOverheads = (effectiveTaxable * overheadRate) / 100;
-  const staffIncentives = (effectiveTaxable * staffRate) / 100;
+  const staffIncentives = 0;
   const gatewayFees = (effectiveGross * gatewayRate) / 100;
-  const depreciationReserve = (effectiveTaxable * depreciationRate) / 100;
-  const totalDeductions = operatingOverheads + staffIncentives + gatewayFees + depreciationReserve;
+  const depreciationReserve = 0;
+  const totalDeductions = operatingOverheads + gatewayFees;
 
   // Net Operating Profit (EBITDA before direct corporate income tax)
   const netProfit = Math.max(0, effectiveTaxable - totalDeductions);

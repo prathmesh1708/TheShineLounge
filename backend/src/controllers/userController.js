@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
+const DeregisteredVehicle = require('../models/DeregisteredVehicle');
 const bcrypt = require('bcryptjs');
 const { isUsablePlate, normalizePlate } = require('../utils/plateNormalizer');
 const {
@@ -11,9 +13,27 @@ const {
 } = require('../utils/sanitizeUser');
 
 
+// Helper to strip out auto-generated dummy customer emails
+const sanitizeCustomerEmail = (email) => {
+  if (!email) return '';
+  const em = String(email).trim().toLowerCase();
+  if (em.endsWith('@theshinelounge.com') && !em.startsWith('admin') && !em.startsWith('support') && !em.startsWith('staff') && !em.startsWith('manager')) {
+    return '';
+  }
+  return email;
+};
+
+// Helper to find staff by ObjectId or email
+const getStaffFindQuery = (idParam) => {
+  if (idParam && mongoose.Types.ObjectId.isValid(idParam)) {
+    return { _id: idParam };
+  }
+  return { email: String(idParam || '').toLowerCase().trim() };
+};
+
 // ─── STAFF MANAGEMENT (Admin Only) ──────────────────────────
 
-// @desc    Create a new staff member
+// @desc    Create a new staff member or promote existing account
 // @route   POST /api/users/staff
 // @access  Admin
 const createStaff = async (req, res) => {
@@ -37,15 +57,6 @@ const createStaff = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Please provide fullName, email, and password'
-      });
-    }
-
-    // Check duplicate email
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'An account with this email already exists'
       });
     }
 
@@ -76,6 +87,61 @@ const createStaff = async (req, res) => {
       }
     }
 
+    // Check duplicate email — if user already exists, promote or reactivate to staff!
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      if (existingUser.role === 'admin' || existingUser.role === 'superadmin') {
+        return res.status(400).json({
+          success: false,
+          message: 'An admin account with this email already exists'
+        });
+      }
+
+      existingUser.fullName = fullName || existingUser.fullName;
+      if (password) {
+        existingUser.password = password; // Triggers pre-save hash
+      }
+      if (mobile) existingUser.mobile = mobile;
+      existingUser.role = 'staff';
+      existingUser.department = finalDept;
+      existingUser.serviceKey = finalServiceKey;
+      existingUser.staffRole = staffRole || existingUser.staffRole || 'Staff Specialist';
+      if (salary !== undefined) existingUser.salary = salary;
+      if (leaveBalance !== undefined) existingUser.leaveBalance = Number(leaveBalance);
+      if (photo) {
+        existingUser.photo = photo;
+        existingUser.profileImage = photo;
+      }
+      if (permissions) existingUser.permissions = permissions;
+      if (branch) existingUser.branch = branch;
+      existingUser.isActive = true;
+      existingUser.isDeleted = false;
+
+      await existingUser.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Staff member account onboarded successfully',
+        staff: {
+          _id: existingUser._id,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          mobile: existingUser.mobile,
+          role: existingUser.role,
+          department: existingUser.department,
+          serviceKey: existingUser.serviceKey,
+          staffRole: existingUser.staffRole,
+          salary: existingUser.salary,
+          leaveBalance: existingUser.leaveBalance,
+          photo: existingUser.photo,
+          permissions: existingUser.permissions,
+          isActive: existingUser.isActive,
+          branch: existingUser.branch,
+          createdAt: existingUser.createdAt
+        }
+      });
+    }
+
     const staff = await User.create({
       fullName,
       email,
@@ -91,7 +157,7 @@ const createStaff = async (req, res) => {
       profileImage: photo || '',
       permissions: permissions || ['bookings', 'orders'],
       branch: branch || 'Main Branch',
-      createdBy: req.user._id
+      createdBy: req.user?._id || null
     });
 
     res.status(201).json({
@@ -143,7 +209,7 @@ const getStaffList = async (req, res) => {
       status = ''
     } = req.query;
 
-    const query = { role: 'staff', isDeleted: false };
+    const query = { role: 'staff', isDeleted: { $ne: true } };
     const andConditions = [];
 
     if (serviceKey) {
@@ -223,15 +289,16 @@ const getStaffList = async (req, res) => {
   }
 };
 
-// @desc    Get staff member by ID
+// @desc    Get staff member by ID or Email
 // @route   GET /api/users/staff/:id
 // @access  Admin
 const getStaffById = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -273,10 +340,11 @@ const updateStaff = async (req, res) => {
       password
     } = req.body;
 
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -289,7 +357,7 @@ const updateStaff = async (req, res) => {
     // Check duplicate email if changed
     if (email && email.toLowerCase() !== staff.email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
-      if (emailExists) {
+      if (emailExists && emailExists._id.toString() !== staff._id.toString()) {
         return res.status(400).json({
           success: false,
           message: 'This email is already in use by another account'
@@ -351,10 +419,11 @@ const updateStaff = async (req, res) => {
 // @access  Admin
 const toggleStaffStatus = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -394,10 +463,11 @@ const resetStaffPassword = async (req, res) => {
       });
     }
 
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     }).select('+password');
 
     if (!staff) {
@@ -427,10 +497,11 @@ const resetStaffPassword = async (req, res) => {
 // @access  Admin
 const deleteStaff = async (req, res) => {
   try {
+    const findQuery = getStaffFindQuery(req.params.id);
     const staff = await User.findOne({
-      _id: req.params.id,
+      ...findQuery,
       role: 'staff',
-      isDeleted: false
+      isDeleted: { $ne: true }
     });
 
     if (!staff) {
@@ -512,7 +583,7 @@ const getCustomers = async (req, res) => {
 
       // Add any vehicles from bookings if not already present
       userBookings.forEach(b => {
-        if (b.vehicleNo) {
+        if (b.vehicleNo && !b.vehicleDeregistered) {
           const cleanPlate = b.vehicleNo.toUpperCase().trim();
           const exists = vehicleList.some(v => v.toUpperCase().includes(cleanPlate));
           if (!exists) {
@@ -521,15 +592,16 @@ const getCustomers = async (req, res) => {
         }
       });
 
+      const cleanEmail = sanitizeCustomerEmail(u.email);
       return {
         _id: u._id,
-        id: u.email || u._id,
+        id: cleanEmail || u.mobile || u._id,
         name: u.fullName,
         fullName: u.fullName,
-        email: u.email,
+        email: cleanEmail,
         phone: u.mobile || '',
         mobile: u.mobile || '',
-        city: u.city || '',
+        city: u.city || 'Gurgaon',
         segment: computedSegment,
         totalSpent,
         loyaltyPoints: u.loyaltyPoints || Math.floor(totalSpent / 100),
@@ -547,11 +619,11 @@ const getCustomers = async (req, res) => {
 
     const extraCustomersMap = new Map();
     for (const b of allBookings) {
-      const bEmail = (b.customerEmail || '').toLowerCase().trim();
+      const bEmail = sanitizeCustomerEmail(b.customerEmail);
       const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
       const bName = (b.customerName || '').trim();
 
-      const alreadyInUsers = (bEmail && existingEmails.has(bEmail)) ||
+      const alreadyInUsers = (bEmail && existingEmails.has(bEmail.toLowerCase())) ||
                              (bPhone && existingPhones.has(bPhone));
       if (alreadyInUsers) continue;
 
@@ -562,18 +634,18 @@ const getCustomers = async (req, res) => {
         const isMem = b.saleType === 'membership' || (b.packageName && (b.packageName.toLowerCase().includes('membership') || b.packageName.toLowerCase().includes('pass')));
         extraCustomersMap.set(groupKey, {
           _id: b._id,
-          id: b.customerEmail || b.phone || b._id,
+          id: bEmail || b.phone || b._id,
           name: bName || 'Valued Customer',
           fullName: bName || 'Valued Customer',
-          email: b.customerEmail || '',
+          email: bEmail,
           phone: b.phone || '',
           mobile: b.phone || '',
-          city: 'Mumbai',
+          city: b.location || 'Gurgaon',
           segment: isMem ? 'Active Member' : 'Regular Customer',
           totalSpent: Number(b.price) || 0,
           loyaltyPoints: Math.floor((Number(b.price) || 0) / 100),
-          vehicles: b.vehicleNo ? [`${b.vehicleNo.toUpperCase().trim()}${b.vehicleType ? ` (${b.vehicleType})` : ''}`] : [],
-          rawVehicles: b.vehicleNo ? [{ plateNumber: b.vehicleNo.toUpperCase().trim(), model: b.vehicleType || 'Car' }] : [],
+          vehicles: (b.vehicleNo && !b.vehicleDeregistered) ? [`${b.vehicleNo.toUpperCase().trim()}${b.vehicleType ? ` (${b.vehicleType})` : ''}`] : [],
+          rawVehicles: (b.vehicleNo && !b.vehicleDeregistered) ? [{ plateNumber: b.vehicleNo.toUpperCase().trim(), model: b.vehicleType || 'Car' }] : [],
           membership: isMem ? {
             planName: b.membershipName || b.packageName,
             status: 'Active',
@@ -587,7 +659,7 @@ const getCustomers = async (req, res) => {
         const item = extraCustomersMap.get(groupKey);
         item.totalSpent += (Number(b.price) || 0);
         item.loyaltyPoints = Math.floor(item.totalSpent / 100);
-        if (b.vehicleNo) {
+        if (b.vehicleNo && !b.vehicleDeregistered) {
           const cleanPlate = b.vehicleNo.toUpperCase().trim();
           const hasPlate = item.vehicles.some(v => v.toUpperCase().includes(cleanPlate));
           if (!hasPlate) {
@@ -833,6 +905,109 @@ const addCustomerVehicle = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message || 'Server error adding vehicle' });
+  }
+};
+
+// @desc    Admin / Staff deregister or delete a vehicle from fleet and customer profile
+// @route   DELETE /api/users/vehicles/deregister/:plate or DELETE /api/users/customers/:id/vehicles/:plate
+// @access  Staff / Admin
+const deregisterVehicle = async (req, res) => {
+  try {
+    const rawPlate = req.params.plate || req.body?.plateNumber || req.body?.plate;
+    if (!rawPlate) {
+      return res.status(400).json({ success: false, message: 'Plate number is required' });
+    }
+    const cleanPlate = normalizePlate(rawPlate);
+    const customerId = req.params.id;
+
+    const plateRegexStr = cleanPlate.split('').join('[\\s-]*');
+    const plateRegex = new RegExp(plateRegexStr, 'i');
+
+    // 1. Save to DeregisteredVehicle database collection
+    await DeregisteredVehicle.updateOne(
+      { plateNormalized: cleanPlate },
+      {
+        $set: {
+          plateNumber: rawPlate.toUpperCase().trim(),
+          plateNormalized: cleanPlate,
+          deregisteredAt: new Date(),
+          deregisteredBy: req.user?.email || 'admin'
+        }
+      },
+      { upsert: true }
+    );
+
+    // 2. Remove from all User profiles (vehicles, rawVehicles, membership.vehicleNo, membership.boundVehicles)
+    const allUsers = await User.find({});
+    for (const u of allUsers) {
+      let modified = false;
+      if (Array.isArray(u.vehicles)) {
+        const origLen = u.vehicles.length;
+        u.vehicles = u.vehicles.filter(v => {
+          const p = typeof v === 'string' ? v.split(' ')[0] : (v.plateNormalized || v.plateNumber || '');
+          return normalizePlate(p) !== cleanPlate;
+        });
+        if (u.vehicles.length !== origLen) modified = true;
+      }
+      if (Array.isArray(u.rawVehicles)) {
+        const origLen = u.rawVehicles.length;
+        u.rawVehicles = u.rawVehicles.filter(v => {
+          const p = typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo || '');
+          return normalizePlate(p) !== cleanPlate;
+        });
+        if (u.rawVehicles.length !== origLen) modified = true;
+      }
+      if (u.membership) {
+        if (u.membership.vehicleNo && normalizePlate(u.membership.vehicleNo) === cleanPlate) {
+          u.membership.vehicleNo = '';
+          modified = true;
+        }
+        if (Array.isArray(u.membership.boundVehicles)) {
+          const origLen = u.membership.boundVehicles.length;
+          u.membership.boundVehicles = u.membership.boundVehicles.filter(
+            entry => normalizePlate(String(entry).split('(')[0]) !== cleanPlate
+          );
+          if (u.membership.boundVehicles.length !== origLen) modified = true;
+        }
+      }
+      if (modified) {
+        await u.save({ validateBeforeSave: false });
+      }
+    }
+
+    // 3. Mark matching service bookings as vehicleDeregistered and clear vehicleNo
+    await Booking.updateMany(
+      {
+        $or: [
+          { vehicleNoNormalized: cleanPlate },
+          { vehicleNo: { $regex: plateRegex } }
+        ]
+      },
+      { $set: { vehicleDeregistered: true } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Vehicle ${rawPlate.toUpperCase()} successfully removed from fleet and records`,
+      plate: cleanPlate
+    });
+  } catch (error) {
+    console.error('Error deregistering vehicle:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error deregistering vehicle' });
+  }
+};
+
+// @desc    Get all globally deregistered vehicles
+// @route   GET /api/users/vehicles/deregistered
+// @access  Staff / Admin
+const getDeregisteredVehicles = async (req, res) => {
+  try {
+    const docs = await DeregisteredVehicle.find({}).sort({ deregisteredAt: -1 }).lean();
+    const plates = docs.map(d => d.plateNormalized);
+    res.status(200).json({ success: true, count: plates.length, plates, items: docs });
+  } catch (error) {
+    console.error('Error getting deregistered vehicles:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching deregistered vehicles' });
   }
 };
 
@@ -1320,6 +1495,8 @@ module.exports = {
   updateCustomerMembership,
   updateCustomerUsageRules,
   addCustomerVehicle,
+  deregisterVehicle,
+  getDeregisteredVehicles,
   deleteCustomer,
   updateProfile,
   getMyVehicles,

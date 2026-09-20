@@ -48,6 +48,7 @@ import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { getMachineConfig, saveMachineConfig } from '../../../dog-wash/services/dogWashApi';
 import { cacheService } from '../../../common/utils/serviceCache';
+import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 
 export default function DogWashAdminHubPage() {
   const serviceKey = 'dog-wash';
@@ -63,6 +64,7 @@ export default function DogWashAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
+    deleteBooking,
     addStaff,
     toggleStaffStatus,
     addBanner,
@@ -76,9 +78,7 @@ export default function DogWashAdminHubPage() {
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'overview');
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {
@@ -89,7 +89,8 @@ export default function DogWashAdminHubPage() {
   const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === 'dog-wash' || (b.serviceName && b.serviceName.toLowerCase().includes('dog')));
+  // Wash redemptions are membership usage, not new bookings.
+  const serviceBookings = bookings.filter(b => (b.serviceKey === 'dog-wash' || (b.serviceName && b.serviceName.toLowerCase().includes('dog'))) && !isWashRedemptionRecord(b));
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
@@ -452,23 +453,20 @@ export default function DogWashAdminHubPage() {
       const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Dog Wash roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Dog Wash roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',
@@ -1070,7 +1068,24 @@ export default function DogWashAdminHubPage() {
                   <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
-              )}
+              )},
+              {
+                header: 'Actions',
+                cell: (r) => (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete booking ${r.id}?`)) {
+                        deleteBooking(r);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                    title="Delete Booking"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete</span>
+                  </button>
+                )
+              }
             ]}
             data={serviceBookings}
             searchPlaceholder="Search Dog Wash Bookings..."

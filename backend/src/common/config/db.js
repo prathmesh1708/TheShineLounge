@@ -1,84 +1,49 @@
+const dns = require('dns');
+
+// Safely configure public DNS servers for Atlas SRV record resolution
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch (dnsErr) {
+  console.warn('DNS server configuration notice:', dnsErr.message);
+}
+
 const mongoose = require('mongoose');
-const path = require('path');
-const fs = require('fs');
 const { MONGO_URI, SEED_ON_BOOT } = require('./env');
 const seedAdmin = require('../../utils/seedAdmin');
 const seedServices = require('../../utils/seedServices');
-const seedRealData = require('../../utils/seedRealData');
 
-let mongoMemoryServer = null;
 
 const connectDB = async () => {
   try {
-    let uri = MONGO_URI;
-    let isMemoryDb = false;
-    try {
-      const conn = await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
-      console.log(`✅ MongoDB Atlas connected: ${conn.connection.host}`);
-    } catch (dbErr) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(`⚠️ Primary MongoDB Atlas connection failed (${dbErr.message}).`);
-        console.warn(`👉 To connect directly to MongoDB Atlas, whitelist your IP in Atlas Network Access (0.0.0.0/0).`);
-        console.warn(`📁 Starting local persistent MongoDB instance on disk for development...`);
-        const { MongoMemoryServer } = require('mongodb-memory-server');
-        const localDbDir = path.resolve(__dirname, '../../../data/local_db');
-        if (!fs.existsSync(localDbDir)) {
-          fs.mkdirSync(localDbDir, { recursive: true });
-        } else {
-          // Clean up stale lock files if previous mongod was terminated abruptly
-          for (const lf of ['mongod.lock', 'WiredTiger.lock']) {
-            const lockFile = path.join(localDbDir, lf);
-            if (fs.existsSync(lockFile)) {
-              try {
-                fs.unlinkSync(lockFile);
-              } catch (e) {
-                console.warn(`Could not remove stale ${lf}:`, e.message);
-              }
-            }
-          }
-        }
-        mongoMemoryServer = await MongoMemoryServer.create({
-          instance: {
-            dbPath: localDbDir,
-            storageEngine: 'wiredTiger'
-          }
-        });
-        uri = mongoMemoryServer.getUri();
-        const conn = await mongoose.connect(uri);
-        console.log(`✅ Local Persistent MongoDB connected at ${conn.connection.host} (persisted at ${localDbDir})`);
-        isMemoryDb = true;
-
-        // Graceful shutdown hooks
-        const cleanup = async () => {
-          if (mongoMemoryServer) {
-            try {
-              await mongoose.disconnect();
-              await mongoMemoryServer.stop();
-            } catch (_) {}
-          }
-        };
-        process.once('SIGINT', async () => { await cleanup(); process.exit(0); });
-        process.once('SIGTERM', async () => { await cleanup(); process.exit(0); });
-        process.once('SIGUSR2', async () => { await cleanup(); process.kill(process.pid, 'SIGUSR2'); });
-      } else {
-        throw dbErr;
-      }
+    if (!MONGO_URI) {
+      throw new Error('MONGO_URI is missing in backend/.env. Atlas database URI is required.');
     }
 
-    // Ensure the admin account exists so login never fails.
+    console.log('Connecting strictly to MongoDB Atlas...');
+    const conn = await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 10000
+    });
+
+    console.log(`✅ MongoDB Atlas connected successfully: ${conn.connection.host}`);
+
+    // Ensure the admin account exists so login never fails
     await seedAdmin();
 
-    // Demo seeding is opt-in only. An empty database is a legitimate state -
-    // a fresh cluster should stay empty until someone asks for sample data -
-    // so never infer "empty means seed me". Run `npm run seed` by hand, or
-    // set SEED_ON_BOOT=true, when you actually want the demo catalog/staff.
+    // Catalog seeding is opt-in only. An empty database is a legitimate state -
+    // a fresh cluster should stay empty until someone asks for sample data - so
+    // never infer "no services means seed me". Run `npm run seed` by hand, or
+    // set SEED_ON_BOOT=true, when you actually want the demo catalog.
     if (SEED_ON_BOOT) {
-      console.log('SEED_ON_BOOT=true - loading demo service catalog and sample data...');
+      console.log('SEED_ON_BOOT=true - loading demo service catalog...');
       await seedServices();
-      await seedRealData();
     }
   } catch (error) {
-    console.error(`MongoDB connection error: ${error.message}`);
+    console.error('❌ MongoDB Atlas connection error:', error.message);
+    if (error.message.includes('Authentication failed') || error.message.includes('bad auth')) {
+      console.error('👉 Tip: Check your Atlas username and password in backend/.env (MongoDB Atlas > Database Access).');
+    } else if (error.message.includes('whitelist') || error.message.includes('server selection')) {
+      console.error('👉 Tip: Whitelist your IP in MongoDB Atlas (Network Access > Add IP Address > Allow Access from Anywhere 0.0.0.0/0).');
+    }
     process.exit(1);
   }
 };

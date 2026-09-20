@@ -55,6 +55,10 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  vehicleModel: {
+    type: String,
+    default: ''
+  },
   location: {
     type: String,
     default: ''
@@ -164,7 +168,7 @@ const bookingSchema = new mongoose.Schema({
   },
   saleType: {
     type: String,
-    enum: ['service', 'membership'],
+    enum: ['service', 'membership', 'redemption', 'wash'],
     default: 'service'
   },
   paymentMode: {
@@ -182,13 +186,41 @@ const bookingSchema = new mongoose.Schema({
   membershipExpiry: {
     type: String,
     default: ''
+  },
+  saleDate: {
+    type: String,
+    default: ''
+  },
+  vehicleDeregistered: {
+    type: Boolean,
+    default: false
+  },
+  receiptPdfBase64: {
+    type: String,
+    default: ''
+  },
+  includeGst: {
+    type: Boolean,
+    default: false
+  },
+  gstRate: {
+    type: Number,
+    default: 0
+  },
+  subtotal: {
+    type: Number,
+    default: 0
+  },
+  gstAmount: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true
 });
 
-// A booking is looked up by plate on every vehicle arrival; without this the
-// match is a collection scan on a field that grows with every wash.
+bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ customerEmail: 1, createdAt: -1 });
 bookingSchema.index({ serviceKey: 1, vehicleNoNormalized: 1, createdAt: -1 });
 
 bookingSchema.pre('save', function () {

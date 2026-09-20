@@ -92,7 +92,7 @@ export default function CarDetailingBookingCard({ booking = {} }) {
           <div className="flex items-center gap-2">
             <Car className="w-4 h-4 text-luxury-emerald" />
             <span className="font-semibold text-zinc-800">
-              {booking?.vehicle || 'Tesla Model 3'} ({booking?.vehicleNo || 'MP-09-AB-1234'})
+              {booking?.vehicle || 'Vehicle'} {booking?.vehicleNo ? `(${booking.vehicleNo})` : ''}
             </span>
           </div>
           {booking?.technician && booking?.technician !== "None" && (
@@ -106,7 +106,7 @@ export default function CarDetailingBookingCard({ booking = {} }) {
         <div className="space-y-2.5">
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 text-luxury-emerald mt-0.5" />
-            <span className="line-clamp-2">{booking?.location || booking?.address || 'Palasia Main Rd, Indore'}</span>
+            <span className="line-clamp-2">{booking?.location || booking?.address || 'Indore Studio'}</span>
           </div>
           <div className="flex items-center justify-between pt-1 border-t border-zinc-100">
             <span className="text-xs text-zinc-400 uppercase font-semibold">Price Breakdown:</span>

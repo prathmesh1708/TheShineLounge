@@ -336,6 +336,9 @@ export default function StaffMembershipsPage() {
         serviceKey: 'car-wash',
         serviceName: 'Car Wash',
         packageName: newPass.packageName,
+        membershipName: newPass.packageName,
+        membershipExpiry: newPass.membershipExpiry,
+        membershipValidity: isSingle ? '1 Day' : (currentPlan.id === 'annual' ? '365 Days' : '30 Days'),
         plan: newPass.packageName,
         date: newPass.date,
         timeSlot: 'Counter Offline Sale',
@@ -347,22 +350,11 @@ export default function StaffMembershipsPage() {
       console.warn('Backend booking save note for issued pass:', err.message);
     }
 
-    // 2. Save to local offline sales (Admin Offline Sales & Revenue Reports)
-    try {
-      const existing = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-      localStorage.setItem('tsl_offline_sales', JSON.stringify([newPass, ...existing]));
-      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: newPass }));
-      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: newPass }));
-      window.dispatchEvent(new Event('storage'));
-    } catch (e) {}
-
-    // 3. If membership, also save to tsl_admin_memberships (Admin Memberships page)
+    // 2. Dispatch events for UI reactivity
+    window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: newPass }));
+    window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: newPass }));
     if (!isSingle) {
-      try {
-        const existingMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
-        localStorage.setItem('tsl_admin_memberships', JSON.stringify([newPass, ...existingMems]));
-        window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: newPass }));
-      } catch (e) {}
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: newPass }));
     }
 
     // 3. Save and sync vehicle plate across system and Admin Panel -> Membership

@@ -38,22 +38,9 @@ export default function RevenueReportsPage() {
   const [timeRange, setTimeRange] = useState('This Month');
   const [isCaModalOpen, setIsCaModalOpen] = useState(false);
 
-  // Aggregate online bookings and offline POS counter sales
+  // Aggregate online bookings and offline POS counter sales from DB
   const allTransactions = useMemo(() => {
-    let localOffline = [];
-    try {
-      localOffline = JSON.parse(localStorage.getItem('tsl_offline_sales') || '[]');
-    } catch (e) {}
-
-    const list = [...(bookings || [])];
-    const existingIds = new Set(list.map(b => b.id || b.bookingId).filter(Boolean));
-    localOffline.forEach(sale => {
-      const id = sale.id || sale.bookingId;
-      if (!id || !existingIds.has(id)) {
-        list.push({ ...sale, isOfflineSale: true });
-      }
-    });
-    return list;
+    return [...(bookings || [])];
   }, [bookings]);
 
   // Compute dynamic financial metrics using calculationSettings
@@ -86,7 +73,7 @@ export default function RevenueReportsPage() {
 
       const csvRows = [
         ['THE SHINE LOUNGE - EXECUTIVE FINANCIAL & GST AUDIT REPORT'],
-        [`Business: ${cs.businessName || 'The Shine Lounge Pvt Ltd'}`, `GSTIN: ${cs.gstin || '27AABCT8742L1ZK'}`, `PAN: ${cs.pan || 'AABCT8742L'}`],
+        [`Business: ${cs.businessName || 'Shine N Sip Solutions Private Limited'}`, `GSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}`, `PAN: ${cs.pan || 'AABCT8742L'}`],
         [`Time Range: ${timeRange}`, `Fiscal Year: ${cs.fiscalYear || 'FY 2025-26'}`, `Generated On: ${reportDate}`],
         [''],
         ['1. EXECUTIVE FINANCIAL SUMMARY'],
@@ -97,7 +84,6 @@ export default function RevenueReportsPage() {
         [`State GST (SGST @ ${(summary.effectiveTaxRate / 2).toFixed(1)}%)`, summary.sgst, 'Output Tax Liability'],
         [`Total GST Output Liability (${summary.effectiveTaxRate}%)`, summary.totalGst, 'Statutory Tax Payable'],
         ['Operating Overheads', summary.operatingOverheads, `${cs.operatingOverheadRate || 18.5}% of net base`],
-        ['Staff Performance Incentives', summary.staffIncentives, `${cs.staffIncentiveRate || 7.5}% of net base`],
         ['Payment Gateway & Surcharge', summary.gatewayFees, `${cs.gatewaySurchargeRate || 1.8}% of gross turnover`],
         ['Net Operating Profit (EBITDA)', summary.netProfit, `Margin: ${summary.netProfitMargin}%`],
         ['Average Order Value (AOV)', summary.aov, 'Per customer ticket'],

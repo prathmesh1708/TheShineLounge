@@ -1,3 +1,4 @@
+import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -39,7 +40,7 @@ import TSLLogo from '../../../common/components/TSLLogo';
 export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, closeMobileSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { stats, bookings, staffList, banners, inventory } = useAdmin();
+  const { stats, bookings, staffList, banners, inventory, memberships, customers, deregisteredPlates: contextDeregisteredPlates } = useAdmin();
   const { user, logout } = useAuth();
 
   // Auto-close mobile sidebar when route changes
@@ -93,27 +94,68 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   // Sub-navigation options inside each service dropdown
   const getSubNavItems = (key, serviceName) => {
-    const bCount = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase())).length;
-    const sCount = staffList.filter(s => s.serviceKey === key || s.department === serviceName).length;
-    const banCount = banners.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
-    const iCount = inventory.filter(i => i.serviceKey === key || i.department === serviceName).length;
+    const bList = bookings || [];
+    const sList = staffList || [];
+    const banList = banners || [];
+    const iList = inventory || [];
+    const mList = memberships || [];
+    const cList = customers || [];
+
+    // Wash redemptions are membership usage, not new bookings.
+    const bCount = bList.filter(b => !isWashRedemptionRecord(b) && (b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()))).length;
+    const sCount = sList.filter(s => s.serviceKey === key || s.department === serviceName).length;
+    const banCount = banList.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
+    const iCount = iList.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
     // Calculate registered vehicles count for car services
-    let carBookings = bookings.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
+    let carBookings = bList.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
     if (key === 'car-detailing') {
       carBookings = carBookings.filter(b => {
         const pkg = (b.plan || b.packageName || b.service || '').toLowerCase();
         return !(pkg.includes('wash') && !pkg.includes('detail'));
       });
     }
+    const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const deregisteredPlates = (() => {
+      try {
+        const local = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+        return Array.from(new Set([...(contextDeregisteredPlates || []), ...local]));
+      } catch (e) {
+        return contextDeregisteredPlates || [];
+      }
+    })();
+
     const vMap = {};
     carBookings.forEach(b => {
-      // Bookings with no plate on them are not a vehicle. They used to all
-      // collapse onto a placeholder key and be counted as one phantom car.
-      const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
-      if (plate) vMap[plate] = true;
+      if (b.vehicleDeregistered) return;
+      const cleanPlate = normalizePlate(b.vehicleNo || b.vehiclePlate);
+      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+        vMap[cleanPlate] = true;
+      }
     });
-    const vCount = Math.max(Object.keys(vMap).length, 1);
+
+    // Also include membership vehicles for this service
+    mList.forEach(m => {
+      if (m.serviceKey && m.serviceKey !== key) return;
+      const cleanPlate = normalizePlate(m.vehicleNo);
+      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+        vMap[cleanPlate] = true;
+      }
+    });
+
+    // Also include customer profile vehicles
+    cList.forEach(c => {
+      const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+      custVehicles.forEach(cv => {
+        const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
+        const cleanPlate = normalizePlate(p);
+        if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
+          vMap[cleanPlate] = true;
+        }
+      });
+    });
+
+    const vCount = Object.keys(vMap).length;
 
     if (key === 'car-wash') {
       return [
@@ -186,13 +228,12 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   const handleToggleDropdown = (key, defaultPath) => {
     if (openDropdownKey === key) {
-      // Toggle accordion or keep open
-      setOpenDropdownKey(null);
-    } else {
-      setOpenDropdownKey(key);
-      if (location.pathname !== defaultPath) {
+      if (!location.pathname.startsWith(defaultPath)) {
         navigate(`${defaultPath}?tab=overview`);
       }
+    } else {
+      setOpenDropdownKey(key);
+      navigate(`${defaultPath}?tab=overview`);
     }
   };
 

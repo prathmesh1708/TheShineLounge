@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download, Users, Phone, Mail, Car, Award, History, Sparkles, Plus,
   ShieldAlert, ShieldCheck, AlertTriangle, Lock, Clock, Calendar, CheckCircle2,
-  RefreshCw, XCircle, ChevronRight, UserCheck, AlertOctagon
+  RefreshCw, XCircle, ChevronRight, UserCheck, AlertOctagon, Trash2
 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
@@ -16,10 +16,20 @@ export default function CustomerDatabasePage() {
     updateCustomerMembership,
     updateCustomerUsageRules,
     addCustomerVehicle,
+    deleteCustomerVehicle,
     showToast
   } = useAdmin();
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const updated = (customers || []).find(c => c && ((c._id && c._id === selectedCustomer._id) || (c.id && c.id === selectedCustomer.id)));
+      if (updated) {
+        setSelectedCustomer(prev => ({ ...prev, ...updated }));
+      }
+    }
+  }, [customers]);
   const [activeTab, setActiveTab] = useState('overview');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [suspensionReasonInput, setSuspensionReasonInput] = useState('');
@@ -41,7 +51,7 @@ export default function CustomerDatabasePage() {
     name: '',
     phone: '',
     email: '',
-    city: 'Mumbai',
+    city: 'Gurgaon',
     vehicle: ''
   });
 
@@ -79,8 +89,8 @@ export default function CustomerDatabasePage() {
           c.id || c.code || 'CUST-N/A',
           c.name || c.fullName || 'N/A',
           c.phone || c.mobile || 'N/A',
-          c.email || 'N/A',
-          c.city || 'Mumbai',
+          c.email && !c.email.toLowerCase().endsWith('@theshinelounge.com') ? c.email : '',
+          c.city || 'Gurgaon',
           c.segment || 'Regular Customer',
           c.totalSpent !== undefined ? c.totalSpent : 24500,
           (c.vehicles && c.vehicles.length > 0) ? c.vehicles.join(' | ') : 'None registered',
@@ -123,7 +133,7 @@ export default function CustomerDatabasePage() {
       vehicles: form.vehicle.trim() ? [form.vehicle.trim()] : []
     });
     setIsAddModalOpen(false);
-    setForm({ name: '', phone: '', email: '', city: 'Mumbai', vehicle: '' });
+    setForm({ name: '', phone: '', email: '', city: 'Gurgaon', vehicle: '' });
   };
 
   const openCustomerModal = (customer) => {
@@ -223,8 +233,28 @@ export default function CustomerDatabasePage() {
     setNewVehicleModel('');
   };
 
+  const handleDeleteCustomerVehicle = async (vehString) => {
+    if (!selectedCustomer) return;
+    const plate = vehString.split('(')[0].trim();
+    const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (window.confirm(`Are you sure you want to remove vehicle ${plate} from ${selectedCustomer.fullName || selectedCustomer.name}'s profile and the fleet?`)) {
+      await deleteCustomerVehicle(selectedCustomer._id || selectedCustomer.id, cleanPlate);
+      setSelectedCustomer(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          vehicles: (prev.vehicles || []).filter(v => !v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanPlate)),
+          rawVehicles: (prev.rawVehicles || []).filter(v => {
+            const p = typeof v === 'string' ? v : (v.plateNumber || v.plate || v.vehicleNo || '');
+            return p.toUpperCase().replace(/[^A-Z0-9]/g, '') !== cleanPlate;
+          })
+        };
+      });
+    }
+  };
+
   // Metrics
-  const activeCount = customers.filter(c => c.segment === 'Active Member' || c.segment === 'High-Value VIP').length;
+  const activeCount = customers.filter(c => c.segment === 'Active Member').length;
   const dueCount = customers.filter(c => c.segment === 'Due for Renewal').length;
   const suspendedCount = customers.filter(c => c.segment === 'Suspended Member').length;
   const expiredCount = customers.filter(c => c.segment === 'Expired Member').length;
@@ -243,12 +273,15 @@ export default function CustomerDatabasePage() {
     {
       header: 'Contact Info',
       accessorKey: 'phone',
-      cell: (row) => (
-        <div>
-          <p className="font-bold text-gray-800">{row.phone || row.mobile || '+91 98000 00000'}</p>
-          <p className="text-[10px] text-gray-500">{row.email}</p>
-        </div>
-      )
+      cell: (row) => {
+        const cleanEm = row.email && !row.email.toLowerCase().endsWith('@theshinelounge.com') ? row.email : '';
+        return (
+          <div>
+            <p className="font-bold text-gray-800">{row.phone || row.mobile || '+91 98000 00000'}</p>
+            {cleanEm && <p className="text-[10px] text-gray-500">{cleanEm}</p>}
+          </div>
+        );
+      }
     },
     {
       header: 'Membership Segment',
@@ -257,7 +290,6 @@ export default function CustomerDatabasePage() {
         const seg = row.segment || 'Regular Customer';
         return (
           <span className={`px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
-            seg === 'High-Value VIP' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
             seg === 'Active Member' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
             seg === 'Due for Renewal' ? 'bg-amber-100 text-amber-800 border border-amber-300 font-extrabold animate-pulse' :
             seg === 'Expired Member' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
@@ -401,7 +433,7 @@ export default function CustomerDatabasePage() {
         searchPlaceholder="Search customer by name, phone, email, city..."
         searchKeys={['name', 'fullName', 'phone', 'mobile', 'email', 'city', 'id']}
         filterKey="segment"
-        filterOptions={['All', 'Active Member', 'Due for Renewal', 'Expired Member', 'Suspended Member', 'High-Value VIP', 'Regular Customer']}
+        filterOptions={['All', 'Active Member', 'Due for Renewal', 'Expired Member', 'Suspended Member', 'Regular Customer']}
       />
 
       {/* Modal: Customer Profile Drawer */}
@@ -452,7 +484,7 @@ export default function CustomerDatabasePage() {
                   activeTab === 'rules' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                Membership & Usage Rules
+                Membership Details
               </button>
               <button
                 onClick={() => setActiveTab('audit')}
@@ -483,11 +515,13 @@ export default function CustomerDatabasePage() {
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">Email Address</span>
-                      <span className="font-extrabold text-gray-900">{selectedCustomer.email}</span>
+                      <span className="font-extrabold text-gray-900">
+                        {selectedCustomer.email && !selectedCustomer.email.toLowerCase().endsWith('@theshinelounge.com') ? selectedCustomer.email : '—'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">City</span>
-                      <span className="font-extrabold text-gray-900">{selectedCustomer.city || 'Mumbai'}</span>
+                      <span className="font-extrabold text-gray-900">{selectedCustomer.city || selectedCustomer.location || 'Gurgaon'}</span>
                     </div>
                     <div>
                       <span className="text-gray-400 font-bold block">Last Visit Date</span>
@@ -518,9 +552,19 @@ export default function CustomerDatabasePage() {
                           <Car className="w-4 h-4 text-amber-500" />
                           <span>{v}</span>
                         </div>
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                          Plate Verified
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                            Plate Verified
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerVehicle(v)}
+                            className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer"
+                            title="Delete vehicle from profile and fleet"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -553,7 +597,7 @@ export default function CustomerDatabasePage() {
               </div>
             )}
 
-            {/* TAB 2: MEMBERSHIP & USAGE RULES MANAGEMENT */}
+            {/* TAB 2: MEMBERSHIP DETAILS */}
             {activeTab === 'rules' && (
               <div className="space-y-4">
                 {/* Active Plan Summary Box */}
@@ -588,135 +632,6 @@ export default function CustomerDatabasePage() {
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Management Rules Config Form */}
-                <form onSubmit={handleSaveUsageRules} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                  <h4 className="font-extrabold text-gray-900 flex items-center gap-1.5 text-xs">
-                    <ShieldCheck className="w-4 h-4 text-amber-600" />
-                    Anti-Misuse & Membership Usage Rules
-                  </h4>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Max Services Per Day</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={rulesForm.maxPerDay}
-                        onChange={(e) => setRulesForm({ ...rulesForm, maxPerDay: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Prevents multiple claims in 24 hrs</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Max Services Per Month</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        value={rulesForm.maxPerMonth}
-                        onChange={(e) => setRulesForm({ ...rulesForm, maxPerMonth: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Monthly fair usage cap</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Cool-Off Hours Buffer</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="72"
-                        value={rulesForm.coolOffHours}
-                        onChange={(e) => setRulesForm({ ...rulesForm, coolOffHours: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg font-bold"
-                      />
-                      <span className="text-[10px] text-gray-500">Min hours between uses</span>
-                    </div>
-
-                    <div>
-                      <label className="text-gray-700 font-bold block mb-1">Vehicle License Plate Binding</label>
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          type="checkbox"
-                          id="boundSwitch"
-                          checked={rulesForm.boundVehiclesOnly}
-                          onChange={(e) => setRulesForm({ ...rulesForm, boundVehiclesOnly: e.target.checked })}
-                          className="w-4 h-4 text-amber-600 rounded"
-                        />
-                        <label htmlFor="boundSwitch" className="font-bold text-gray-800">
-                          {rulesForm.boundVehiclesOnly ? 'Strictly Bound' : 'Any Vehicle Allowed'}
-                        </label>
-                      </div>
-                      <span className="text-[10px] text-gray-500">Must match registered plates</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 font-bold text-white rounded-lg shadow-sm"
-                      style={{ backgroundColor: '#e07b2a' }}
-                    >
-                      Save Usage Rules
-                    </button>
-                  </div>
-                </form>
-
-                {/* Management Administrative Overrides */}
-                <div className="p-4 bg-rose-50/50 rounded-xl border border-rose-200 space-y-3">
-                  <h4 className="font-extrabold text-rose-900 flex items-center gap-1.5 text-xs">
-                    <Lock className="w-4 h-4 text-rose-700" />
-                    Management Override & Anti-Abuse Controls
-                  </h4>
-
-                  {selectedCustomer.segment === 'Suspended Member' ? (
-                    <div className="p-3 bg-purple-100 border border-purple-300 rounded-xl space-y-2">
-                      <p className="font-bold text-purple-900 text-xs">
-                        ⚠️ This membership is currently SUSPENDED.
-                      </p>
-                      <p className="text-[11px] text-purple-800">
-                        Reason: {selectedCustomer.membership?.suspensionReason || 'Not recorded'}
-                      </p>
-                      <button
-                        onClick={handleReactivateMembership}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs"
-                      >
-                        Reactivate / Unsuspend Membership
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <label className="text-gray-700 font-bold block">Suspension Reason (for Admin Record)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Attempted redemption for unregistered vehicle MH02AB9999"
-                        value={suspensionReasonInput}
-                        onChange={(e) => setSuspensionReasonInput(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
-                      />
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSuspendMembership}
-                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg"
-                        >
-                          Suspend Membership
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendExpiry(30)}
-                          className="px-3.5 py-1.5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg"
-                        >
-                          Extend Expiry (+30 Days)
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}

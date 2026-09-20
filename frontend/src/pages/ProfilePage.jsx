@@ -99,18 +99,7 @@ export default function ProfilePage() {
         console.warn('Could not load user bookings on profile page:', err.message);
       }
 
-      // Merge bookings created in this browser, from this customer's own scope.
-      const localBookings = readScoped('tsl_user_bookings', userEmail, []);
-      if (Array.isArray(localBookings) && localBookings.length > 0) {
-        const existingIds = new Set(fetched.map(b => b.bookingId || b.id || b._id));
-        localBookings
-          .filter(lb => normalizeEmail(lb.customerEmail) === userEmail)
-          .forEach(lb => {
-            if (!existingIds.has(lb.bookingId) && !existingIds.has(lb.id)) {
-              fetched.unshift(lb);
-            }
-          });
-      }
+
 
       setBookings(fetched);
       setLoadingBookings(false);
@@ -682,16 +671,6 @@ export default function ProfilePage() {
       setFeedbackSubmitted(true);
       fetchMyFeedbacks();
     } finally {
-      try {
-        const existing = JSON.parse(localStorage.getItem('tsl_user_feedbacks') || '[]');
-        existing.unshift({
-          ...feedbackForm,
-          timestamp: new Date().toISOString(),
-          id: 'FB-' + Date.now(),
-          status: 'Pending'
-        });
-        localStorage.setItem('tsl_user_feedbacks', JSON.stringify(existing));
-      } catch (e) {}
       setSubmittingFeedback(false);
     }
   };

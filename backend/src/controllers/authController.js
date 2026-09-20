@@ -1,7 +1,7 @@
 const User = require('../models/User');
-const Admin = require('../models/Admin');
 const generateToken = require('../utils/generateToken');
 const { sanitizeUser } = require('../utils/sanitizeUser');
+const { findAccountByEmail, findAccountById } = require('../utils/findAccount');
 
 // @desc    Register a new customer
 // @route   POST /api/auth/register
@@ -73,18 +73,8 @@ const login = async (req, res) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check User model first, then Admin model
-    let user = await User.findOne({
-      email: cleanEmail,
-      isDeleted: false
-    }).select('+password');
-
-    if (!user) {
-      user = await Admin.findOne({
-        email: cleanEmail,
-        isDeleted: false
-      }).select('+password');
-    }
+    // Customers, the admin and staff each live in their own collection.
+    const user = await findAccountByEmail(cleanEmail, { withPassword: true });
 
     if (!user) {
       return res.status(401).json({
@@ -134,10 +124,7 @@ const login = async (req, res) => {
 // @access  Private
 const getMe = async (req, res) => {
   try {
-    let user = await User.findById(req.user._id);
-    if (!user) {
-      user = await Admin.findById(req.user._id);
-    }
+    const user = await findAccountById(req.user._id);
 
     if (!user) {
       return res.status(404).json({

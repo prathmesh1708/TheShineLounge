@@ -43,6 +43,7 @@ import AdminModal from '../../common/components/AdminModal';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
+import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 
 export default function DriveThroughCafeAdminHubPage() {
   const serviceKey = 'drive-through-cafe';
@@ -74,9 +75,7 @@ export default function DriveThroughCafeAdminHubPage() {
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'overview');
   }, [searchParams]);
 
   const handleTabChange = (tabId) => {
@@ -87,7 +86,8 @@ export default function DriveThroughCafeAdminHubPage() {
   const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
-  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
+  // Wash redemptions are membership usage, not new bookings.
+  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey && !isWashRedemptionRecord(b));
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
   const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
   const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
@@ -524,23 +524,20 @@ export default function DriveThroughCafeAdminHubPage() {
       const res = await apiClient.post('/users/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Drive-Thru roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Drive-Thru roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',

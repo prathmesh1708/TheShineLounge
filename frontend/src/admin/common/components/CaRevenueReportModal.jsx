@@ -55,7 +55,7 @@ Please find the summary of our financial audit statement for tax filing and stat
 📋 *STATUTORY SAC BREAKDOWN:*
 ${summary.departmentBreakdown.map(d => `• ${d.name} (SAC ${d.sacCode}): ${formatINR(d.gross)} [Tax: ${formatINR(d.tax)}]`).join('\n')}
 
-GSTIN: ${cs.gstin || '27AABCT8742L1ZK'} | PAN: ${cs.pan || 'AABCT8742L'}
+GSTIN: ${cs.gstin || '06ABSCS4162M1ZO'} | PAN: ${cs.pan || 'AABCT8742L'}
 Auditor: ${cs.caFirmName || 'R. Agarwal & Associates'} (Mem: ${cs.caMembershipNo || 'FCA-084291'})
 
 Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
@@ -67,7 +67,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
   // 2. Email Share Action
   const handleShareEmail = () => {
     const subject = `Financial & GST Audit Statement [${timeRange}] - ${cs.businessName || 'The Shine Lounge'}`;
-    const body = `Dear ${cs.caName || 'Chartered Accountant'},%0D%0A%0D%0APlease find below the financial summary and GST tax audit statement for ${cs.businessName || 'The Shine Lounge'} for the period ${timeRange} (${cs.fiscalYear || 'FY 2025-26'}):%0D%0A%0D%0AGross Turnover: ${formatINR(summary.grossSales)}%0D%0ANet Taxable Base: ${formatINR(summary.netSales)}%0D%0ACentral GST (CGST): ${formatINR(summary.cgst)}%0D%0AState GST (SGST): ${formatINR(summary.sgst)}%0D%0ATotal GST Output Tax: ${formatINR(summary.totalGst)}%0D%0AOperating Deductions: ${formatINR(summary.totalDeductions)}%0D%0ANet Profit: ${formatINR(summary.netProfit)}%0D%0A%0D%0AGSTIN: ${cs.gstin || '27AABCT8742L1ZK'}%0D%0APAN: ${cs.pan || 'AABCT8742L'}%0D%0A%0D%0AKindly verify the schedule for GSTR-3B and GSTR-1 submission.%0D%0A%0D%0ARegards,%0D%0AFinance & Accounts Team%0D%0A${cs.businessName || 'The Shine Lounge'}`;
+    const body = `Dear ${cs.caName || 'Chartered Accountant'},%0D%0A%0D%0APlease find below the financial summary and GST tax audit statement for ${cs.businessName || 'The Shine Lounge'} for the period ${timeRange} (${cs.fiscalYear || 'FY 2025-26'}):%0D%0A%0D%0AGross Turnover: ${formatINR(summary.grossSales)}%0D%0ANet Taxable Base: ${formatINR(summary.netSales)}%0D%0ACentral GST (CGST): ${formatINR(summary.cgst)}%0D%0AState GST (SGST): ${formatINR(summary.sgst)}%0D%0ATotal GST Output Tax: ${formatINR(summary.totalGst)}%0D%0AOperating Deductions: ${formatINR(summary.totalDeductions)}%0D%0ANet Profit: ${formatINR(summary.netProfit)}%0D%0A%0D%0AGSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}%0D%0APAN: ${cs.pan || 'AABCT8742L'}%0D%0A%0D%0AKindly verify the schedule for GSTR-3B and GSTR-1 submission.%0D%0A%0D%0ARegards,%0D%0AFinance & Accounts Team%0D%0A${cs.businessName || 'The Shine Lounge'}`;
     window.location.href = `mailto:${cs.caEmail || 'tax.audit@theshinelounge.com'}?subject=${encodeURIComponent(subject)}&body=${body}`;
   };
 
@@ -123,9 +123,9 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
 
         <div class="header-box">
           <div>
-            <div class="logo-text">${cs.businessName || 'The Shine Lounge Pvt Ltd'}</div>
-            <div class="sub-text">Trade Name: ${cs.tradeName || 'The Shine Lounge'} • GSTIN: <strong>${cs.gstin || '27AABCT8742L1ZK'}</strong> • PAN: <strong>${cs.pan || 'AABCT8742L'}</strong></div>
-            <div class="sub-text">${cs.registeredAddress || 'Plot 42, Senapati Bapat Marg, Lower Parel, Mumbai 400013'}</div>
+            <div class="logo-text">${cs.businessName || 'Shine N Sip Solutions Private Limited'}</div>
+            <div class="sub-text">Trade Name: ${cs.tradeName || 'The Shine Lounge'} • GSTIN: <strong>${cs.gstin || '06ABSCS4162M1ZO'}</strong> • PAN: <strong>${cs.pan || 'AABCT8742L'}</strong></div>
+            <div class="sub-text">${cs.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'}</div>
           </div>
           <div class="meta-badge">
             <div>AUDIT STATEMENT: <strong>${timeRange}</strong></div>
@@ -225,22 +225,10 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
               <td>${formatINR(summary.operatingOverheads)}</td>
             </tr>
             <tr>
-              <td>Staff Performance Incentive Pool</td>
-              <td>${cs.staffIncentiveRate || 7.5}%</td>
-              <td>Net Taxable Base</td>
-              <td>${formatINR(summary.staffIncentives)}</td>
-            </tr>
-            <tr>
               <td>Payment Gateway & POS Surcharge</td>
               <td>${cs.gatewaySurchargeRate || 1.8}%</td>
               <td>Gross Turnover</td>
               <td>${formatINR(summary.gatewayFees)}</td>
-            </tr>
-            <tr>
-              <td>Equipment Depreciation & Capital Reserve</td>
-              <td>${cs.depreciationReserveRate || 2.2}%</td>
-              <td>Net Taxable Base</td>
-              <td>${formatINR(summary.depreciationReserve)}</td>
             </tr>
             <tr style="background:#f1f5f9;font-weight:800;">
               <td>Total Allowable Operational Expenditure</td>
@@ -259,7 +247,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
 
         <div class="section-heading">4. Statutory Declaration & Auditor Endorsement</div>
         <p style="font-size:10px;color:#475569;margin-bottom:15px;">
-          I/We confirm that the turnover and GST liability figures recorded above have been reconciled with the digital transaction register and counter POS logs of <strong>${cs.businessName || 'The Shine Lounge Pvt Ltd'}</strong> for the period ${timeRange}.
+          I/We confirm that the turnover and GST liability figures recorded above have been reconciled with the digital transaction register and counter POS logs of <strong>${cs.businessName || 'Shine N Sip Solutions Private Limited'}</strong> for the period ${timeRange}.
         </p>
 
         <div class="sign-box">
@@ -312,7 +300,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] font-semibold text-slate-300">
               <span className="bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700">
-                GSTIN: <strong className="text-white">{cs.gstin || '27AABCT8742L1ZK'}</strong>
+                GSTIN: <strong className="text-white">{cs.gstin || '06ABSCS4162M1ZO'}</strong>
               </span>
               <span className="bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700">
                 PAN: <strong className="text-white">{cs.pan || 'AABCT8742L'}</strong>
@@ -469,22 +457,10 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
                     <td className="py-2 px-3 text-right font-mono">{formatINR(summary.operatingOverheads)}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Staff Performance Incentive Pool</td>
-                    <td className="py-2 px-3">{cs.staffIncentiveRate || 7.5}%</td>
-                    <td className="py-2 px-3 text-gray-500">Net Taxable Base</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.staffIncentives)}</td>
-                  </tr>
-                  <tr>
                     <td className="py-2 px-3 font-bold text-gray-900">Payment Gateway & Surcharge Fees</td>
                     <td className="py-2 px-3">{cs.gatewaySurchargeRate || 1.8}%</td>
                     <td className="py-2 px-3 text-gray-500">Gross Turnover</td>
                     <td className="py-2 px-3 text-right font-mono">{formatINR(summary.gatewayFees)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Equipment Depreciation Reserve</td>
-                    <td className="py-2 px-3">{cs.depreciationReserveRate || 2.2}%</td>
-                    <td className="py-2 px-3 text-gray-500">Net Taxable Base</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.depreciationReserve)}</td>
                   </tr>
                   <tr className="bg-emerald-50/60 font-bold text-emerald-900">
                     <td className="py-2.5 px-3" colSpan="3">

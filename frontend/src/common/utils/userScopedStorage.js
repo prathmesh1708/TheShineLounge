@@ -46,6 +46,10 @@ export function scopedKey(baseKey, email) {
 }
 
 export function readScoped(baseKey, email, fallback = null) {
+  // Domain data is fetched strictly from MongoDB database API endpoints
+  if (USER_SCOPED_KEYS.includes(baseKey) || baseKey.startsWith('tsl_')) {
+    return fallback;
+  }
   try {
     const raw = localStorage.getItem(scopedKey(baseKey, email));
     if (raw === null) return fallback;
@@ -56,6 +60,10 @@ export function readScoped(baseKey, email, fallback = null) {
 }
 
 export function writeScoped(baseKey, email, value) {
+  // Domain data must not be written to localStorage
+  if (USER_SCOPED_KEYS.includes(baseKey) || baseKey.startsWith('tsl_')) {
+    return;
+  }
   try {
     localStorage.setItem(scopedKey(baseKey, email), JSON.stringify(value));
   } catch (e) {}
@@ -68,10 +76,12 @@ export function removeScoped(baseKey, email) {
 }
 
 /**
- * Every customer's copy of a key, for admin screens that need to see local
- * purchases made in this browser regardless of who was signed in.
+ * Every customer's copy of a key, for admin screens. Domain data is fetched from DB.
  */
 export function readAllScoped(baseKey) {
+  if (USER_SCOPED_KEYS.includes(baseKey) || baseKey.startsWith('tsl_')) {
+    return [];
+  }
   const results = [];
   try {
     const prefix = `${baseKey}${SEPARATOR}`;

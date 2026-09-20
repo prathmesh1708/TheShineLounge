@@ -18,15 +18,17 @@ const SERVICE_KEY_TO_DEPARTMENTS = {
   'salon': ['Salon', "Men's Salon"]
 };
 
-// Find the staff member an admin has put in charge of this service. Prefers an
-// explicit serviceKey on the staff record, then falls back to the department
-// dropdown value. Returns null when nobody is staffed on that service.
+// Find the staff member for this service.
+// RULE: If there is ONLY ONE active staff member registered in that service department,
+// auto-assign all bookings for that service to that sole staff member.
+// If there are MULTIPLE staff members (or 0), return null so the booking remains unassigned
+// until the Admin explicitly assigns it in the Admin Panel.
 const findStaffForService = async (serviceKey) => {
   if (!serviceKey) return null;
 
   const departments = SERVICE_KEY_TO_DEPARTMENTS[serviceKey] || [];
 
-  const staff = await User.findOne({
+  const activeStaffMembers = await User.find({
     role: 'staff',
     isActive: true,
     isDeleted: { $ne: true },
@@ -36,7 +38,12 @@ const findStaffForService = async (serviceKey) => {
     ]
   }).sort({ createdAt: 1 });
 
-  return staff || null;
+  // Only auto-assign if exactly 1 staff member exists in this department
+  if (activeStaffMembers.length === 1) {
+    return activeStaffMembers[0];
+  }
+
+  return null;
 };
 
 // Raise an in-app notification aimed at one specific staff member. Safe to call

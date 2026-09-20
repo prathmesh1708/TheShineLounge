@@ -21,14 +21,11 @@ apiClient.interceptors.request.use(
 
     let token = null;
     if (isPathAdmin) {
-      // Strictly use admin token on admin routes
-      token = adminToken || (genericToken !== customerToken && genericToken !== staffToken ? genericToken : null);
+      token = adminToken || genericToken;
     } else if (isPathStaff) {
-      // Prioritize staff token on staff routes, fallback to admin
       token = staffToken || adminToken || genericToken;
     } else {
-      // Customer routes
-      token = customerToken || (genericToken !== adminToken && genericToken !== staffToken ? genericToken : null);
+      token = customerToken || genericToken;
     }
 
     if (token) {
@@ -49,15 +46,16 @@ apiClient.interceptors.response.use(
       if (path.startsWith('/admin') && path !== '/admin/login') {
         localStorage.removeItem('tsl_admin_token');
         localStorage.removeItem('tsl_admin_user');
-        window.location.href = '/admin/login';
+        window.location.href = `/admin/login?redirect=${encodeURIComponent(path)}`;
       } else if (path.startsWith('/staff') && path !== '/staff/login') {
-        localStorage.removeItem('tsl_admin_token');
-        localStorage.removeItem('tsl_admin_user');
-        window.location.href = '/staff/login';
+        localStorage.removeItem('tsl_staff_token');
+        localStorage.removeItem('tsl_staff_user');
+        window.location.href = `/staff/login?redirect=${encodeURIComponent(path)}`;
       }
     }
     return Promise.reject(error);
   }
 );
 
+export { apiClient };
 export default apiClient;

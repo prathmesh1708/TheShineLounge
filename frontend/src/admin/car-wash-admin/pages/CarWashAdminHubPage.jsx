@@ -32,7 +32,8 @@ import {
 import {
   buildMembershipSchedule,
   formatShortDate,
-  isMembershipPackage
+  isMembershipPackage,
+  isWashRedemptionRecord
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import {
@@ -71,7 +72,10 @@ export default function CarWashAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
+    deleteBooking,
     addStaff,
+    updateStaff,
+    deleteStaff,
     toggleStaffStatus,
     addBanner,
     toggleBannerStatus,
@@ -82,125 +86,19 @@ export default function CarWashAdminHubPage() {
     showToast,
     addOfflineSale,
     memberships,
-    logMembershipWash
+    logMembershipWash,
+    deleteCustomerVehicle,
+    deregisteredPlates: contextDeregisteredPlates
   } = useAdmin();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
 
-  useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
-  }, [searchParams]);
-
-  const handleTabChange = (tabId) => {
-    setActiveTabState(tabId);
-    setSearchParams({ tab: tabId });
-  };
-
-  const serviceStats = buildServiceStats(serviceKey, services);
-  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
-
-  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey);
-  const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
-  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
-  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey);
-
-  // The fleet is whatever plates actually appear on this service's bookings.
-  //
-  // This block used to manufacture the list it was reporting: a plate was
-  // generated from the row index when a booking had none (MH-01-TS-###), one
-  // named customer's plate was rewritten to a fixed value, and an empty result
-  // was replaced wholesale by a fictional owner. Operators read this panel as
-  // the register of cars entitled to enter, so every one of those was a car
-  // that would be waved through on the strength of a display bug.
-  const registeredVehiclesMap = {};
-  serviceBookings.forEach((b) => {
-    const email = (b.customerEmail || '').toLowerCase().trim();
-    const name = b.customerName || 'Valued Customer';
-
-    const plate = (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim();
-    // A booking with no plate on it contributes no vehicle.
-    if (!plate) return;
-
-    const key = `${email || name}_${plate}`.toLowerCase();
-
-    const isWash = !isMembershipPackage(b.plan || b.packageName);
-
-    if (!registeredVehiclesMap[key]) {
-      registeredVehiclesMap[key] = {
-        plate,
-        model: b.vehicleType || b.vehicleModel || '',
-        ownerName: name,
-        ownerEmail: email,
-        ownerPhone: b.phone || b.mobile || '',
-        packageName: b.packageName || '',
-        totalWashes: isWash ? 1 : 0,
-        lastWashDate: isWash ? (b.date || '') : ''
-      };
-    } else {
-      if (isWash) {
-        registeredVehiclesMap[key].totalWashes += 1;
-        if (b.date && !b.date.includes('July 18')) {
-          registeredVehiclesMap[key].lastWashDate = b.date;
-        }
-      }
-    }
-  });
-
-  // Single source of truth: Ensure every Car Wash membership holder is present in the registered fleet
-  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  (memberships || []).forEach(m => {
-    if (!m.vehicleNo) return;
-    if (m.serviceKey && m.serviceKey !== serviceKey) return;
-    const cleanPlate = normalizePlate(m.vehicleNo);
-    const alreadyExists = Object.values(registeredVehiclesMap).some(v => normalizePlate(v.plate) === cleanPlate);
-    if (!alreadyExists) {
-      const key = `${m.email || m.customerName}_${cleanPlate}`.toLowerCase();
-      registeredVehiclesMap[key] = {
-        plate: m.vehicleNo,
-        model: m.vehicleModel || 'Car',
-        ownerName: m.customerName || 'Valued Member',
-        ownerEmail: m.email || '',
-        ownerPhone: m.phone || '',
-        packageName: m.planName || 'Monthly Membership',
-        totalWashes: m.washesUsed || 0,
-        lastWashDate: m.startDateLabel || m.startDate || '—'
-      };
-    }
-  });
-
-  // Attach live membership status and wash count if vehicle has an active plan
-  Object.values(registeredVehiclesMap).forEach((veh) => {
-    const cleanPlate = normalizePlate(veh.plate);
-    const activeMem = (memberships || []).find(m => {
-      if (cleanPlate && normalizePlate(m.vehicleNo) === cleanPlate) return true;
-      if (veh.ownerEmail && m.email && m.email.toLowerCase().trim() === veh.ownerEmail.toLowerCase().trim()) return true;
-      return false;
-    });
-    if (activeMem) {
-      veh.membershipName = activeMem.planName || veh.packageName;
-      veh.packageName = activeMem.planName || veh.packageName;
-      veh.membershipValidity = `${activeMem.startDateLabel || activeMem.startDate} → ${activeMem.expiryDateLabel || activeMem.expiryDate}`;
-      veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
-      veh.membershipStatus = activeMem.status;
-      veh.membershipId = activeMem.id;
-      veh.washesUsed = activeMem.washesUsed;
-      veh.maxWashes = activeMem.maxWashes;
-      // Single source of truth: synchronize totalWashes with washesUsed for active memberships
-      if (activeMem.washesUsed !== undefined) {
-        veh.totalWashes = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
-      }
-    }
-  });
-
-  const registeredVehiclesList = Object.values(registeredVehiclesMap);
-
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);
   const [dbStaff, setDbStaff] = useState([]);
+  const [dbVehicles, setDbVehicles] = useState([]);
   const [isLiveConnection, setIsLiveConnection] = useState(true);
 
   const fetchLiveService = async () => {
@@ -226,19 +124,194 @@ export default function CarWashAdminHubPage() {
 
   const fetchLiveStaff = async () => {
     try {
-      const res = await apiClient.get('/users/staff?serviceKey=car-wash');
-      if (res.data && res.data.staff) {
+      const res = await apiClient.get('/staff?serviceKey=car-wash');
+      if (res.data && Array.isArray(res.data.staff)) {
         setDbStaff(res.data.staff);
+        try {
+          localStorage.setItem('tsl_car_wash_staff', JSON.stringify(res.data.staff));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Could not fetch live staff list:', err.message);
+      try {
+        const cached = JSON.parse(localStorage.getItem('tsl_car_wash_staff') || '[]');
+        if (Array.isArray(cached) && cached.length > 0) {
+          setDbStaff(cached);
+        }
+      } catch (e) {}
+    }
+  };
+
+  const fetchLiveVehicles = async () => {
+    try {
+      const res = await apiClient.get('/vehicles');
+      if (res.data && Array.isArray(res.data.vehicles)) {
+        setDbVehicles(res.data.vehicles);
+      }
+    } catch (err) {
+      console.warn('Could not fetch live vehicles list:', err.message);
     }
   };
 
   useEffect(() => {
     fetchLiveService();
     fetchLiveStaff();
+    fetchLiveVehicles();
+  }, []);
+
+  useEffect(() => {
+    setActiveTabState(searchParams.get('tab') || 'overview');
+  }, [searchParams]);
+
+  const handleTabChange = (tabId) => {
+    setActiveTabState(tabId);
+    setSearchParams({ tab: tabId });
+  };
+
+  const serviceStats = buildServiceStats(serviceKey, services);
+  const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
+
+  // Wash redemptions are membership usage, not new bookings.
+  const serviceBookings = bookings.filter(b => b.serviceKey === serviceKey && !isWashRedemptionRecord(b));
+  const serviceStaff = (staffList || []).filter(s => {
+    if (!s) return false;
+    const isDept = s.serviceKey === serviceKey || s.department === 'Car Wash' || (!s.serviceKey && (!s.department || s.department === 'General'));
+    const isExcluded = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '');
+    return isDept && !isExcluded;
+  });
+
+  // Unified roster combining AdminContext staff and live MongoDB staff
+  const displayedStaffList = (() => {
+    const staffMap = new Map();
+    const combined = [...(serviceStaff || []), ...(dbStaff || [])];
+
+    combined.forEach(s => {
+      if (!s) return;
+      const isDept = s.serviceKey === serviceKey || s.department === 'Car Wash' || (!s.serviceKey && (!s.department || s.department === 'General'));
+      const isExcluded = /cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '');
+      if (!isDept || isExcluded) return;
+
+      const uniqueKey = (s.email || s.staffId || s._id || s.id || '').toLowerCase().trim();
+      if (!uniqueKey) return;
+
+      if (staffMap.has(uniqueKey)) {
+        staffMap.set(uniqueKey, { ...staffMap.get(uniqueKey), ...s });
+      } else {
+        staffMap.set(uniqueKey, s);
+      }
+    });
+
+    return Array.from(staffMap.values());
+  })();
+
+  const serviceBanners = banners.filter(b => b.serviceKey === serviceKey);
+  const serviceInventory = inventory.filter(i => i.serviceKey === serviceKey || i.department === 'Car Wash');
+
+  // The fleet reflects real vehicles registered from live bookings, membership passes, and customer profiles.
+  const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const deregisteredPlates = (() => {
+    try {
+      const local = JSON.parse(localStorage.getItem('tsl_deregistered_plates') || '[]');
+      return Array.from(new Set([...(contextDeregisteredPlates || []), ...local]));
+    } catch (e) {
+      return contextDeregisteredPlates || [];
+    }
+  })();
+
+  const findCustomerProfile = (plate, email, phone) => {
+    const cleanPlate = normalizePlate(plate);
+    const normEmail = (email || '').toLowerCase().trim();
+    const normPhone = (phone || '').replace(/[^0-9]/g, '');
+
+    return (customers || []).find(c => {
+      const vehList = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
+      if (cleanPlate && vehList.length > 0) {
+        if (vehList.some(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate)) return true;
+      }
+      if (normEmail && (c.email || '').toLowerCase().trim() === normEmail) return true;
+      if (normPhone && (c.mobile || c.phone || '').replace(/[^0-9]/g, '') === normPhone) return true;
+      return false;
+    });
+  };
+
+  const registeredVehiclesMap = {};
+
+  (dbVehicles || []).forEach(v => {
+    if (!v) return;
+    const plate = String(v.plateNumber || '').toUpperCase().trim();
+    if (!plate) return;
+
+    const cleanPlate = normalizePlate(plate);
+    if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
+
+    const matchedCust = findCustomerProfile(plate, v.ownerEmail, v.ownerPhone);
+    const modelName = [v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle';
+
+    registeredVehiclesMap[cleanPlate] = {
+      _id: v._id,
+      vehicleId: v.vehicleId,
+      plate,
+      model: modelName,
+      customerId: v.customerId || matchedCust?._id || matchedCust?.id || null,
+      ownerName: v.ownerName || matchedCust?.fullName || matchedCust?.name || 'Customer',
+      ownerEmail: (v.ownerEmail || matchedCust?.email || '').toLowerCase().trim(),
+      ownerPhone: v.ownerPhone || matchedCust?.mobile || matchedCust?.phone || '',
+      packageName: 'Registered Account',
+      totalWashes: 0,
+      lastWashDate: v.updatedAt ? new Date(v.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+    };
+  });
+
+  // Attach live membership status and wash count if vehicle has an active plan
+  Object.values(registeredVehiclesMap).forEach((veh) => {
+    const cleanPlate = normalizePlate(veh.plate);
+    const activeMem = (memberships || []).find(m => {
+      if (cleanPlate && normalizePlate(m.vehicleNo) === cleanPlate) return true;
+      if (veh.ownerEmail && m.email && m.email.toLowerCase().trim() === veh.ownerEmail.toLowerCase().trim()) return true;
+      return false;
+    });
+    if (activeMem) {
+      veh.membershipName = activeMem.planName || activeMem.packageName || veh.packageName;
+      veh.packageName = activeMem.planName || activeMem.packageName || veh.packageName;
+      veh.membershipValidity = `${activeMem.startDateLabel || activeMem.startDate} → ${activeMem.expiryDateLabel || activeMem.expiryDate}`;
+      veh.membershipExpiry = activeMem.expiryDateLabel || activeMem.expiryDate;
+      veh.membershipStatus = activeMem.status;
+      veh.membershipId = activeMem.id || activeMem._id;
+      veh.maxWashes = activeMem.maxWashes;
+      const synced = Math.max(Number(veh.totalWashes) || 0, Number(activeMem.washesUsed) || 0);
+      veh.totalWashes = synced;
+      veh.washesUsed = synced;
+    }
+  });
+
+  const registeredVehiclesList = Object.values(registeredVehiclesMap).sort((a, b) => {
+    const aHasMem = Boolean(a.membershipName || a.membershipStatus === 'Active');
+    const bHasMem = Boolean(b.membershipName || b.membershipStatus === 'Active');
+    if (aHasMem && !bHasMem) return -1;
+    if (!aHasMem && bHasMem) return 1;
+
+    const aTime = a.lastWashDate && a.lastWashDate !== '—' ? new Date(a.lastWashDate).getTime() : 0;
+    const bTime = b.lastWashDate && b.lastWashDate !== '—' ? new Date(b.lastWashDate).getTime() : 0;
+    if (aTime !== bTime && !isNaN(aTime) && !isNaN(bTime)) {
+      return bTime - aTime;
+    }
+
+    return (a.plate || '').localeCompare(b.plate || '');
+  });
+
+  // Effects for live data sync
+
+  useEffect(() => {
+    fetchLiveService();
+    fetchLiveStaff();
     fetchMembershipSubscribers();
+
+    const handleStaffUpdated = () => fetchLiveStaff();
+    window.addEventListener('tsl_staff_updated', handleStaffUpdated);
+    return () => {
+      window.removeEventListener('tsl_staff_updated', handleStaffUpdated);
+    };
   }, []);
 
   // Helper to reliably resolve MongoDB target _id
@@ -430,68 +503,32 @@ export default function CarWashAdminHubPage() {
         );
 
         const mappedSubs = memberBookings.map(b => {
-          const userMobile = b.mobile || b.phone || (customers.find(c => (c.email || '').toLowerCase() === (b.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321';
+          const userMobile = b.mobile || b.phone || (customers.find(c => (c.email || '').toLowerCase() === (b.customerEmail || '').toLowerCase())?.mobile) || '';
           return {
             _id: b._id,
             id: b.bookingId,
             bookingId: b.bookingId,
-            customerName: b.customerName || 'prabhat',
-            customerEmail: (b.customerEmail || 'prabhat@gmail.com').toLowerCase().trim(),
+            customerName: b.customerName || 'Customer',
+            customerEmail: (b.customerEmail || '').toLowerCase().trim(),
             mobile: userMobile,
             phone: userMobile,
             packageName: b.packageName,
             serviceKey: b.serviceKey || 'car-wash',
             serviceName: b.serviceName || 'Car Wash',
-            vehicleNo: b.vehicleNo || 'MP09WC4444',
-            vehicleType: b.vehicleType || 'Hyundai Elite i20',
+            vehicleNo: b.vehicleNo || '',
+            vehicleType: b.vehicleType || '',
             price: b.price,
-            // Purchase date — the pass period itself is derived from it, since a
-            // pass bought during a running one starts when that one expires.
             date: b.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
             createdAt: b.createdAt,
             status: b.status || 'Active'
           };
         });
 
-        if (mappedSubs.length > 0) {
-          setMembershipSubscribers(mergeLocalPasses(mappedSubs));
-        } else {
-          setMembershipSubscribers(mergeLocalPasses([
-            {
-              _id: 'sub-1',
-              id: 'B-2026-9028',
-              customerName: 'prabhat',
-              customerEmail: 'prabhat@gmail.com',
-              mobile: '+91 98200 54321',
-              phone: '+91 98200 54321',
-              packageName: 'Monthly Membership',
-              vehicleNo: 'MP09WC4444',
-              vehicleType: 'Hyundai Elite i20',
-              price: 2499,
-              date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-              status: 'Active'
-            }
-          ]));
-        }
+        setMembershipSubscribers(mergeLocalPasses(mappedSubs));
       }
     } catch (err) {
       console.warn('Could not fetch membership subscribers:', err.message);
-      setMembershipSubscribers(mergeLocalPasses([
-        {
-          _id: 'sub-1',
-          id: 'B-2026-9028',
-          customerName: 'prabhat',
-          customerEmail: 'prabhat@gmail.com',
-          mobile: '+91 98200 54321',
-          phone: '+91 98200 54321',
-          packageName: 'Monthly Membership',
-          vehicleNo: 'MP09WC4444',
-          vehicleType: 'Hyundai Elite i20',
-          price: 2499,
-          date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-          status: 'Active'
-        }
-      ]));
+      setMembershipSubscribers(mergeLocalPasses([]));
     }
   };
 
@@ -633,6 +670,8 @@ export default function CarWashAdminHubPage() {
   // Add Staff Modal State
   const [addStaffModal, setAddStaffModal] = useState(false);
   const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+  const [vehicleToDelete, setVehicleToDelete] = useState(null);
+  const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
   const [isOfflineSaleModalOpen, setIsOfflineSaleModalOpen] = useState(false);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
 
@@ -663,6 +702,27 @@ export default function CarWashAdminHubPage() {
           history: [res, ...(prev.history || [])]
         };
       });
+    }
+  };
+
+  const handleConfirmDeleteVehicle = async () => {
+    if (!vehicleToDelete) return;
+    setIsDeletingVehicle(true);
+    try {
+      const cleanPlate = normalizePlate(vehicleToDelete.plate);
+      await apiClient.delete(`/vehicles/${cleanPlate}`);
+      const cust = findCustomerProfile(vehicleToDelete.plate, vehicleToDelete.ownerEmail, vehicleToDelete.ownerPhone);
+      const custId = vehicleToDelete.customerId || cust?._id || cust?.id || 'any';
+      await deleteCustomerVehicle(custId, vehicleToDelete.plate);
+      await fetchLiveVehicles();
+      showToast(`Vehicle ${vehicleToDelete.plate} deregistered from database`);
+      setSelectedVehicleDetail(null);
+      setVehicleToDelete(null);
+    } catch (err) {
+      console.error('Error deleting vehicle:', err);
+      showToast('Could not delete vehicle. Please try again.', 'error');
+    } finally {
+      setIsDeletingVehicle(false);
     }
   };
   const [staffForm, setStaffForm] = useState({
@@ -705,6 +765,40 @@ export default function CarWashAdminHubPage() {
     actionLink: '/car-wash',
     status: 'active'
   });
+
+  // Inventory Stock Item States
+  const [addInventoryModal, setAddInventoryModal] = useState(false);
+  const [adjustStockModal, setAdjustStockModal] = useState(false);
+  const [selectedItemForStock, setSelectedItemForStock] = useState(null);
+  const [stockAdjustQty, setStockAdjustQty] = useState(5);
+  const [newInventoryForm, setNewInventoryForm] = useState({
+    name: '',
+    category: 'Chemicals',
+    purchasePrice: 1200,
+    currentStock: 10,
+    minStock: 5,
+    unit: 'Units'
+  });
+
+  const handleCreateInventoryItem = (e) => {
+    e.preventDefault();
+    if (!newInventoryForm.name) return;
+    addInventoryItem({
+      ...newInventoryForm,
+      serviceKey: 'car-wash',
+      department: 'Car Wash'
+    });
+    setAddInventoryModal(false);
+    setNewInventoryForm({
+      name: '',
+      category: 'Chemicals',
+      purchasePrice: 1200,
+      currentStock: 10,
+      minStock: 5,
+      unit: 'Units'
+    });
+    if (showToast) showToast('Inventory stock item registered successfully!', 'success');
+  };
 
   const handleGeneratePassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
@@ -783,26 +877,31 @@ export default function CarWashAdminHubPage() {
     };
 
     try {
-      const res = await apiClient.post('/users/staff', newStaffData);
+      const res = await apiClient.post('/staff', newStaffData);
 
       if (res.data && res.data.success) {
-        showToast?.(`✅ Staff member created successfully! (${staffForm.email})`);
+        showToast?.(`✅ Staff member onboarded successfully! (${staffForm.email})`);
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
-        setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
+        setDbStaff(prev => {
+          const updated = [savedStaff, ...prev.filter(s => s.email?.toLowerCase() !== savedStaff.email?.toLowerCase())];
+          try { localStorage.setItem('tsl_car_wash_staff', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Car Wash roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: newStaffData }));
+    } catch (e) {}
+
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',
@@ -852,32 +951,34 @@ export default function CarWashAdminHubPage() {
     const sId = selectedStaff?._id || selectedStaff?.id;
     if (!sId) return;
 
-    try {
-      const payload = {
-        fullName: editStaffForm.fullName,
-        email: editStaffForm.email,
-        mobile: editStaffForm.mobile,
-        staffRole: editStaffForm.staffRole,
-        salary: editStaffForm.salary,
-        leaveBalance: Number(editStaffForm.leaveBalance),
-        photo: editStaffForm.photo,
-        permissions: editStaffForm.permissions
-      };
-      if (editStaffForm.password) {
-        payload.password = editStaffForm.password;
-      }
+    const payload = {
+      fullName: editStaffForm.fullName,
+      email: editStaffForm.email,
+      mobile: editStaffForm.mobile,
+      staffRole: editStaffForm.staffRole,
+      salary: editStaffForm.salary,
+      leaveBalance: Number(editStaffForm.leaveBalance),
+      photo: editStaffForm.photo,
+      permissions: editStaffForm.permissions
+    };
+    if (editStaffForm.password) {
+      payload.password = editStaffForm.password;
+    }
 
-      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+    try {
+      const res = await apiClient.put(`/staff/${sId}`, payload);
       if (res.data && res.data.success) {
-        alert('✅ Staff member updated successfully!');
-        fetchLiveStaff();
-        setEditStaffModal(false);
-      } else {
-        alert('Error updating staff: ' + (res.data?.message || 'Server error'));
+        showToast?.('✅ Staff member updated successfully!');
       }
     } catch (err) {
-      alert('Error updating staff: ' + (err.response?.data?.message || err.message));
+      console.warn('Staff update API error:', err);
     }
+
+    setDbStaff(prev => prev.map(st => (st._id === sId || st.id === sId || (st.email && st.email.toLowerCase() === editStaffForm.email.toLowerCase())) ? { ...st, ...payload } : st));
+    updateStaff?.(sId, payload);
+    try { window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: payload })); } catch (e) {}
+    fetchLiveStaff();
+    setEditStaffModal(false);
   };
 
   const handleDeleteStaff = async () => {
@@ -888,17 +989,17 @@ export default function CarWashAdminHubPage() {
     if (!confirmDel) return;
 
     try {
-      const res = await apiClient.delete(`/users/staff/${sId}`);
-      if (res.data && res.data.success) {
-        alert('✅ Staff member deleted successfully!');
-        fetchLiveStaff();
-        setEditStaffModal(false);
-      } else {
-        alert('Error deleting staff: ' + (res.data?.message || 'Server error'));
-      }
+      await apiClient.delete(`/staff/${sId}`);
+      showToast?.('✅ Staff member deleted successfully!', 'error');
     } catch (err) {
-      alert('Error deleting staff: ' + (err.response?.data?.message || err.message));
+      console.warn('Staff delete API error:', err);
     }
+
+    setDbStaff(prev => prev.filter(st => st._id !== sId && st.id !== sId && st.email?.toLowerCase() !== editStaffForm.email?.toLowerCase()));
+    deleteStaff?.(sId, editStaffForm.email);
+    try { window.dispatchEvent(new CustomEvent('tsl_staff_updated', { detail: { id: sId, email: editStaffForm.email } })); } catch (e) {}
+    fetchLiveStaff();
+    setEditStaffModal(false);
   };
 
   // Banner CRUD Handlers
@@ -1308,7 +1409,7 @@ export default function CarWashAdminHubPage() {
           { id: 'packages', label: 'Packages & Pricing', icon: Wrench },
           { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
           { id: 'vehicles', label: `Registered Vehicles (${registeredVehiclesList.length})`, icon: Shield },
-          { id: 'staff', label: `Department Staff (${dbStaff.length || serviceStaff.length})`, icon: Users },
+          { id: 'staff', label: `Department Staff (${displayedStaffList.length})`, icon: Users },
           { id: 'marketing', label: `Promos & Media (${serviceBanners.length})`, icon: ImageIcon },
           { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
         ].map((tab) => {
@@ -1316,7 +1417,7 @@ export default function CarWashAdminHubPage() {
           const isActive = activeTab === tab.id;
           return (
             <button
-              key={tab.id}
+              key={`tab-btn-${tab.id}`}
               onClick={() => handleTabChange(tab.id)}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 isActive ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100'
@@ -1458,8 +1559,8 @@ export default function CarWashAdminHubPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Pricing Cards */}
-            {activePricing.map((p) => (
-              <div key={p._id || p.id || p.title} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
+            {activePricing.map((p, pIdx) => (
+              <div key={`pricing-card-${p._id || p.id || p.title || pIdx}`} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
                 <div className="space-y-2">
                   <div className="flex justify-between items-start">
                     <h4 className="text-lg font-black text-gray-900">{p.title || p.name}</h4>
@@ -1491,12 +1592,12 @@ export default function CarWashAdminHubPage() {
             ))}
 
             {/* Membership Cards */}
-            {activeMemberships.map((m) => {
+            {activeMemberships.map((m, mIdx) => {
               const planSubs = subscribersForPlan(m);
               const subCount = planSubs.filter(s => s.isActive).length;
               const queuedCount = planSubs.filter(s => s.isQueued).length;
               return (
-                <div key={m._id || m.id || m.name} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
+                <div key={`membership-card-${m._id || m.id || m.name || mIdx}`} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between hover:border-amber-300 transition-all">
                   <div className="space-y-2">
                     <div className="flex justify-between items-start flex-wrap gap-1">
                       <h4 className="text-lg font-black text-gray-900">{m.name}</h4>
@@ -1575,7 +1676,7 @@ export default function CarWashAdminHubPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
-              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({(dbStaff.length > 0 ? dbStaff : serviceStaff).filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || '')).length})</h3>
+              <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({displayedStaffList.length})</h3>
               <p className="text-xs text-gray-500">Onboard staff members, generate email login credentials & assign module access</p>
             </div>
             <button
@@ -1587,11 +1688,16 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(dbStaff.length > 0 ? dbStaff : serviceStaff)
-              .filter(s => (s.serviceKey === 'car-wash' || s.department === 'Car Wash') && !/cafe|barista|chef|pastry|groomer|salon|barber/i.test(s.staffRole || s.role || ''))
-              .map((stf) => (
+            {displayedStaffList.length === 0 ? (
+              <div className="col-span-full text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl space-y-2">
+                <Users className="w-8 h-8 text-gray-300 mx-auto" />
+                <p className="font-bold text-gray-700">No Car Wash Staff Members Found</p>
+                <p className="text-xs text-gray-400">Click "Onboard New Staff Member" above to add staff credentials to this department.</p>
+              </div>
+            ) : (
+              displayedStaffList.map((stf, sIdx) => (
                 <div 
-                  key={stf._id || stf.id} 
+                  key={`stf-${stf._id || stf.id || stf.email || sIdx}`} 
                   onClick={() => handleOpenEditStaff(stf)}
                   className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-amber-400 cursor-pointer hover:shadow-md transition-all"
                 >
@@ -1610,7 +1716,7 @@ export default function CarWashAdminHubPage() {
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
-                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'rohan@theshinelounge.com'}
+                        <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
                       </p>
                     </div>
                   </div>
@@ -1619,26 +1725,27 @@ export default function CarWashAdminHubPage() {
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MOBILE NO</span>
                       <span className="font-bold text-gray-800 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '+91 98200 11223'}
+                        <Phone className="w-3 h-3 text-gray-400" /> {stf.mobile || '—'}
                       </span>
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '₹35,000 / mo'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
                     </div>
                   </div>
 
                   {stf.permissions && stf.permissions.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {stf.permissions.map(p => (
-                        <span key={p} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
+                      {stf.permissions.map((p, pIdx) => (
+                        <span key={`stf-perm-${stf._id || stf.id || stf.email || sIdx}-${p}-${pIdx}`} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold uppercase">
                           {p}
                         </span>
                       ))}
                     </div>
                   )}
                 </div>
-              ))}
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1681,6 +1788,23 @@ export default function CarWashAdminHubPage() {
                   </select>
                 );
               }
+            },
+            {
+              header: 'Actions',
+              cell: (r) => (
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete booking ${r.id}?`)) {
+                      deleteBooking(r);
+                    }
+                  }}
+                  className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                  title="Delete Booking"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Delete</span>
+                </button>
+              )
             }
           ]}
           data={serviceBookings}
@@ -1710,70 +1834,91 @@ export default function CarWashAdminHubPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {registeredVehiclesList.map((v, i) => (
-              <div
-                key={v.plate || i}
-                className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
-                onClick={() => {
-                  const plate = (v.plate || '').toUpperCase().trim();
-                  const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
-                  setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
-                }}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
-                      🚗
+          {registeredVehiclesList.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {registeredVehiclesList.map((v, i) => (
+                <div
+                  key={`veh-card-${v.plate || v.id || i}`}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3 hover:border-amber-300 transition-all cursor-pointer hover:shadow-md"
+                  onClick={() => {
+                    const plate = (v.plate || '').toUpperCase().trim();
+                    const vehicleBookings = serviceBookings.filter(b => (b.vehicleNo || b.vehiclePlate || '').toUpperCase().trim() === plate);
+                    setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
+                        🚗
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-gray-900">{v.model || 'Vehicle'}</h4>
+                        <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
-                      <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                        {Math.max(Number(v.totalWashes) || 0, Number(v.washesUsed) || 0)} {Math.max(Number(v.totalWashes) || 0, Number(v.washesUsed) || 0) === 1 ? 'Wash' : 'Washes'} Done
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWashDone(v);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
+                        title="Quick mark wash done"
+                      >
+                        <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVehicleToDelete(v);
+                        }}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all active:scale-95"
+                        title="Delete vehicle from fleet"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
-                      {v.washesUsed !== undefined ? v.washesUsed : v.totalWashes} {((v.washesUsed !== undefined ? v.washesUsed : v.totalWashes) === 1) ? 'Wash' : 'Washes'} Done
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleWashDone(v);
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs active:scale-95 transition-all flex items-center gap-1"
-                      title="Quick mark wash done"
-                    >
-                      <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
-                    </button>
-                  </div>
-                </div>
 
-                <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Registered Owner:</span>
-                    <strong className="text-gray-800">{v.ownerName}</strong>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Active Membership:</span>
-                    <span className="text-amber-700 font-bold">{v.packageName}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Contact:</span>
-                    <span className="text-gray-700 font-semibold">{v.ownerPhone}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Email:</span>
-                    <span className="text-gray-600 truncate max-w-[180px]">{v.ownerEmail}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-gray-400">Last Service Date:</span>
-                    <span className="text-amber-700 font-bold">{v.lastWashDate}</span>
-                  </p>
+                  <div className="pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Registered Owner:</span>
+                      <strong className="text-gray-800">{v.ownerName || '—'}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">{v.membershipName ? 'Active Membership:' : 'Package:'}</span>
+                      <span className="text-amber-700 font-bold">{v.membershipName || v.packageName || 'Standard Wash'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Contact:</span>
+                      <span className="text-gray-700 font-semibold">{v.ownerPhone || '—'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Email:</span>
+                      <span className="text-gray-600 truncate max-w-[180px]">{v.ownerEmail || '—'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-gray-400">Last Service Date:</span>
+                      <span className="text-amber-700 font-bold">{v.lastWashDate || '—'}</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-xs">
+              <div className="w-16 h-16 mx-auto mb-3 bg-amber-50 rounded-2xl flex items-center justify-center text-3xl">🚗</div>
+              <h4 className="text-sm font-bold text-gray-900 mb-1">No Registered Vehicles Found</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                Customer vehicles will automatically appear here when bookings or membership passes are created.
+              </p>
+            </div>
+          )}
 
           {/* Vehicle Detail Modal */}
           <RegisteredVehicleDetailModal
@@ -1782,6 +1927,7 @@ export default function CarWashAdminHubPage() {
             vehicle={selectedVehicleDetail?.vehicle}
             bookingHistory={selectedVehicleDetail?.history || []}
             onWashDone={handleWashDone}
+            onDeleteVehicle={(veh) => setVehicleToDelete(veh)}
             onNewOfflineSale={() => {
               setSelectedVehicleDetail(null);
               setIsOfflineSaleModalOpen(true);
@@ -1822,6 +1968,82 @@ export default function CarWashAdminHubPage() {
             onClose={() => setSelectedInvoiceSale(null)}
             sale={selectedInvoiceSale}
           />
+
+          {/* Modal: Delete Registered Vehicle Confirmation */}
+          <AdminModal
+            isOpen={!!vehicleToDelete}
+            onClose={() => !isDeletingVehicle && setVehicleToDelete(null)}
+            title="Remove Registered Vehicle"
+            subtitle="Deregister this vehicle from customer records and active fleet"
+          >
+            {vehicleToDelete && (
+              <div className="space-y-4 text-xs">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 font-bold text-base">
+                    ⚠️
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-red-900 text-sm">Are you sure you want to delete this vehicle?</h4>
+                    <p className="text-red-700 leading-relaxed text-xs">
+                      This will remove the vehicle from the registered fleet and customer profile. Past booking transactions and financial reports remain securely archived.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Vehicle Model:</span>
+                    <span className="font-extrabold text-gray-900">{vehicleToDelete.model || 'Vehicle'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">License Plate:</span>
+                    <span className="font-black text-amber-600 px-2 py-0.5 bg-amber-50 rounded border border-amber-200 tracking-wider">
+                      {vehicleToDelete.plate}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-200/60">
+                    <span className="text-gray-500 font-medium">Registered Owner:</span>
+                    <span className="font-bold text-gray-800">{vehicleToDelete.ownerName || '—'}</span>
+                  </div>
+                  {vehicleToDelete.ownerPhone && (
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500 font-medium">Contact Number:</span>
+                      <span className="text-gray-700 font-semibold">{vehicleToDelete.ownerPhone}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={() => setVehicleToDelete(null)}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 font-bold transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingVehicle}
+                    onClick={handleConfirmDeleteVehicle}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {isDeletingVehicle ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Confirm Delete Vehicle
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </AdminModal>
         </div>
       )}
 
@@ -1948,8 +2170,8 @@ export default function CarWashAdminHubPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {serviceBanners.map((ban) => (
-              <div key={ban.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+            {serviceBanners.map((ban, bIdx) => (
+              <div key={`ban-${ban._id || ban.id || ban.title || bIdx}`} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
                 <div className="relative">
                   <img src={ban.imageUrl || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=600&q=80'} className="w-full h-36 object-cover" alt="Promo Banner" />
                   <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase shadow-xs ${ban.status !== 'inactive' ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'}`}>
@@ -2000,16 +2222,226 @@ export default function CarWashAdminHubPage() {
       )}
 
       {activeTab === 'inventory' && (
-        <DataTable
-          columns={[
-            { header: 'Product Item', accessorKey: 'name' },
-            { header: 'Category', accessorKey: 'category' },
-            { header: 'Stock Level', accessorKey: 'currentStock' },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceInventory}
-        />
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
+            <div>
+              <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                📦 Car Wash Supplies & Inventory ({serviceInventory.length})
+              </h3>
+              <p className="text-xs text-gray-500">Live inventory of shampoos, waxes, detailing tools, and microfiber supplies</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddInventoryModal(true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shadow-sm transition-all hover:shadow-md bg-amber-600 hover:bg-amber-700"
+            >
+              <Plus className="w-4 h-4" /> Add Stock Item
+            </button>
+          </div>
+
+          <DataTable
+            columns={[
+              {
+                header: 'Product Item',
+                accessorKey: 'name',
+                cell: (row) => (
+                  <div>
+                    <p className="font-bold text-gray-900">{row.name}</p>
+                    <p className="text-[10px] text-gray-400 font-medium">{row.id || 'INV'} · {row.category || 'Supplies'}</p>
+                  </div>
+                )
+              },
+              {
+                header: 'Category',
+                accessorKey: 'category',
+                cell: (row) => <span className="font-semibold text-gray-700">{row.category}</span>
+              },
+              {
+                header: 'Stock Level',
+                accessorKey: 'currentStock',
+                cell: (row) => (
+                  <div className="flex items-center gap-2">
+                    <span className={`font-black text-sm ${row.currentStock <= (row.minStock || 5) ? 'text-rose-600' : 'text-gray-900'}`}>
+                      {row.currentStock} {row.unit || 'Units'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-medium">(Min: {row.minStock || 5})</span>
+                  </div>
+                )
+              },
+              {
+                header: 'Purchase Price',
+                accessorKey: 'purchasePrice',
+                cell: (row) => <span className="font-bold text-gray-900">₹{row.purchasePrice || 0}</span>
+              },
+              {
+                header: 'Status',
+                accessorKey: 'status',
+                cell: (row) => (
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                    row.currentStock <= (row.minStock || 5) ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {row.currentStock <= (row.minStock || 5) ? 'Low Stock' : 'In Stock'}
+                  </span>
+                )
+              },
+              {
+                header: 'Actions',
+                cell: (row) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItemForStock(row);
+                      setStockAdjustQty(5);
+                      setAdjustStockModal(true);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs bg-[#e07b2a] hover:bg-[#c8691e]"
+                  >
+                    Adjust Stock
+                  </button>
+                )
+              }
+            ]}
+            data={serviceInventory}
+            searchPlaceholder="Search inventory supplies..."
+          />
+        </div>
       )}
+
+      {/* Modal: Add Stock Item */}
+      <AdminModal isOpen={addInventoryModal} onClose={() => setAddInventoryModal(false)} title="Add Car Wash Stock Item">
+        <form onSubmit={handleCreateInventoryItem} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Product / Item Name *</label>
+            <input
+              type="text"
+              required
+              value={newInventoryForm.name}
+              onChange={e => setNewInventoryForm(p => ({ ...p, name: e.target.value }))}
+              placeholder="e.g. pH Neutral Snow Foam Shampoo"
+              className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Category</label>
+              <select
+                value={newInventoryForm.category}
+                onChange={e => setNewInventoryForm(p => ({ ...p, category: e.target.value }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="Chemicals">Chemicals & Soaps</option>
+                <option value="Towels">Towels & Microfibers</option>
+                <option value="Tools">Equipment & Tools</option>
+                <option value="Accessories">Accessories</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Unit Type</label>
+              <select
+                value={newInventoryForm.unit}
+                onChange={e => setNewInventoryForm(p => ({ ...p, unit: e.target.value }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="Units">Units</option>
+                <option value="Cans">Cans</option>
+                <option value="Bottles">Bottles</option>
+                <option value="Litres">Litres</option>
+                <option value="Packs">Packs</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Purchase Price (₹)</label>
+              <input
+                type="number"
+                min="0"
+                value={newInventoryForm.purchasePrice}
+                onChange={e => setNewInventoryForm(p => ({ ...p, purchasePrice: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Current Stock *</label>
+              <input
+                type="number"
+                min="0"
+                required
+                value={newInventoryForm.currentStock}
+                onChange={e => setNewInventoryForm(p => ({ ...p, currentStock: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Min Stock Alert</label>
+              <input
+                type="number"
+                min="1"
+                value={newInventoryForm.minStock}
+                onChange={e => setNewInventoryForm(p => ({ ...p, minStock: Number(e.target.value) }))}
+                className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <button
+              type="button"
+              onClick={() => setAddInventoryModal(false)}
+              className="px-4 py-2 border rounded-xl font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl font-bold text-white bg-amber-600 hover:bg-amber-700"
+            >
+              Add Item
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* Modal: Adjust Stock Level */}
+      <AdminModal isOpen={adjustStockModal} onClose={() => setAdjustStockModal(false)} title={`Adjust Stock: ${selectedItemForStock?.name || 'Item'}`}>
+        <div className="space-y-4 text-xs">
+          <p className="text-gray-600">
+            Current Stock: <span className="font-bold text-gray-900">{selectedItemForStock?.currentStock} {selectedItemForStock?.unit || 'Units'}</span>
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedItemForStock) {
+                  updateStock(selectedItemForStock.id, -Math.abs(stockAdjustQty));
+                  setAdjustStockModal(false);
+                }
+              }}
+              className="flex-1 py-2 rounded-xl font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100"
+            >
+              - Decrease ({stockAdjustQty})
+            </button>
+            <input
+              type="number"
+              min="1"
+              value={stockAdjustQty}
+              onChange={e => setStockAdjustQty(Number(e.target.value))}
+              className="w-20 p-2 text-center border rounded-xl font-black text-gray-800"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedItemForStock) {
+                  updateStock(selectedItemForStock.id, Math.abs(stockAdjustQty));
+                  setAdjustStockModal(false);
+                }
+              }}
+              className="flex-1 py-2 rounded-xl font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
+            >
+              + Increase ({stockAdjustQty})
+            </button>
+          </div>
+        </div>
+      </AdminModal>
 
       {/* Modal: Edit Package Title, Price & Details */}
       <AdminModal isOpen={editingPriceModal} onClose={() => setEditingPriceModal(false)} title={`Edit ${editingItem?.title || 'Package'}`}>
@@ -2326,7 +2758,7 @@ export default function CarWashAdminHubPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Vally Guest'}</h5>
+                        <h5 className="font-extrabold text-sm text-gray-900">{sub.customerName || 'Customer'}</h5>
                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
                           sub.isQueued ? 'bg-blue-100 text-blue-800' :
                           sub.isExpired ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
@@ -2336,11 +2768,11 @@ export default function CarWashAdminHubPage() {
                       </div>
                       <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
                         <span className="flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || 'customer@shinelounge.com'}
+                          <Mail className="w-3 h-3 text-gray-400" /> {sub.customerEmail || '—'}
                         </span>
                         <span>•</span>
                         <span className="flex items-center gap-1 font-semibold text-gray-700">
-                          <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '+91 98200 54321'}
+                          <Phone className="w-3 h-3 text-gray-400" /> {sub.phone || (customers.find(c => (c.email || '').toLowerCase() === (sub.customerEmail || '').toLowerCase())?.mobile) || '—'}
                         </span>
                       </p>
                     </div>
@@ -2348,7 +2780,7 @@ export default function CarWashAdminHubPage() {
 
                   <div className="text-right">
                     <span className="text-sm font-black text-amber-600 block">₹{Number(sub.price || 0).toLocaleString()}</span>
-                    <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || 'B-9028'}</span>
+                    <span className="text-[9px] text-gray-400 font-semibold block">ID: {sub.bookingId || sub.id || '—'}</span>
                   </div>
                 </div>
 
@@ -2362,11 +2794,17 @@ export default function CarWashAdminHubPage() {
                   <div className="p-2 bg-gray-50 rounded-xl">
                     <span className="text-gray-400 font-semibold block text-[9px]">VEHICLE INFO</span>
                     <span className="font-bold text-gray-800 truncate block">
-                      🚗 {sub.vehicleType || 'Tesla Model 3'}
+                      🚗 {sub.vehicleType || sub.vehicleModel || 'Vehicle'}
                     </span>
-                    <span className="text-[10px] text-amber-700 font-black block">
-                      {sub.vehicleNo || 'MH-01-AB-1234'}
-                    </span>
+                    {sub.vehicleNo ? (
+                      <span className="text-[10px] text-amber-700 font-black block font-mono">
+                        {sub.vehicleNo}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-semibold block">
+                        No Plate Registered
+                      </span>
+                    )}
                   </div>
 
                   <div className="p-2 bg-gray-50 rounded-xl">
@@ -2457,7 +2895,7 @@ export default function CarWashAdminHubPage() {
                 required
                 value={staffForm.email}
                 onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
-                placeholder="rohan@theshinelounge.com"
+                placeholder="staff@example.com"
                 className="w-full p-2.5 border rounded-xl font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -2491,7 +2929,7 @@ export default function CarWashAdminHubPage() {
                 type="text"
                 value={staffForm.mobile}
                 onChange={e => setStaffForm({ ...staffForm, mobile: e.target.value })}
-                placeholder="+91 98200 11223"
+                placeholder="+91 98765 43210"
                 className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -2799,8 +3237,8 @@ export default function CarWashAdminHubPage() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {staffAttendanceLogs.map((log) => (
-                    <div key={log._id || log.id} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
+                  {staffAttendanceLogs.map((log, logIdx) => (
+                    <div key={`log-${log._id || log.id || `${log.date}-${logIdx}`}`} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-gray-800">{log.date}</span>

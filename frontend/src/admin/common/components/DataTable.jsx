@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 
 export default function DataTable({
-  columns,
-  data,
+  columns = [],
+  data = [],
   searchPlaceholder = 'Search table records...',
   searchKeys = [],
   filterOptions = [],
@@ -15,26 +15,31 @@ export default function DataTable({
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
 
+  const safeData = Array.isArray(data) ? data : [];
+
   // Filtering Logic
-  const filteredData = data.filter(item => {
+  const filteredData = safeData.filter(item => {
+    if (!item) return false;
+
     // 1. Category/Status filter
     if (selectedFilter !== 'All' && filterKey) {
       if (item[filterKey] !== selectedFilter) return false;
     }
 
     // 2. Search query matching
-    if (!searchTerm.trim()) return true;
+    if (!searchTerm || !searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
-    
-    if (searchKeys.length > 0) {
+
+    if (Array.isArray(searchKeys) && searchKeys.length > 0) {
       return searchKeys.some(key => {
         const val = item[key];
-        return val && val.toString().toLowerCase().includes(term);
+        if (val === undefined || val === null || typeof val === 'object') return false;
+        return String(val).toLowerCase().includes(term);
       });
     }
 
     return Object.values(item).some(val =>
-      val && val.toString().toLowerCase().includes(term)
+      val !== undefined && val !== null && typeof val !== 'object' && String(val).toLowerCase().includes(term)
     );
   });
 

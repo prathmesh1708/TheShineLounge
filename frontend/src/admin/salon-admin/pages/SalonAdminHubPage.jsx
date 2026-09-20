@@ -40,6 +40,7 @@ import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import apiClient from '../../../common/utils/apiClient';
+import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 import {
   getServicesSync,
   saveService,
@@ -65,6 +66,7 @@ export default function SalonAdminHubPage() {
     deleteServicePlan,
     addBooking,
     updateBookingStatus,
+    deleteBooking,
     addStaff,
     updateStaff,
     addBanner,
@@ -99,9 +101,7 @@ export default function SalonAdminHubPage() {
   };
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      setActiveTabState(searchParams.get('tab'));
-    }
+    setActiveTabState(searchParams.get('tab') || 'services');
   }, [searchParams]);
 
   useEffect(() => {
@@ -124,12 +124,13 @@ export default function SalonAdminHubPage() {
   const serviceStats = buildServiceStats(serviceKey, services);
   const serviceMain = services.find(s => s.key === serviceKey || s.slug === serviceKey);
 
+  // Wash redemptions are membership usage, not new bookings.
   const serviceBookings = bookings.filter(b => 
-    b.serviceKey === 'salon' || 
-    (b.serviceName && b.serviceName.toLowerCase().includes('salon')) ||
-    (b.service && b.service.toLowerCase().includes('salon')) ||
-    (b.id && String(b.id).startsWith('BK-2026-')) ||
-    (b.id && String(b.id).startsWith('BK-'))
+    !isWashRedemptionRecord(b) && (
+      b.serviceKey === 'salon' || 
+      (b.serviceName && b.serviceName.toLowerCase().includes('salon')) ||
+      (b.service && b.service.toLowerCase().includes('salon'))
+    )
   );
   const serviceStaff = staffList.filter(s => s.serviceKey === serviceKey);
 
@@ -372,19 +373,16 @@ export default function SalonAdminHubPage() {
         const savedStaff = res.data.staff ? { ...newStaffData, ...res.data.staff } : newStaffData;
         setDbStaff(prev => [savedStaff, ...prev.filter(s => s.email !== savedStaff.email)]);
         addStaff?.(savedStaff);
+        await fetchLiveStaff();
       } else {
-        setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-        addStaff?.(newStaffData);
-        showToast?.(`✅ Staff member added to Salon roster (${staffForm.fullName})`);
+        showToast?.(res.data?.message || 'Failed to onboard staff member', 'error');
       }
     } catch (err) {
-      console.warn('Backend API staff save returned error, applying local fallback:', err.message);
-      setDbStaff(prev => [newStaffData, ...prev.filter(s => s.email !== newStaffData.email)]);
-      addStaff?.(newStaffData);
-      showToast?.(`✅ Staff member added to Salon roster (${staffForm.fullName})`);
+      const errMsg = err.response?.data?.message || err.message || 'Error onboarding staff member';
+      console.warn('Backend API staff save error:', errMsg);
+      showToast?.(`⚠️ ${errMsg}`, 'error');
     }
 
-    fetchLiveStaff();
     setAddStaffModal(false);
     setStaffForm({
       fullName: '',
@@ -1055,7 +1053,24 @@ export default function SalonAdminHubPage() {
                   <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
-              )}
+              )},
+              {
+                header: 'Actions',
+                cell: (r) => (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete booking ${r.id}?`)) {
+                        deleteBooking(r);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                    title="Delete Booking"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete</span>
+                  </button>
+                )
+              }
             ]}
             data={serviceBookings}
             searchPlaceholder="Search Salon Bookings..."

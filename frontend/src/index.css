@@ -133,6 +133,52 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
 }
 
+/* Official Tax Invoice Receipt - Strict Light Theme Guarantee (Device/Laptop Dark Mode Immune) */
+.receipt-page-container,
+.receipt-page-container *,
+.receipt-paper-canvas,
+.receipt-paper-canvas *,
+.receipt-print-wrapper,
+.receipt-print-wrapper * {
+  color-scheme: light !important;
+}
+
+[data-theme="dark"] .receipt-page-container,
+[data-theme="dark"] .receipt-paper-canvas,
+[data-theme="dark"] .receipt-print-wrapper {
+  color-scheme: light !important;
+}
+
+[data-theme="dark"] .receipt-page-container .bg-white,
+[data-theme="dark"] .receipt-paper-canvas .bg-white,
+[data-theme="dark"] .receipt-print-wrapper .bg-white,
+[data-theme="dark"] .receipt-paper-canvas,
+[data-theme="dark"] .receipt-print-wrapper {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="dark"] .receipt-page-container .text-gray-900,
+[data-theme="dark"] .receipt-paper-canvas .text-gray-900,
+[data-theme="dark"] .receipt-print-wrapper .text-gray-900,
+[data-theme="dark"] .receipt-paper-canvas span,
+[data-theme="dark"] .receipt-paper-canvas p,
+[data-theme="dark"] .receipt-paper-canvas div {
+  color: inherit !important;
+}
+
+[data-theme="dark"] .receipt-page-container .text-gray-500,
+[data-theme="dark"] .receipt-paper-canvas .text-gray-500,
+[data-theme="dark"] .receipt-print-wrapper .text-gray-500 {
+  color: #64748b !important;
+}
+
+[data-theme="dark"] .receipt-page-container .border-gray-200,
+[data-theme="dark"] .receipt-paper-canvas .border-gray-200,
+[data-theme="dark"] .receipt-print-wrapper .border-gray-200 {
+  border-color: #e2e8f0 !important;
+}
+
 [data-theme="dark"] .service-card:hover,
 [data-theme="dark"] .detailing-card:hover,
 [data-theme="dark"] .grooming-card:hover,
@@ -4045,10 +4091,10 @@ h1, h2, h3, h4, h5, h6 {
   body * {
     visibility: hidden !important;
   }
-  #gst-invoice-content, #gst-invoice-content * {
+  #printable-tsl-receipt, #printable-tsl-receipt * {
     visibility: visible !important;
   }
-  #gst-invoice-content {
+  #printable-tsl-receipt {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -4064,5 +4110,45 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* ==========================================================================
+   OFFICIAL RECEIPT DOCUMENT & PRINT CANVAS PROTECTION
+   Strictly isolate receipt documents and customer receipt page from dark theme.
+   A receipt must ALWAYS be rendered on crisp #ffffff paper with official brand colors.
+   ========================================================================== */
+html[data-theme="dark"] .receipt-print-wrapper,
+html[data-theme="dark"] #printable-tsl-receipt,
+html[data-theme="dark"] .receipt-paper-canvas,
+html[data-theme="dark"] .receipt-paper-canvas .bg-white,
+[data-theme="dark"] .receipt-print-wrapper,
+[data-theme="dark"] #printable-tsl-receipt,
+[data-theme="dark"] .receipt-paper-canvas,
+.receipt-print-wrapper,
+#printable-tsl-receipt,
+.receipt-paper-canvas {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  color-scheme: light !important;
+}
 
+html[data-theme="dark"] #printable-tsl-receipt *,
+html[data-theme="dark"] .receipt-print-wrapper *,
+[data-theme="dark"] #printable-tsl-receipt *,
+[data-theme="dark"] .receipt-print-wrapper * {
+  color-scheme: light !important;
+}
 
+html[data-theme="dark"] #printable-tsl-receipt h2,
+html[data-theme="dark"] .receipt-print-wrapper h2,
+[data-theme="dark"] #printable-tsl-receipt h2,
+[data-theme="dark"] .receipt-print-wrapper h2 {
+  color: #1e3e62 !important;
+}
+
+html[data-theme="dark"] #printable-tsl-receipt table,
+html[data-theme="dark"] #printable-tsl-receipt table td,
+[data-theme="dark"] #printable-tsl-receipt table,
+[data-theme="dark"] #printable-tsl-receipt table td {
+  background: transparent !important;
+  background-color: transparent !important;
+}

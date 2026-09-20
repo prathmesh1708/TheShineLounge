@@ -1,3 +1,4 @@
+require('./common/config/env');
 const express = require('express');
 const cors = require('cors');
 const { PORT } = require('./common/config/env');
@@ -47,8 +48,12 @@ const allowedOrigins = [
   'http://app.theshinelounge.in',
   'http://localhost:3000',
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
   'http://127.0.0.1:3000',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175'
 ];
 
 app.use(cors({
@@ -110,6 +115,14 @@ app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
+
+// Mount Isolated Collections Routes
+app.use('/api/staff', require('./routes/staffRoutes'));
+app.use('/api/vehicles', require('./routes/vehicleRoutes'));
+app.use('/api/memberships', require('./routes/membershipRoutes'));
+app.use('/api/offline-sales', require('./routes/offlineSaleRoutes'));
+app.use('/api/customers', require('./routes/customerRoutes'));
+
 
 // Serve uploaded files as static assets
 const path = require('path');

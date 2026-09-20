@@ -10,7 +10,7 @@ import CarDetailingInvoiceModal from '../components/carDetailingInvoiceModal';
 export default function CarDetailingTrackingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const bookingId = searchParams.get("id") || "BK-9831";
+  const bookingId = searchParams.get("id") || "";
 
   const [tech, setTech] = useState(null);
   const [booking, setBooking] = useState(null);
@@ -91,6 +91,26 @@ export default function CarDetailingTrackingPage() {
     return (
       <div className="h-[400px] w-full bg-zinc-50 border border-zinc-200 rounded-24 animate-pulse flex items-center justify-center">
         <span className="text-zinc-400 font-bold">Loading Detailing GPS Tracking...</span>
+      </div>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <div className="bg-white border border-zinc-200 rounded-24 p-12 text-center max-w-md mx-auto space-y-4 shadow-sm my-8">
+        <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-xl font-bold">
+          !
+        </div>
+        <h3 className="text-lg font-bold text-zinc-800">No Booking Found</h3>
+        <p className="text-xs text-zinc-500">
+          The requested car detailing appointment could not be located.
+        </p>
+        <button
+          onClick={() => navigate('/car-detailing/my-bookings')}
+          className="px-4 py-2 bg-luxury-emerald text-white text-xs font-bold rounded-xl shadow-sm hover:opacity-95 transition-all"
+        >
+          View My Bookings
+        </button>
       </div>
     );
   }

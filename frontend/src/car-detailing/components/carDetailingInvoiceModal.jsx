@@ -31,9 +31,15 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
     const service = booking.package || booking.serviceName || 'Car Detailing';
     const date = booking.date || 'Today';
     const time = booking.time || booking.timeSlot || '';
-    const amountStr = `₹${totalPrice.toLocaleString('en-IN')}`;
+    const isLocalhost = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.')
+    );
+    const origin = isLocalhost ? 'https://app.theshinelounge.in' : window.location.origin;
+    const receiptUrl = `${origin}/receipt/${encodeURIComponent(invId)}?download=pdf`;
 
-    const message = `✨ *THE SHINE LOUNGE - DETAILING TAX INVOICE* ✨\n━━━━━━━━━━━━━━━━━━━━\n📄 *Invoice / Ref:* #${invId}\n📅 *Date:* ${date} ${time ? `(${time})` : ''}\n👤 *Customer:* ${customer}\n🚗 *Vehicle:* ${plate} (${model})\n✨ *Detailing Treatment:* ${service}\n💳 *Payment Status:* ${booking.paymentStatus || 'Paid'}\n💰 *Total Price (incl. GST):* ${amountStr}\n━━━━━━━━━━━━━━━━━━━━\n📍 *Location:* Plot 42, Senapati Bapat Marg, Mumbai 400013\n📞 *Concierge:* +91 98200 99999\n🌐 *Website:* https://theshinelounge.com\n\n🙏 _Thank you for trusting The Shine Lounge with your vehicle's gloss and protection!_`;
+    const message = `✨ *THE SHINE LOUNGE - DETAILING TAX INVOICE* ✨\n\nHello *${customer}*,\nThank you for choosing *The Shine Lounge*! Here is your official detailing tax invoice.\n\n📄 *Invoice No:* #${invId}\n📅 *Date:* ${date} ${time ? `(${time})` : ''}\n🚗 *Vehicle:* ${plate} (${model})\n✨ *Detailing Treatment:* ${service}\n💳 *Payment Status:* ${booking.paymentStatus || 'Paid'}\n💰 *Total Price (incl. GST):* ${amountStr}\n\n📥 *Download Official A4 PDF Invoice:*\n👉 ${receiptUrl}\n\n📍 *The Shine Lounge - Premium Car Care*\n📞 *Concierge:* +91 98200 99999\n🌐 *Website:* https://theshinelounge.com\n\n_Tap the link above to view or download your official PDF invoice directly._`;
 
     const url = `https://api.whatsapp.com/send?${digits ? `phone=${digits}&` : ''}text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -119,14 +125,14 @@ export default function CarDetailingInvoiceModal({ isOpen, onClose, booking }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-zinc-50/70 p-4 rounded-2xl border border-zinc-200/80 text-xs">
               <div className="space-y-1">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Billed To Customer</span>
-                <p className="font-bold text-sm text-zinc-900">{booking.customerName || 'Car Owner'}</p>
+                <p className="font-bold text-sm text-zinc-900">{booking.customerName || 'Customer'}</p>
                 <p className="text-zinc-500">{booking.location || booking.address || 'Indore Studio Service'}</p>
               </div>
               <div className="space-y-1 sm:text-right">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Vehicle Specification</span>
-                <p className="font-bold text-sm text-zinc-900">{booking.vehicle || 'Tesla Model 3'}</p>
+                <p className="font-bold text-sm text-zinc-900">{booking.vehicle || 'Vehicle'}</p>
                 <p className="font-mono text-xs font-bold text-luxury-emerald bg-luxury-emerald/10 inline-block px-2 py-0.5 rounded border border-luxury-emerald/20 mt-0.5">
-                  Reg No: {booking.vehicleNo || 'MP-09-AB-1234'}
+                  Reg No: {booking.vehicleNo || 'N/A'}
                 </p>
               </div>
             </div>

@@ -20,7 +20,7 @@ export interface Customer {
   vehicles: Vehicle[];
   loyaltyPoints: number;
   totalSpent: number;
-  segment: 'Active Member' | 'High-Value VIP' | 'Regular Customer' | 'New Customer' | 'Expired Member';
+  segment: 'Active Member' | 'Regular Customer' | 'New Customer' | 'Expired Member';
   joinDate: string;
   lastVisit: string;
   notes?: string;

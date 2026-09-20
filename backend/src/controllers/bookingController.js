@@ -3,6 +3,8 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
 const { sendNotificationToUser } = require('../common/services/pushNotificationHelper');
+const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { tryMirrorBooking, trySoftDeleteMirrors } = require('../services/salesRegistry');
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
 // for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
@@ -11,11 +13,21 @@ const { sendNotificationToUser } = require('../common/services/pushNotificationH
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const findBookingByAnyId = async (id) => {
-  if (mongoose.Types.ObjectId.isValid(id)) {
-    const byObjectId = await Booking.findById(id);
+  if (!id) return null;
+  const raw = String(id).trim();
+  if (mongoose.Types.ObjectId.isValid(raw)) {
+    const byObjectId = await Booking.findById(raw);
     if (byObjectId) return byObjectId;
   }
-  return Booking.findOne({ bookingId: id });
+  const cleanId = raw.replace(/^MEM-/, '');
+  return Booking.findOne({
+    $or: [
+      { bookingId: raw },
+      { bookingId: cleanId },
+      { bookingId: `MEM-${cleanId}` },
+      { bookingId: new RegExp(`^${escapeRegex(cleanId)}$`, 'i') }
+    ]
+  });
 };
 
 const isPrivileged = (user) => user && (user.role === 'admin' || user.role === 'staff');
@@ -105,7 +117,7 @@ const createBooking = async (req, res) => {
       var targetStaffId = assignedStaff ? assignedStaff._id : null;
     }
 
-    const booking = await Booking.create({
+    const bookingData = {
       bookingId: finalBookingId,
       serviceKey,
       serviceName,
@@ -131,10 +143,23 @@ const createBooking = async (req, res) => {
       isOfflineSale: req.body.isOfflineSale !== undefined ? req.body.isOfflineSale : (finalBookingId && finalBookingId.startsWith('OFS-')),
       saleType: req.body.saleType || 'service',
       paymentMode: req.body.paymentMode || 'Cash',
+      vehicleModel: req.body.vehicleModel || vehicleType || '',
+      saleDate: req.body.saleDate || '',
+      notes: req.body.notes || '',
       membershipName: req.body.membershipName || '',
       membershipValidity: req.body.membershipValidity || '',
-      membershipExpiry: req.body.membershipExpiry || ''
-    });
+      membershipExpiry: req.body.membershipExpiry || '',
+      includeGst: Boolean(req.body.includeGst),
+      gstRate: Number(req.body.gstRate || 0),
+      subtotal: Number(req.body.subtotal || price),
+      gstAmount: Number(req.body.gstAmount || 0)
+    };
+
+    const booking = await Booking.findOneAndUpdate(
+      { bookingId: finalBookingId },
+      { $set: bookingData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     if (assignedStaff) {
       await notifyStaffOfBooking(assignedStaff, booking);
@@ -159,11 +184,9 @@ const createBooking = async (req, res) => {
 
       if (!existingUser && (cleanEmail || cleanPhone || cleanName)) {
         const bcrypt = require('bcryptjs');
-        const fallbackEmail = cleanEmail || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'cust'}_${cleanPhone.replace(/\D/g, '').slice(-4) || Math.floor(1000 + Math.random() * 9000)}@theshinelounge.com`;
         const tempPass = await bcrypt.hash('Welcome@123', 10);
-        await User.create({
+        const newUserData = {
           fullName: cleanName || 'Valued Customer',
-          email: fallbackEmail,
           password: tempPass,
           mobile: cleanPhone,
           role: 'user',
@@ -182,7 +205,11 @@ const createBooking = async (req, res) => {
             status: 'Active',
             boundVehicles: cleanVehicle ? [cleanVehicle] : []
           } : undefined
-        });
+        };
+        if (cleanEmail) {
+          newUserData.email = cleanEmail;
+        }
+        await User.create(newUserData);
       } else if (existingUser) {
         const updateDoc = {
           $inc: { totalSpent: numPrice },
@@ -213,9 +240,24 @@ const createBooking = async (req, res) => {
         }
         await User.updateOne({ _id: existingUser._id }, updateDoc);
       }
+
+      // Mirror the plate into the vehicle registry the admin fleet screen reads.
+      await tryUpsertRegisteredVehicle({
+        plateNumber: cleanVehicle,
+        brand: vehicleType,
+        model: vehicleType,
+        ownerName: cleanName,
+        ownerEmail: cleanEmail,
+        ownerPhone: cleanPhone,
+        addedVia: 'staff'
+      });
     } catch (syncErr) {
       console.warn('Note: Could not auto-sync customer to User collection:', syncErr.message);
     }
+
+    // Counter sales and membership purchases also belong in their own
+    // collections, which the admin and staff screens read.
+    await tryMirrorBooking(booking);
 
     res.status(201).json({
       success: true,
@@ -262,7 +304,10 @@ const getBookings = async (req, res) => {
       Object.assign(query, ownedByFilter(email));
     }
 
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const bookings = await Booking.find(query)
+      .select('-receiptPdfBase64')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -296,7 +341,10 @@ const getMyBookings = async (req, res) => {
       query.serviceKey = req.query.serviceKey;
     }
 
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const bookings = await Booking.find(query)
+      .select('-receiptPdfBase64')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -370,8 +418,24 @@ const updateBooking = async (req, res) => {
     if (status !== undefined) booking.status = status;
     if (stepIndex !== undefined) booking.stepIndex = stepIndex;
     if (notes !== undefined) booking.notes = notes;
-    if (assignedStaffId !== undefined) booking.assignedStaffId = assignedStaffId || null;
-    if (assignedStaffName !== undefined) booking.assignedStaffName = assignedStaffName || '';
+
+    if (assignedStaffId !== undefined || assignedStaffName !== undefined) {
+      if (assignedStaffId && !assignedStaffName) {
+        const foundStaff = await User.findById(assignedStaffId);
+        booking.assignedStaffId = assignedStaffId;
+        booking.assignedStaffName = foundStaff ? foundStaff.fullName : '';
+      } else if (!assignedStaffId && assignedStaffName) {
+        const foundStaff = await User.findOne({
+          role: 'staff',
+          fullName: { $regex: new RegExp(`^${escapeRegex(assignedStaffName.trim())}$`, 'i') }
+        });
+        booking.assignedStaffId = foundStaff ? foundStaff._id : null;
+        booking.assignedStaffName = assignedStaffName;
+      } else {
+        booking.assignedStaffId = assignedStaffId || null;
+        booking.assignedStaffName = assignedStaffName || '';
+      }
+    }
 
     // Append photo if uploaded
     if (photoUrl) {
@@ -430,6 +494,7 @@ const deleteBooking = async (req, res) => {
       });
     }
 
+    await trySoftDeleteMirrors(booking);
     await booking.deleteOne();
 
     res.status(200).json({
@@ -444,10 +509,138 @@ const deleteBooking = async (req, res) => {
   }
 };
 
+// @desc    Get public receipt for booking / offline sale
+// @route   GET /api/bookings/receipt/:id
+// @access  Public
+const getPublicReceipt = async (req, res) => {
+  try {
+    const booking = await findBookingByAnyId(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+    res.json({
+      success: true,
+      data: {
+        id: booking.bookingId || booking._id,
+        bookingId: booking.bookingId,
+        serviceKey: booking.serviceKey,
+        serviceName: booking.serviceName,
+        packageName: booking.packageName,
+        price: booking.price,
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        phone: booking.phone,
+        vehicleNo: booking.vehicleNo,
+        vehicleType: booking.vehicleType,
+        vehicleModel: booking.vehicleModel,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paymentMode: booking.paymentMode,
+        isOfflineSale: booking.isOfflineSale,
+        saleType: booking.saleType,
+        membershipName: booking.membershipName || '',
+        membershipExpiry: booking.membershipExpiry,
+        membershipValidity: booking.membershipValidity,
+        saleDate: booking.saleDate || booking.date,
+        notes: booking.notes || '',
+        hasPdf: !!booking.receiptPdfBase64
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching public receipt:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch receipt' });
+  }
+};
+
+// @desc    Save pre-generated PDF receipt base64 string
+// @route   POST /api/bookings/receipt/:id/pdf
+// @access  Public
+const saveReceiptPdf = async (req, res) => {
+  try {
+    let booking = await findBookingByAnyId(req.params.id);
+    const { pdfBase64, saleData } = req.body;
+
+    // If the booking does not exist yet (e.g. offline sale recorded before API sync), auto-create it
+    if (!booking && saleData) {
+      const bId = req.params.id || saleData.id || saleData.bookingId;
+      const sKey = saleData.serviceKey || 'car-wash';
+      const sName = saleData.serviceName || (sKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash');
+      const pName = saleData.packageName || saleData.membershipName || (saleData.saleType === 'membership' ? 'Monthly Membership' : 'Standard Service');
+      const cleanPrice = Number(String(saleData.price || saleData.total || saleData.amount || 0).replace(/[^0-9.]/g, '')) || 0;
+
+      booking = await Booking.create({
+        bookingId: bId,
+        serviceKey: sKey,
+        serviceName: sName,
+        packageName: pName,
+        price: cleanPrice,
+        date: saleData.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        timeSlot: saleData.timeSlot || '09:00 AM - 09:30 AM',
+        customerName: saleData.customerName || saleData.customer || 'Valued Customer',
+        customerEmail: String(saleData.customerEmail || saleData.email || '').toLowerCase().trim(),
+        phone: saleData.phone || saleData.mobile || '',
+        vehicleNo: String(saleData.vehicleNo || '').toUpperCase().trim(),
+        vehicleType: saleData.vehicleModel || saleData.vehicleType || '',
+        vehicleModel: saleData.vehicleModel || saleData.vehicleType || '',
+        status: 'Completed',
+        isOfflineSale: true,
+        saleType: saleData.saleType || (saleData.membershipName ? 'membership' : 'service'),
+        membershipName: saleData.membershipName || (saleData.saleType === 'membership' ? pName : ''),
+        membershipExpiry: saleData.membershipExpiry || '',
+        membershipValidity: saleData.membershipValidity || '',
+        paymentMode: saleData.paymentMode || 'Cash',
+        notes: saleData.notes || '',
+        receiptPdfBase64: pdfBase64 || ''
+      });
+
+      return res.json({ success: true, message: 'Receipt created and PDF saved', bookingId: booking.bookingId });
+    }
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+    if (pdfBase64) {
+      booking.receiptPdfBase64 = pdfBase64;
+      await booking.save();
+    }
+    res.json({ success: true, message: 'Receipt PDF saved' });
+  } catch (error) {
+    console.error('Error saving receipt PDF:', error);
+    res.status(500).json({ success: false, message: 'Failed to save receipt PDF' });
+  }
+};
+
+// @desc    Direct PDF file stream download
+// @route   GET /api/bookings/receipt/:id/pdf
+// @access  Public
+const streamReceiptPdf = async (req, res) => {
+  try {
+    const booking = await findBookingByAnyId(req.params.id);
+    if (!booking || !booking.receiptPdfBase64) {
+      return res.status(404).json({ success: false, message: 'Receipt PDF not available directly' });
+    }
+    const buffer = Buffer.from(booking.receiptPdfBase64, 'base64');
+    const receiptNo = booking.bookingId || req.params.id;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${receiptNo}.pdf"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error streaming receipt PDF:', error);
+    res.status(500).json({ success: false, message: 'Failed to stream receipt PDF' });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookings,
   getMyBookings,
   updateBooking,
-  deleteBooking
+  deleteBooking,
+  getPublicReceipt,
+  saveReceiptPdf,
+  streamReceiptPdf
 };
+
