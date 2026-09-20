@@ -5,6 +5,7 @@ const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAss
 const { sendNotificationToUser } = require('../common/services/pushNotificationHelper');
 const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
 const { tryMirrorBooking, trySoftDeleteMirrors } = require('../services/salesRegistry');
+const { nextSequentialId } = require('../utils/sequentialId');
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
 // for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
@@ -81,7 +82,22 @@ const createBooking = async (req, res) => {
     const finalTimeSlot = (!timeSlot || timeSlot === '02:00 PM - 02:30 PM') ? `${liveTimeStart} - ${liveTimeEnd}` : timeSlot;
 
     // Auto generate booking ID if not supplied
-    const finalBookingId = bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const wantsOfflineSale = req.body.isOfflineSale === true ||
+      String(bookingId || '').startsWith('OFS-');
+
+    let finalBookingId = bookingId || `B-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Offline-sale ids are minted in the browser by counting the sales it has
+    // loaded, so they collide with anything that was deleted or created since.
+    // The write below is an upsert, which means a collision would quietly
+    // overwrite a real sale instead of failing. Allocate a genuinely free id
+    // here, where the whole collection is visible.
+    if (wantsOfflineSale) {
+      const taken = !bookingId || (await Booking.exists({ bookingId: finalBookingId }));
+      if (taken) {
+        finalBookingId = await nextSequentialId(Booking, { prefix: 'OFS-TSH-' });
+      }
+    }
 
     // Route the job to whichever staff member is requested or staffed on this service
     let assignedStaff = null;

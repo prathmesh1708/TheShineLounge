@@ -61,6 +61,7 @@ export default function CarWashAdminHubPage() {
   const serviceKey = 'car-wash';
   const {
     services,
+    vehicles,
     bookings,
     staffList,
     banners,
@@ -98,7 +99,7 @@ export default function CarWashAdminHubPage() {
   // Live Backend Database State
   const [dbService, setDbService] = useState(null);
   const [dbStaff, setDbStaff] = useState([]);
-  const [dbVehicles, setDbVehicles] = useState([]);
+
   const [isLiveConnection, setIsLiveConnection] = useState(true);
 
   const fetchLiveService = async () => {
@@ -142,21 +143,10 @@ export default function CarWashAdminHubPage() {
     }
   };
 
-  const fetchLiveVehicles = async () => {
-    try {
-      const res = await apiClient.get('/vehicles');
-      if (res.data && Array.isArray(res.data.vehicles)) {
-        setDbVehicles(res.data.vehicles);
-      }
-    } catch (err) {
-      console.warn('Could not fetch live vehicles list:', err.message);
-    }
-  };
 
   useEffect(() => {
     fetchLiveService();
     fetchLiveStaff();
-    fetchLiveVehicles();
   }, []);
 
   useEffect(() => {
@@ -237,7 +227,7 @@ export default function CarWashAdminHubPage() {
 
   const registeredVehiclesMap = {};
 
-  (dbVehicles || []).forEach(v => {
+  (vehicles || []).forEach(v => {
     if (!v) return;
     const plate = String(v.plateNumber || '').toUpperCase().trim();
     if (!plate) return;

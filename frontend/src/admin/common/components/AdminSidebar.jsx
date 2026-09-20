@@ -40,7 +40,7 @@ import TSLLogo from '../../../common/components/TSLLogo';
 export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, closeMobileSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { stats, bookings, staffList, banners, inventory, memberships, customers, deregisteredPlates: contextDeregisteredPlates } = useAdmin();
+  const { stats, bookings, staffList, banners, inventory, memberships, customers, vehicles, deregisteredPlates: contextDeregisteredPlates } = useAdmin();
   const { user, logout } = useAuth();
 
   // Auto-close mobile sidebar when route changes
@@ -98,8 +98,6 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     const sList = staffList || [];
     const banList = banners || [];
     const iList = inventory || [];
-    const mList = memberships || [];
-    const cList = customers || [];
 
     // Wash redemptions are membership usage, not new bookings.
     const bCount = bList.filter(b => !isWashRedemptionRecord(b) && (b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()))).length;
@@ -107,14 +105,6 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     const banCount = banList.filter(b => b.serviceKey === key || b.link?.includes(key)).length;
     const iCount = iList.filter(i => i.serviceKey === key || i.department === serviceName).length;
 
-    // Calculate registered vehicles count for car services
-    let carBookings = bList.filter(b => b.serviceKey === key || b.service?.toLowerCase().includes(serviceName.toLowerCase()));
-    if (key === 'car-detailing') {
-      carBookings = carBookings.filter(b => {
-        const pkg = (b.plan || b.packageName || b.service || '').toLowerCase();
-        return !(pkg.includes('wash') && !pkg.includes('detail'));
-      });
-    }
     const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const deregisteredPlates = (() => {
       try {
@@ -125,37 +115,12 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
       }
     })();
 
-    const vMap = {};
-    carBookings.forEach(b => {
-      if (b.vehicleDeregistered) return;
-      const cleanPlate = normalizePlate(b.vehicleNo || b.vehiclePlate);
-      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
-        vMap[cleanPlate] = true;
-      }
-    });
-
-    // Also include membership vehicles for this service
-    mList.forEach(m => {
-      if (m.serviceKey && m.serviceKey !== key) return;
-      const cleanPlate = normalizePlate(m.vehicleNo);
-      if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
-        vMap[cleanPlate] = true;
-      }
-    });
-
-    // Also include customer profile vehicles
-    cList.forEach(c => {
-      const custVehicles = (Array.isArray(c.rawVehicles) && c.rawVehicles.length > 0) ? c.rawVehicles : (Array.isArray(c.vehicles) ? c.vehicles : []);
-      custVehicles.forEach(cv => {
-        const p = typeof cv === 'string' ? cv.split(' ')[0] : (cv.plateNumber || cv.plate || cv.vehicleNo || '');
-        const cleanPlate = normalizePlate(p);
-        if (cleanPlate && !deregisteredPlates.includes(cleanPlate)) {
-          vMap[cleanPlate] = true;
-        }
-      });
-    });
-
-    const vCount = Object.keys(vMap).length;
+    // Count the fetched fleet, not a second derivation of it, so this agrees
+    // with the hub's Registered Vehicles tab.
+    const vCount = (vehicles || []).filter((v) => {
+      const cleanPlate = normalizePlate(v && v.plateNumber);
+      return cleanPlate && !deregisteredPlates.includes(cleanPlate);
+    }).length;
 
     if (key === 'car-wash') {
       return [

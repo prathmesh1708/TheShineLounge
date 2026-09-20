@@ -1,6 +1,8 @@
 const RegisteredVehicle = require('../models/RegisteredVehicle');
 const { upsertRegisteredVehicle } = require('../services/vehicleRegistry');
 const { normalizePlate } = require('../utils/plateNormalizer');
+const Booking = require('../models/Booking');
+const { isSaleOrCustomerBooking } = require('../utils/bookingKinds');
 
 // @desc    Get all registered fleet vehicles
 // @route   GET /api/vehicles
@@ -8,10 +10,29 @@ const { normalizePlate } = require('../utils/plateNormalizer');
 const getRegisteredVehicles = async (req, res) => {
   try {
     const vehicles = await RegisteredVehicle.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+
+    // A car belongs on this list while it has a real transaction behind it:
+    // a counter sale, or a booking the customer made. Membership redemptions
+    // are excluded (usage, not a sale), and so are rows left behind by sales
+    // that were later deleted -- those stay in the collection for the record
+    // but would otherwise inflate the fleet count with cars nobody can trace.
+    const bookings = await Booking.find({ isDeleted: { $ne: true } })
+      .select('bookingId vehicleNo saleType paymentMode packageName notes')
+      .lean();
+
+    const activePlates = new Set(
+      bookings
+        .filter(isSaleOrCustomerBooking)
+        .map((b) => normalizePlate(b.vehicleNo))
+        .filter(Boolean)
+    );
+
+    const linked = vehicles.filter((v) => activePlates.has(v.plateNormalized));
+
     res.status(200).json({
       success: true,
-      count: vehicles.length,
-      vehicles
+      count: linked.length,
+      vehicles: linked
     });
   } catch (error) {
     res.status(500).json({

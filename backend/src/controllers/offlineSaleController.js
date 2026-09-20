@@ -1,5 +1,6 @@
 const OfflineSale = require('../models/OfflineSale');
 const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { nextSequentialId } = require('../utils/sequentialId');
 
 // @desc    Get all offline POS sales
 // @route   GET /api/offline-sales
@@ -38,9 +39,8 @@ const createOfflineSale = async (req, res) => {
       });
     }
 
-    const count = await OfflineSale.countDocuments();
-    const seqPad = String(count + 1).padStart(2, '0');
-    const saleId = req.body.saleId || `OFS-TSH-${seqPad}`;
+    // Highest existing id + 1, never the row count -- see utils/sequentialId.
+    const saleId = req.body.saleId || (await nextSequentialId(OfflineSale, { field: 'saleId', prefix: 'OFS-TSH-' }));
 
     const sale = await OfflineSale.create({
       saleId,

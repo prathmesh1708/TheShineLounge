@@ -140,6 +140,9 @@ export const AdminProvider = ({ children }) => {
     return [];
   });
   const [customers, setCustomers] = useState([]);
+  // Registered fleet, straight from the API. The server already scopes this to
+  // vehicles with a real sale or customer booking behind them.
+  const [vehicles, setVehicles] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [coupons, setCoupons] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -854,9 +857,21 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const fetchVehiclesList = async () => {
+    try {
+      const res = await apiClient.get('/vehicles');
+      if (res.data && Array.isArray(res.data.vehicles)) {
+        setVehicles(res.data.vehicles);
+      }
+    } catch (err) {
+      console.warn('Could not fetch registered vehicles:', err.message);
+    }
+  };
+
   useEffect(() => {
     // Initial single on-demand fetch on mount (Zero background polling loops)
     fetchBookingsList();
+    fetchVehiclesList();
     fetchStaffList();
     fetchCustomersList();
     fetchServicesList();
@@ -1588,16 +1603,18 @@ export const AdminProvider = ({ children }) => {
 
   // 5b. Offline Sales (manual counter POS)
   const addOfflineSale = async (formData) => {
-    // Count existing offline sales to derive next sequential ID (OFS-TSH-01, OFS-TSH-02, ...)
-    const existingOfflineCount = (bookings || []).filter(b =>
-      b && !b.isDeleted && (
-        b.isOfflineSale ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-'))
-      )
-    ).length;
-    const seqNum = existingOfflineCount + 1;
-    const seqPad = String(seqNum).padStart(2, '0');
+    // Next id is the HIGHEST existing sequence + 1, never the row count. Counting
+    // reuses the id of any deleted sale, and the server write is an upsert, so a
+    // reused id silently overwrote a real sale. The server re-checks and reassigns
+    // if this guess is already taken; this only keeps the optimistic row honest.
+    const highestOfflineSeq = (bookings || []).reduce((max, b) => {
+      if (!b || b.isDeleted) return max;
+      const id = String(b.bookingId || b.id || '');
+      if (!id.startsWith('OFS-TSH-')) return max;
+      const n = parseInt(id.slice('OFS-TSH-'.length), 10);
+      return (!isNaN(n) && n > max) ? n : max;
+    }, 0);
+    const seqPad = String(highestOfflineSeq + 1).padStart(2, '0');
     const newId = `OFS-TSH-${seqPad}`;
     const now = new Date();
     const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : now;
@@ -2155,6 +2172,8 @@ export const AdminProvider = ({ children }) => {
       staffList,
       bookings,
       customers,
+      vehicles,
+      fetchVehiclesList,
       inventory,
       coupons,
       notifications,
