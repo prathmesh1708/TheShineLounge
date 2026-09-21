@@ -51,8 +51,8 @@ export default function ManageStaffPage() {
 
       const data = await userService.getStaffList(params);
       if (data.success) {
-        setStaffList(data.staff);
-        setPagination(data.pagination);
+        setStaffList(data.staff || []);
+        setPagination(data.pagination || { total: data.count || (data.staff ? data.staff.length : 0), page: 1, limit: 20, pages: 1 });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load staff');
@@ -109,7 +109,7 @@ export default function ManageStaffPage() {
     try {
       await userService.updateStaff(selectedStaff._id, editForm);
       setIsEditOpen(false);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setModalError(err.response?.data?.message || 'Failed to update staff');
     } finally {
@@ -121,7 +121,7 @@ export default function ManageStaffPage() {
   const handleToggleStatus = async (staff) => {
     try {
       await userService.toggleStaffStatus(staff._id);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to toggle status');
     }
@@ -165,7 +165,7 @@ export default function ManageStaffPage() {
     try {
       await userService.deleteStaff(selectedStaff._id);
       setIsDeleteOpen(false);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setModalError(err.response?.data?.message || 'Failed to delete staff');
     } finally {
@@ -335,25 +335,25 @@ export default function ManageStaffPage() {
         </div>
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination?.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
             <p className="text-[10px] text-gray-500 font-semibold">
-              Showing {staffList.length} of {pagination.total} staff members
+              Showing {staffList.length} of {pagination?.total || staffList.length} staff members
             </p>
             <div className="flex items-center gap-1">
               <button
-                disabled={pagination.page <= 1}
-                onClick={() => fetchStaff(pagination.page - 1)}
+                disabled={(pagination?.page || 1) <= 1}
+                onClick={() => fetchStaff((pagination?.page || 1) - 1)}
                 className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-40"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <span className="text-xs font-bold text-gray-700 px-2">
-                {pagination.page} / {pagination.pages}
+                {pagination?.page || 1} / {pagination?.pages || 1}
               </span>
               <button
-                disabled={pagination.page >= pagination.pages}
-                onClick={() => fetchStaff(pagination.page + 1)}
+                disabled={(pagination?.page || 1) >= (pagination?.pages || 1)}
+                onClick={() => fetchStaff((pagination?.page || 1) + 1)}
                 className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-40"
               >
                 <ChevronRight className="w-4 h-4" />

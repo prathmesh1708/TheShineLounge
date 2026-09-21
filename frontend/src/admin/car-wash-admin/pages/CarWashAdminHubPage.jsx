@@ -1328,7 +1328,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: Number(m.visitLimit) || 4,
+        visitLimit: Number(m.visitLimit) || ((m.name || '').toLowerCase().includes('year') ? 365 : 30),
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -1632,7 +1632,7 @@ export default function CarWashAdminHubPage() {
                     <div className="flex items-center gap-2 text-[11px] text-gray-500 font-semibold">
                       <span>⏱️ {m.duration || ((m.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days</span>
                       <span>•</span>
-                      <span>🚿 {Number(m.visitLimit) === 999 ? 'Unlimited Washes' : `${m.visitLimit !== undefined ? m.visitLimit : 4} Washes`}</span>
+                      <span>🚿 {Number(m.visitLimit) === 999 ? 'Unlimited Washes' : `${m.visitLimit !== undefined ? m.visitLimit : ((m.name || '').toLowerCase().includes('year') ? 365 : 30)} Washes`}</span>
                     </div>
                     <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
                   </div>
@@ -2648,7 +2648,7 @@ export default function CarWashAdminHubPage() {
                     {selectedMembershipForSubscribers.badge || 'MEMBERSHIP PASS'}
                   </span>
                   <span className="text-[11px] font-bold text-amber-100">
-                    ⏱️ {selectedMembershipForSubscribers.duration || ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days • 🚿 {Number(selectedMembershipForSubscribers.visitLimit) === 999 ? 'Unlimited Washes' : `${selectedMembershipForSubscribers.visitLimit !== undefined ? selectedMembershipForSubscribers.visitLimit : 4} Washes`}
+                    ⏱️ {selectedMembershipForSubscribers.duration || ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days • 🚿 {Number(selectedMembershipForSubscribers.visitLimit) === 999 ? 'Unlimited Washes' : `${selectedMembershipForSubscribers.visitLimit !== undefined ? selectedMembershipForSubscribers.visitLimit : ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Washes`}
                   </span>
                 </div>
                 <h4 className="text-lg font-black">{selectedMembershipForSubscribers.name}</h4>

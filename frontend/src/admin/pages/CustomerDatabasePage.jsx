@@ -13,6 +13,7 @@ export default function CustomerDatabasePage() {
     customers,
     bookings,
     addCustomer,
+    deleteCustomer,
     updateCustomerMembership,
     updateCustomerUsageRules,
     addCustomerVehicle,
@@ -54,6 +55,20 @@ export default function CustomerDatabasePage() {
     city: 'Gurgaon',
     vehicle: ''
   });
+
+  const handleDeleteCustomer = async (customer) => {
+    if (!customer) return;
+    const name = customer.name || customer.fullName || 'this customer';
+    const id = customer._id || customer.customerId || customer.id;
+    if (window.confirm(`Are you sure you want to delete customer "${name}" (${customer.phone || customer.email || id}) from the database?`)) {
+      if (selectedCustomer && (selectedCustomer._id === id || selectedCustomer.id === id || selectedCustomer.customerId === id)) {
+        setSelectedCustomer(null);
+      }
+      if (deleteCustomer) {
+        await deleteCustomer(id);
+      }
+    }
+  };
 
   const handleExportCSV = () => {
     try {
@@ -340,13 +355,22 @@ export default function CustomerDatabasePage() {
     {
       header: 'Actions',
       cell: (row) => (
-        <button
-          onClick={() => openCustomerModal(row)}
-          className="px-3 py-1.5 text-[11px] font-bold text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#e07b2a' }}
-        >
-          View CRM Profile
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => openCustomerModal(row)}
+            className="px-3 py-1.5 text-[11px] font-bold text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+            style={{ backgroundColor: '#e07b2a' }}
+          >
+            View CRM Profile
+          </button>
+          <button
+            onClick={() => handleDeleteCustomer(row)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+            title="Delete this customer profile"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       )
     }
   ];
@@ -698,6 +722,22 @@ export default function CustomerDatabasePage() {
                 )}
               </div>
             )}
+
+            {/* Danger Zone: Delete Profile */}
+            <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-gray-800 block">Delete Customer Profile</span>
+                <span className="text-[10px] text-gray-400">Permanently delete this customer record from the CRM database</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteCustomer(selectedCustomer)}
+                className="px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                Delete Profile
+              </button>
+            </div>
           </div>
         )}
       </AdminModal>

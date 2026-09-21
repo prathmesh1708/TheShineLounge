@@ -262,9 +262,33 @@ export const AdminProvider = ({ children }) => {
     const addCatalogItem = (m) => {
       if (!m) return;
       const key = String(m.name || m.title || '').toLowerCase().trim();
-      if (key) catalogMap.set(key, m);
+      if (key) {
+        const vLimit = m.visitLimit !== undefined && m.visitLimit !== null
+          ? Number(m.visitLimit)
+          : (m.washes ? Number(m.washes) : undefined);
+        const existing = catalogMap.get(key);
+        if (!existing || (vLimit !== undefined && !isNaN(vLimit))) {
+          catalogMap.set(key, { ...(existing || {}), ...m, ...(vLimit !== undefined ? { visitLimit: vLimit } : {}) });
+        }
+      }
     };
 
+    // 1. Base default car-wash memberships
+    const DEFAULT_CATALOG = [
+      { name: 'Monthly Membership', duration: 30, visitLimit: 30 },
+      { name: 'Yearly Membership', duration: 365, visitLimit: 365 }
+    ];
+    DEFAULT_CATALOG.forEach(addCatalogItem);
+
+    // 2. Merge from live localStorage cached car-wash service
+    try {
+      const cachedCw = JSON.parse(localStorage.getItem('tsl_car_wash_service') || 'null');
+      if (Array.isArray(cachedCw?.memberships)) {
+        cachedCw.memberships.forEach(addCatalogItem);
+      }
+    } catch (e) {}
+
+    // 3. Merge from live services list
     const serviceListSource = servicesList || servicesRef.current || services || [];
     serviceListSource.forEach(s => {
       if (Array.isArray(s?.memberships)) {
@@ -298,14 +322,15 @@ export const AdminProvider = ({ children }) => {
       const meta = findMembershipMeta(record.packageName, catalog);
       const configuredLimit = meta?.visitLimit !== undefined && meta?.visitLimit !== null
         ? (Number(meta.visitLimit) === 999 ? 999 : Number(meta.visitLimit))
-        : null;
+        : (meta?.washes !== undefined && meta?.washes !== null ? Number(meta.washes) : null);
 
       const isUnlimited = record.packageName.toLowerCase().includes('unlimited') || configuredLimit === 999 || record.visitLimit === 'Unlimited';
+      const fallbackLimit = record.isYearly ? 365 : (record.packageName.toLowerCase().includes('month') ? 30 : 30);
       const maxWashes = (configuredLimit !== null && !isNaN(configuredLimit) && configuredLimit > 0)
         ? configuredLimit
-        : (typeof record.visitLimit === 'number'
+        : (typeof record.visitLimit === 'number' && record.visitLimit > 0
             ? record.visitLimit
-            : (isUnlimited ? 999 : (record.isYearly ? 48 : 4)));
+            : (isUnlimited ? 999 : fallbackLimit));
 
       // Calculate washes used by matching vehicle plate or customer contact against unified wash logs
       const washesUsed = unifiedWashLogs.filter(b => {
@@ -1714,6 +1739,103 @@ export const AdminProvider = ({ children }) => {
     return finalRecord;
   };
 
+  const updateOfflineSale = async (saleId, formData) => {
+    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : new Date();
+    const dateStr = !isNaN(saleDateObj.getTime())
+      ? saleDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    let membershipExpiry = formData.membershipExpiry || '';
+    let membershipValidity = formData.membershipValidity || '';
+    if (formData.saleType === 'membership') {
+      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : new Date();
+      const days = formData.validityDays === 'custom'
+        ? Math.ceil((new Date(formData.customExpiryDate) - baseDate) / (1000 * 60 * 60 * 24))
+        : Number(formData.validityDays) || 30;
+      const expiryDate = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+      membershipExpiry = expiryDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      membershipValidity = `${days} Days`;
+    }
+
+    const cleanPrice = Number(String(formData.price || 0).replace(/[^0-9.]/g, '')) || 0;
+    const pName = formData.saleType === 'membership'
+      ? (formData.membershipName || formData.packageName || 'Monthly Membership')
+      : (formData.packageName || 'Standard Service');
+
+    const updatePayload = {
+      ...formData,
+      packageName: pName,
+      price: cleanPrice,
+      total: cleanPrice,
+      subtotal: Number(formData.subtotal || cleanPrice),
+      gstAmount: Number(formData.gstAmount || 0),
+      gst: Number(formData.gstAmount || 0),
+      includeGst: Boolean(formData.includeGst),
+      customerName: formData.customerName || '',
+      customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
+      phone: formData.phone || '',
+      vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
+      vehicleType: formData.vehicleModel || formData.vehicleType || '',
+      vehicleModel: formData.vehicleModel || formData.vehicleType || '',
+      serviceKey: formData.serviceKey || 'car-wash',
+      serviceName: formData.serviceName || (formData.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
+      paymentMode: formData.paymentMode || 'Cash',
+      saleDate: formData.saleDate || new Date().toISOString().split('T')[0],
+      date: dateStr,
+      saleType: formData.saleType || 'service',
+      membershipName: formData.saleType === 'membership' ? pName : '',
+      membershipValidity,
+      membershipExpiry,
+      notes: formData.notes || ''
+    };
+
+    let savedRecord = null;
+
+    // Update in MongoDB via PUT /api/offline-sales/:id or fallback to PUT /api/bookings/:id
+    try {
+      try {
+        const res = await apiClient.put(`/offline-sales/${saleId}`, updatePayload);
+        if (res?.data?.sale) {
+          savedRecord = res.data.sale;
+        }
+      } catch (err1) {
+        const res2 = await apiClient.put(`/bookings/${saleId}`, updatePayload);
+        if (res2?.data?.booking) {
+          savedRecord = res2.data.booking;
+        }
+      }
+      fetchBookingsList(true);
+      fetchCustomersList(true);
+    } catch (err) {
+      console.error('Update offline sale MongoDB error:', err.response?.data || err.message);
+    }
+
+    const finalRecord = {
+      ...(savedRecord || {}),
+      ...updatePayload,
+      id: saleId,
+      bookingId: saleId,
+      _id: savedRecord?._id || saleId
+    };
+
+    setBookings(prev => {
+      const next = prev.map(b => (b && (b.id === saleId || b.bookingId === saleId || b._id === saleId)) ? { ...b, ...finalRecord } : b);
+      setMemberships(deriveMembershipsFromBookings(next));
+      return next;
+    });
+
+    setCustomers(prev => deriveCustomers(prev, [finalRecord], [finalRecord]));
+
+    try {
+      window.dispatchEvent(new CustomEvent('tsl_offline_sales_updated', { detail: finalRecord }));
+      window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: finalRecord }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
+    showToast(`✅ Offline sale ${saleId} updated successfully!`);
+    return finalRecord;
+  };
+
   const deleteOfflineSale = async (saleId) => {
     try {
       await apiClient.delete(`/bookings/${saleId}`);
@@ -1978,6 +2100,25 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const deleteCustomer = async (customerId) => {
+    try {
+      const target = customers.find(c => c._id === customerId || c.id === customerId || c.customerId === customerId);
+      const targetId = target ? (target._id || target.customerId || target.id) : customerId;
+      try {
+        await apiClient.delete(`/customers/${targetId}`);
+      } catch (e1) {
+        console.warn('Backend delete customer error:', e1.message);
+      }
+
+      setCustomers(prev => prev.filter(c => c._id !== customerId && c.id !== customerId && c.customerId !== customerId && c._id !== targetId && c.id !== targetId && c.customerId !== targetId));
+
+      showToast('Customer profile deleted successfully');
+    } catch (err) {
+      console.error('Error deleting customer:', err);
+      showToast('Failed to delete customer', 'error');
+    }
+  };
+
   // 8. Inventory
   const addInventoryItem = (item) => {
     setInventory(prev => [
@@ -2203,6 +2344,7 @@ export const AdminProvider = ({ children }) => {
       addBooking,
       deleteBooking,
       addOfflineSale,
+      updateOfflineSale,
       deleteOfflineSale,
       clearAllOfflineSales,
       logMembershipWash,
@@ -2211,6 +2353,7 @@ export const AdminProvider = ({ children }) => {
       deleteStaff,
       toggleStaffStatus,
       addCustomer,
+      deleteCustomer,
       updateCustomerMembership,
       updateCustomerUsageRules,
       addCustomerVehicle,

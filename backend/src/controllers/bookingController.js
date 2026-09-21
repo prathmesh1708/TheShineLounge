@@ -424,7 +424,26 @@ const updateBooking = async (req, res) => {
       notes,
       photoUrl,
       assignedStaffId,
-      assignedStaffName
+      assignedStaffName,
+      customerName,
+      customerEmail,
+      phone,
+      vehicleNo,
+      vehicleType,
+      vehicleModel,
+      serviceKey,
+      serviceName,
+      packageName,
+      membershipName,
+      price,
+      subtotal,
+      gstAmount,
+      includeGst,
+      paymentMode,
+      saleDate,
+      saleType,
+      membershipValidity,
+      membershipExpiry
     } = req.body;
 
     const previousStaffId = booking.assignedStaffId
@@ -434,6 +453,41 @@ const updateBooking = async (req, res) => {
     if (status !== undefined) booking.status = status;
     if (stepIndex !== undefined) booking.stepIndex = stepIndex;
     if (notes !== undefined) booking.notes = notes;
+
+    if (customerName !== undefined) booking.customerName = customerName;
+    if (customerEmail !== undefined) booking.customerEmail = (customerEmail || '').toLowerCase().trim();
+    if (phone !== undefined) booking.phone = phone;
+    if (vehicleNo !== undefined) booking.vehicleNo = (vehicleNo || '').toUpperCase().trim();
+    if (vehicleType || vehicleModel) {
+      booking.vehicleType = vehicleType || vehicleModel;
+      booking.vehicleModel = vehicleType || vehicleModel;
+    }
+    if (serviceKey !== undefined) booking.serviceKey = serviceKey;
+    if (serviceName !== undefined) booking.serviceName = serviceName;
+    if (packageName || membershipName) {
+      booking.packageName = packageName || membershipName;
+      if (saleType === 'membership' || membershipName) {
+        booking.membershipName = packageName || membershipName;
+      }
+    }
+    if (price !== undefined) {
+      booking.price = Number(price) || 0;
+      booking.total = Number(price) || 0;
+    }
+    if (subtotal !== undefined) booking.subtotal = Number(subtotal) || 0;
+    if (gstAmount !== undefined) {
+      booking.gstAmount = Number(gstAmount) || 0;
+      booking.gst = Number(gstAmount) || 0;
+    }
+    if (includeGst !== undefined) booking.includeGst = Boolean(includeGst);
+    if (paymentMode !== undefined) booking.paymentMode = paymentMode;
+    if (saleDate !== undefined) {
+      booking.saleDate = saleDate;
+      booking.date = saleDate;
+    }
+    if (saleType !== undefined) booking.saleType = saleType;
+    if (membershipValidity !== undefined) booking.membershipValidity = membershipValidity;
+    if (membershipExpiry !== undefined) booking.membershipExpiry = membershipExpiry;
 
     if (assignedStaffId !== undefined || assignedStaffName !== undefined) {
       if (assignedStaffId && !assignedStaffName) {
@@ -459,6 +513,7 @@ const updateBooking = async (req, res) => {
     }
 
     await booking.save();
+    await tryMirrorBooking(booking);
 
     // Admin moved this job to a different staff member — tell the new owner.
     const newStaffId = booking.assignedStaffId ? String(booking.assignedStaffId) : null;

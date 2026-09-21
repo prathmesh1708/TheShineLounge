@@ -85,7 +85,7 @@ export default function ManageMembershipsPage() {
       accessorKey: 'washesUsed',
       cell: (row) => {
         const isUnlimited = row.maxWashes === 999 || row.maxWashes === 'Unlimited';
-        const displayLimit = isUnlimited ? '∞' : (row.maxWashes || 4);
+        const displayLimit = isUnlimited ? '∞' : (row.maxWashes || 30);
         const percent = isUnlimited ? 100 : Math.min(100, ((row.washesUsed || 0) / (row.maxWashes || 1)) * 100);
         return (
           <div className="flex items-center gap-2">
@@ -275,7 +275,7 @@ export default function ManageMembershipsPage() {
                 <span className="font-extrabold text-gray-900">
                   {selectedMember.maxWashes === 999 || selectedMember.maxWashes === 'Unlimited'
                     ? `${selectedMember.washesUsed} Washes (Unlimited)`
-                    : `${selectedMember.washesUsed} of ${selectedMember.maxWashes || 4} Washes`}
+                    : `${selectedMember.washesUsed} of ${selectedMember.maxWashes || 30} Washes`}
                 </span>
               </div>
             </div>

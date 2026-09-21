@@ -5,15 +5,27 @@ const Staff = require('../models/Staff');
 // @access  Private (Staff/Admin)
 const getStaffList = async (req, res) => {
   try {
-    const { department, serviceKey } = req.query;
+    const { department, serviceKey, page = 1, limit = 20 } = req.query;
     const query = { isDeleted: { $ne: true } };
-    if (department) query.department = department;
+    if (department && department !== 'All') query.department = department;
     if (serviceKey) query.serviceKey = serviceKey;
 
-    const staff = await Staff.find(query).sort({ createdAt: -1 });
+    const total = await Staff.countDocuments(query);
+    const pages = Math.ceil(total / Number(limit)) || 1;
+    const staff = await Staff.find(query)
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+
     res.status(200).json({
       success: true,
       count: staff.length,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages
+      },
       staff
     });
   } catch (error) {

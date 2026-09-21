@@ -6,6 +6,7 @@ import {
   CreditCard,
   Users,
   Eye,
+  Pencil,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -28,8 +29,9 @@ import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicle
 import OfflineSaleInvoiceModal from '../common/components/OfflineSaleInvoiceModal';
 
 export default function ManageOfflineSalesPage() {
-  const { bookings, addOfflineSale, deleteOfflineSale, clearAllOfflineSales, showToast, services } = useAdmin();
+  const { bookings, addOfflineSale, updateOfflineSale, deleteOfflineSale, clearAllOfflineSales, showToast, services } = useAdmin();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -529,6 +531,20 @@ export default function ManageOfflineSalesPage() {
       setTimeout(() => {
         isSubmittingSaleRef.current = false;
       }, 800);
+    }
+  };
+
+  const handleEditSaleSubmit = async (formData) => {
+    const saleId = editingSale?.id || editingSale?.bookingId || editingSale?._id || formData.saleId || formData.id;
+    setEditingSale(null);
+    if (!saleId) return;
+
+    try {
+      if (updateOfflineSale) {
+        await updateOfflineSale(saleId, formData);
+      }
+    } catch (err) {
+      console.error('Error updating offline sale:', err);
     }
   };
 
@@ -1359,15 +1375,24 @@ export default function ManageOfflineSalesPage() {
                           </button>
 
                           <button
+                            onClick={() => setEditingSale(sale)}
+                            className="px-2.5 py-1 rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 font-bold text-[10px] transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                            title="Edit this offline sale information"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Edit</span>
+                          </button>
+
+                          <button
                             onClick={() => openVehicleDetail(sale)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
                             title="View full vehicle & sale details"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteSale(sale)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Delete this offline sale record"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1416,6 +1441,17 @@ export default function ManageOfflineSalesPage() {
         onSubmit={handleOfflineSaleSubmit}
         services={services}
       />
+
+      {/* Edit Offline Sale Modal */}
+      {editingSale && (
+        <OfflineSaleModal
+          isOpen={Boolean(editingSale)}
+          onClose={() => setEditingSale(null)}
+          onSubmit={handleEditSaleSubmit}
+          editSale={editingSale}
+          services={services}
+        />
+      )}
 
       {/* Vehicle Detail Modal */}
       <RegisteredVehicleDetailModal

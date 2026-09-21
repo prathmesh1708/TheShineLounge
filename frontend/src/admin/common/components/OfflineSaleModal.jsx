@@ -146,7 +146,7 @@ const extractMemberships = (service, serviceKey) => {
   return list;
 };
 
-export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: propsServices = [] }) {
+export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale = null, services: propsServices = [] }) {
   const adminContext = useAdmin();
   const contextServices = adminContext?.services || [];
   const allServices = propsServices.length > 0 ? propsServices : contextServices;
@@ -161,16 +161,94 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
 
-  // Reset submit lock and country code when modal opens
+  // Helper to parse phone number into code and 10 digits
+  const parsePhoneInfo = (rawPhone) => {
+    if (!rawPhone) return { code: '+91', isCustom: false, customCode: '', phone: '' };
+    const str = String(rawPhone).trim();
+    if (str.startsWith('+')) {
+      const parts = str.split(' ');
+      const codePart = parts[0];
+      const phonePart = parts.slice(1).join('').replace(/\D/g, '');
+      const matched = COUNTRY_CODES.find(c => c.code === codePart);
+      if (matched) {
+        return { code: codePart, isCustom: false, customCode: '', phone: phonePart.slice(-10) };
+      }
+      return { code: codePart, isCustom: true, customCode: codePart, phone: phonePart.slice(-10) };
+    }
+    const digits = str.replace(/\D/g, '');
+    return { code: '+91', isCustom: false, customCode: '', phone: digits.slice(-10) };
+  };
+
+  // Helper to parse date to YYYY-MM-DD
+  const parseDateInput = (val) => {
+    if (!val) return new Date().toISOString().split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(val).trim())) return String(val).trim();
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    return new Date().toISOString().split('T')[0];
+  };
+
+  // Reset or prefill form when modal opens or editSale changes
   useEffect(() => {
     if (isOpen) {
       isSubmittingRef.current = false;
       setSubmitting(false);
-      setCountryCode('+91');
-      setIsCustomCountryCode(false);
-      setCustomCountryCode('');
+
+      if (editSale) {
+        const phoneInfo = parsePhoneInfo(editSale.phone);
+        setCountryCode(phoneInfo.code);
+        setIsCustomCountryCode(phoneInfo.isCustom);
+        setCustomCountryCode(phoneInfo.customCode);
+
+        const sKey = editSale.serviceKey || 'car-wash';
+        const sMatch = SERVICE_OPTIONS.find(s => s.key === sKey);
+        const sName = editSale.serviceName || (sMatch ? sMatch.serviceName : 'Car Wash');
+        const sType = editSale.saleType || (editSale.membershipName ? 'membership' : 'service');
+        const pName = editSale.packageName || (sType === 'service' ? editSale.membershipName : '') || '';
+        const mName = editSale.membershipName || (sType === 'membership' ? editSale.packageName : '') || '';
+
+        const numericPrice = Number(editSale.price !== undefined ? editSale.price : editSale.total) || 0;
+        const subtotal = editSale.subtotal !== undefined ? Number(editSale.subtotal) : numericPrice;
+        const incGst = editSale.includeGst !== undefined ? Boolean(editSale.includeGst) : (Number(editSale.gstAmount || editSale.gst) > 0);
+
+        setForm({
+          serviceKey: sKey,
+          serviceName: sName,
+          customerName: editSale.customerName || editSale.ownerName || '',
+          customerEmail: editSale.customerEmail || editSale.ownerEmail || '',
+          phone: phoneInfo.phone,
+          vehicleNo: editSale.vehicleNo || editSale.plate || '',
+          vehicleModel: editSale.vehicleModel || editSale.vehicleType || editSale.model || '',
+          saleType: sType,
+          packageName: pName,
+          membershipName: mName,
+          validityDays: editSale.validityDays ? String(editSale.validityDays) : (editSale.membershipValidity ? String(parseInt(editSale.membershipValidity) || 30) : '30'),
+          customExpiryDate: editSale.customExpiryDate || '',
+          basePrice: subtotal ? String(subtotal) : String(numericPrice),
+          price: String(numericPrice),
+          includeGst: incGst,
+          paymentMode: editSale.paymentMode || 'Cash',
+          saleDate: parseDateInput(editSale.saleDate || editSale.date || editSale.createdAt),
+          notes: editSale.notes || ''
+        });
+
+        setIsCustomPackage(Boolean(pName && !DEFAULT_CAR_WASH_PACKAGES.some(p => p.name === pName)));
+        setIsCustomMembership(Boolean(mName && !DEFAULT_CAR_WASH_MEMBERSHIPS.some(m => m.name === mName)));
+      } else {
+        setForm({ ...initialFormState, saleDate: new Date().toISOString().split('T')[0] });
+        setCountryCode('+91');
+        setIsCustomCountryCode(false);
+        setCustomCountryCode('');
+        setIsCustomPackage(false);
+        setIsCustomMembership(false);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editSale]);
 
   // Re-sync whenever a service is edited/added in admin hub
   useEffect(() => {
@@ -325,6 +403,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
 
     const payload = {
       ...form,
+      ...(editSale ? { id: editSale.id || editSale.bookingId || editSale._id, saleId: editSale.id || editSale.bookingId || editSale._id } : {}),
       phone: finalPhone,
       includeGst: form.includeGst,
       gstRate: form.includeGst ? activeGstRate : 0,
@@ -372,11 +451,15 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
               <ShoppingBag className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">Create Offline Sale</h3>
-              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">Record a walk-in / counter sale manually</p>
+              <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">
+                {editSale ? `Edit Offline Sale (${editSale.id || editSale.bookingId || 'POS'})` : 'Create Offline Sale'}
+              </h3>
+              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">
+                {editSale ? 'Update walk-in details directly in MongoDB' : 'Record a walk-in / counter sale manually'}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -816,18 +899,18 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               style={{ backgroundColor: '#e07b2a' }}
             >
               <CheckCircle2 className="w-4 h-4" />
-              {submitting ? 'Saving...' : 'Submit Offline Sale'}
+              {submitting ? 'Saving...' : (editSale ? 'Update Offline Sale' : 'Submit Offline Sale')}
             </button>
           </div>
         </form>
