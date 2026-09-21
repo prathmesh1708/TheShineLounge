@@ -28,6 +28,14 @@ const offlineSaleSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    vehicles: [
+      {
+        plateNumber: { type: String, default: '' },
+        model: { type: String, default: '' },
+        brand: { type: String, default: '' },
+        category: { type: String, default: 'Car' }
+      }
+    ],
     serviceKey: {
       type: String,
       required: true,

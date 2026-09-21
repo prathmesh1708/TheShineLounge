@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStaff } from '../common/context/StaffContext';
 import apiClient from '../../common/utils/apiClient';
+import { formatVehicleName } from '../../common/services/vehicleService';
 import { UserPlus, Search, Car, Phone, Mail, MapPin, Award, X, Calendar, IndianRupee, Clock, ChevronRight, ShieldCheck, Sparkles, History } from 'lucide-react';
 
 export default function StaffCustomersPage() {
@@ -157,7 +158,7 @@ export default function StaffCustomersPage() {
                       <Car className="w-3.5 h-3.5 text-amber-600" /> {v.registrationNumber}
                     </span>
                     <span className="text-gray-500 font-semibold">
-                      {[v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle'}
+                      {formatVehicleName(v.brand, v.model, 'Vehicle')}
                       {v.fuelType ? ` (${v.fuelType})` : ''}
                     </span>
                   </div>
@@ -282,7 +283,7 @@ export default function StaffCustomersPage() {
                         <div>
                           <span className="font-black text-sm text-gray-900">{v.registrationNumber}</span>
                           <p className="text-[10px] text-gray-500 font-semibold">
-                            {[v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle'}
+                            {formatVehicleName(v.brand, v.model, 'Vehicle')}
                           </p>
                         </div>
                         {v.fuelType && (

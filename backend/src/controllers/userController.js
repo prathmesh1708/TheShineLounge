@@ -11,6 +11,7 @@ const {
   sanitizeVehicles,
   sanitizeMembership
 } = require('../utils/sanitizeUser');
+const { formatVehicleName } = require('../utils/vehicleFormatter');
 
 
 // Helper to strip out auto-generated dummy customer emails
@@ -565,7 +566,7 @@ const getCustomers = async (req, res) => {
       const computedSegment = computeMembershipStatus(u);
       const ownedVehicles = sanitizeVehicles(u.vehicles);
       const vehicleList = ownedVehicles.map(v => {
-        const label = [v.brand, v.model].filter(Boolean).join(' ');
+        const label = formatVehicleName(v.brand, v.model, '');
         return `${v.plateNumber}${label ? ` (${label})` : ''}`;
       });
 
@@ -852,7 +853,7 @@ const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrim
   // Keep the membership's plate binding in step, otherwise a customer adds a
   // car in the app and is then turned away at the gate for using it.
   if (user.membership && Array.isArray(user.membership.boundVehicles)) {
-    const label = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
+    const label = formatVehicleName(vehicle.brand, vehicle.model, '');
     const formatted = `${vehicle.plateNumber}${label ? ` (${label})` : ''}`;
     if (!user.membership.boundVehicles.includes(formatted)) {
       user.membership.boundVehicles.push(formatted);

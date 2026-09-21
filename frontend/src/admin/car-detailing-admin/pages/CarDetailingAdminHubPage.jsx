@@ -45,6 +45,7 @@ import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import apiClient from '../../../common/utils/apiClient';
 import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
+import { formatVehicleName } from '../../../common/services/vehicleService';
 import {
   getServicesSync,
   saveService,
@@ -225,7 +226,7 @@ export default function CarDetailingAdminHubPage() {
         const vehList = (Array.isArray(matchedCust.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust.vehicles) ? matchedCust.vehicles : []);
         const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
         if (matchedVeh && typeof matchedVeh === 'object') {
-          model = matchedVeh.model || matchedVeh.brand || '';
+          model = formatVehicleName(matchedVeh.brand, matchedVeh.model, '');
         }
       }
       model = model || 'Vehicle';

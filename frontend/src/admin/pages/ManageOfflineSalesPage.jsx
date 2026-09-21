@@ -27,6 +27,7 @@ import { useAdmin } from '../common/context/AdminContext';
 import OfflineSaleModal from '../common/components/OfflineSaleModal';
 import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleInvoiceModal from '../common/components/OfflineSaleInvoiceModal';
+import { getSaleDate, toDisplayDate } from '../../common/utils/dateFormat';
 
 export default function ManageOfflineSalesPage() {
   const { bookings, addOfflineSale, updateOfflineSale, deleteOfflineSale, clearAllOfflineSales, showToast, services } = useAdmin();
@@ -66,32 +67,12 @@ export default function ManageOfflineSalesPage() {
     };
   }, [isCalendarOpen]);
 
-  // Helper to extract timestamp from the displayed calendar date for chronological sequence sorting
+  // Timestamp used for chronological sequence sorting, which also decides the
+  // OFS-TSH-NN numbering below -- so it reads saleDate first, the one field
+  // that cannot be misread as DD/MM vs MM/DD.
   const getSaleTime = (sale) => {
-    if (!sale) return 0;
-    // 1. Prioritize displayed date string (e.g., "August 20, 2026" or "September 2, 2026")
-    if (sale.date) {
-      const d = new Date(sale.date);
-      if (!isNaN(d.getTime())) return d.getTime();
-
-      // Fallback for DD/MM/YYYY or DD-MM-YYYY format
-      const parts = String(sale.date).trim().split(/[-/]/);
-      if (parts.length === 3 && parts[2]?.length === 4) {
-        const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
-        if (!isNaN(parsed.getTime())) return parsed.getTime();
-      }
-    }
-    // 2. Check saleDate (YYYY-MM-DD)
-    if (sale.saleDate) {
-      const d = new Date(sale.saleDate.includes('T') ? sale.saleDate : `${sale.saleDate}T12:00:00`);
-      if (!isNaN(d.getTime())) return d.getTime();
-    }
-    // 3. Fallback to createdAt timestamp
-    if (sale.createdAt) {
-      const t = new Date(sale.createdAt).getTime();
-      if (!isNaN(t) && t > 0) return t;
-    }
-    return 0;
+    const d = getSaleDate(sale);
+    return d ? d.getTime() : 0;
   };
 
   // Clear legacy mock offline sale from localStorage on mount
@@ -193,24 +174,6 @@ export default function ManageOfflineSalesPage() {
     }
   };
 
-  // Helper to extract date from sale record
-  const getSaleDateObj = (sale) => {
-    if (!sale) return null;
-    if (sale.date) {
-      const d = new Date(sale.date);
-      if (!isNaN(d.getTime())) return d;
-    }
-    if (sale.saleDate) {
-      const d = new Date(sale.saleDate.includes('T') ? sale.saleDate : `${sale.saleDate}T00:00:00`);
-      if (!isNaN(d.getTime())) return d;
-    }
-    if (sale.createdAt) {
-      const d = new Date(sale.createdAt);
-      if (!isNaN(d.getTime())) return d;
-    }
-    return null;
-  };
-
   // Today's Date helpers
   const today = new Date();
   const isSameDay = (d1, d2) => {
@@ -224,7 +187,7 @@ export default function ManageOfflineSalesPage() {
   const salesDatesSet = useMemo(() => {
     const set = new Set();
     offlineSales.forEach(s => {
-      const d = getSaleDateObj(s);
+      const d = getSaleDate(s);
       if (d) {
         set.add(formatYMD(d));
       }
@@ -313,7 +276,7 @@ export default function ManageOfflineSalesPage() {
   // 1. Today's Sales Calculation
   const todaySales = useMemo(() => {
     return offlineSales.filter(s => {
-      const d = getSaleDateObj(s);
+      const d = getSaleDate(s);
       return isSameDay(d, today);
     });
   }, [offlineSales]);
@@ -323,27 +286,63 @@ export default function ManageOfflineSalesPage() {
   }, [todaySales]);
   const todayCount = todaySales.length;
 
-  // 2. Sales in the currently selected date/scope (used to calculate payment method breakdown)
+  // Sales filtered strictly by Date Range for KPI Calculations
   const salesForDateScope = useMemo(() => {
     return offlineSales.filter(s => {
       if (startDate || endDate) {
-        const saleDate = getSaleDateObj(s);
+        const saleDate = getSaleDate(s);
         if (!saleDate) return false;
+
         if (startDate) {
           const start = new Date(startDate + 'T00:00:00');
           if (saleDate < start) return false;
         }
+
         if (endDate) {
           const end = new Date(endDate + 'T23:59:59');
           if (saleDate > end) return false;
         }
       }
-      if (selectedSaleType !== 'all') {
-        if (s.saleType !== selectedSaleType) return false;
-      }
       return true;
     });
-  }, [offlineSales, startDate, endDate, selectedSaleType]);
+  }, [offlineSales, startDate, endDate]);
+
+  // Dynamic KPI Stats based on Date Scope
+  const scopedKPIs = useMemo(() => {
+    const sum = salesForDateScope.reduce((acc, s) => acc + (Number(s.price) || Number(s.total) || Number(s.amount) || 0), 0);
+    const memberships = salesForDateScope.filter(s => s.saleType === 'membership').length;
+    const plates = new Set(
+      salesForDateScope.flatMap(s => {
+        if (Array.isArray(s.vehicles) && s.vehicles.length > 0) {
+          return s.vehicles.map(v => (v.plateNumber || v.plate || '').toUpperCase().trim());
+        }
+        return [(s.vehicleNo || '').toUpperCase().trim()];
+      }).filter(Boolean)
+    ).size;
+
+    let cash = 0, upi = 0, card = 0, netBanking = 0;
+    salesForDateScope.forEach(s => {
+      const mode = (s.paymentMode || '').toLowerCase();
+      const val = Number(s.price) || Number(s.total) || Number(s.amount) || 0;
+      if (mode.includes('cash')) cash += val;
+      else if (mode.includes('upi') || mode.includes('qr') || mode.includes('online')) upi += val;
+      else if (mode.includes('card')) card += val;
+      else if (mode.includes('bank') || mode.includes('net')) netBanking += val;
+      else cash += val;
+    });
+
+    return {
+      volume: sum,
+      transactions: salesForDateScope.length,
+      memberships,
+      uniquePlates: plates,
+      cash,
+      upi,
+      card,
+      netBanking,
+      total: sum,
+    };
+  }, [salesForDateScope]);
 
   // Payment method totals for the active date range
   const paymentTotals = useMemo(() => {
@@ -387,9 +386,17 @@ export default function ManageOfflineSalesPage() {
       // 1. Text Search Filter
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
+        const matchesVehicle = (
+          (s.vehicleNo || '').toLowerCase().includes(term) ||
+          (s.vehicleModel || '').toLowerCase().includes(term) ||
+          (Array.isArray(s.vehicles) && s.vehicles.some(v =>
+            (v.plateNumber || v.plate || '').toLowerCase().includes(term) ||
+            (v.model || '').toLowerCase().includes(term)
+          ))
+        );
         const matchesText = (
           (s.customerName || '').toLowerCase().includes(term) ||
-          (s.vehicleNo || '').toLowerCase().includes(term) ||
+          matchesVehicle ||
           (s.customerEmail || '').toLowerCase().includes(term) ||
           (s.phone || '').toLowerCase().includes(term) ||
           (s.packageName || '').toLowerCase().includes(term) ||
@@ -401,7 +408,7 @@ export default function ManageOfflineSalesPage() {
 
       // 2. Date Range Filter
       if (startDate || endDate) {
-        const saleDate = getSaleDateObj(s);
+        const saleDate = getSaleDate(s);
         if (!saleDate) return false;
 
         if (startDate) {
@@ -500,7 +507,7 @@ export default function ManageOfflineSalesPage() {
         membershipStatus: sale.membershipExpiry ? (new Date(sale.membershipExpiry) > new Date() ? 'Active' : 'Expired') : '',
         offlineSalePrice: sale.price || sale.total || '',
         paymentMode: sale.paymentMode || '',
-        offlineSaleDate: sale.date || '',
+        offlineSaleDate: toDisplayDate(sale.date || sale.saleDate),
         notes: sale.notes || '',
         totalWashes: vehicleBookings.length
       },
@@ -1316,10 +1323,33 @@ export default function ManageOfflineSalesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono font-bold tracking-wider">
-                          {sale.vehicleNo || '—'}
-                        </span>
-                        {sale.vehicleModel && <p className="text-[10px] text-gray-500 mt-0.5">{sale.vehicleModel}</p>}
+                        {Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-800 border border-slate-300 rounded text-[9px] font-mono font-bold tracking-wider">
+                                {sale.vehicles[0].plateNumber || sale.vehicleNo || '—'}
+                              </span>
+                              <span
+                                className="inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded text-[9px] font-bold cursor-help"
+                                title={sale.vehicles.map(v => `${v.plateNumber || ''}${v.model ? ` (${v.model})` : ''}`).filter(Boolean).join(', ')}
+                              >
+                                +{sale.vehicles.length - 1} more
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-gray-500 truncate max-w-[150px]" title={sale.vehicles.map(v => v.model).filter(Boolean).join(', ')}>
+                              {sale.vehicles.map(v => v.model).filter(Boolean).join(', ') || sale.vehicleModel || ''}
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono font-bold tracking-wider">
+                              {sale.vehicleNo || (sale.vehicles?.[0]?.plateNumber) || '—'}
+                            </span>
+                            {(sale.vehicleModel || sale.vehicles?.[0]?.model) && (
+                              <p className="text-[10px] text-gray-500 mt-0.5">{sale.vehicleModel || sale.vehicles?.[0]?.model}</p>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-bold text-gray-800">{sale.packageName || sale.membershipName || '—'}</p>
@@ -1352,7 +1382,7 @@ export default function ManageOfflineSalesPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 font-medium">{sale.date || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 font-medium">{toDisplayDate(sale.date || sale.saleDate) || '—'}</td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button

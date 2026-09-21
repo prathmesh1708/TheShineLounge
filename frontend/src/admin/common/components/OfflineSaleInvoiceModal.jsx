@@ -535,8 +535,12 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                     <span className="text-gray-900 font-mono">#{receiptNo}</span>
                   </div>
                   <div className="flex justify-between text-[11px] font-bold text-gray-600">
-                    <span>Vehicle:</span>
-                    <span className="text-gray-900">{sale.vehicleNo || 'Registered Vehicle'}</span>
+                    <span>{Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? 'Vehicles:' : 'Vehicle:'}</span>
+                    <span className="text-gray-900 text-right">
+                      {Array.isArray(sale.vehicles) && sale.vehicles.length > 0
+                        ? sale.vehicles.map(v => v.plateNumber).filter(Boolean).join(', ')
+                        : (sale.vehicleNo || 'Registered Vehicle')}
+                    </span>
                   </div>
                   <div className="flex justify-between text-[11px] font-bold text-gray-600">
                     <span>Total Paid:</span>

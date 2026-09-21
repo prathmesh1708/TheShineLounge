@@ -1,5 +1,6 @@
 const OfflineSale = require('../models/OfflineSale');
 const MembershipPass = require('../models/MembershipPass');
+const { toIsoDate } = require('../utils/dateFormat');
 
 // Mirrors a booking into the dedicated offlinesales / memberships collections.
 //
@@ -40,12 +41,27 @@ const mirrorOfflineSale = async (booking) => {
   const saleId = booking.bookingId || String(booking._id);
   if (!saleId) return null;
 
+  const vehicles = Array.isArray(booking.vehicles) && booking.vehicles.length > 0
+    ? booking.vehicles.map(v => ({
+        plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+        model: v.model || v.vehicleModel || '',
+        brand: v.brand || '',
+        category: v.category || 'Car'
+      })).filter(v => Boolean(v.plateNumber))
+    : [];
+
   const doc = {
     customerName: booking.customerName || 'Walk-in Customer',
     customerEmail: (booking.customerEmail || '').toLowerCase().trim(),
     phone: booking.phone || '',
-    vehicleNo: booking.vehicleNo || '',
-    vehicleType: booking.vehicleType || booking.vehicleModel || '',
+    vehicleNo: booking.vehicleNo || (vehicles[0]?.plateNumber || ''),
+    vehicleType: booking.vehicleType || booking.vehicleModel || (vehicles[0]?.model || ''),
+    vehicles: vehicles.length > 0 ? vehicles : (booking.vehicleNo ? [{
+      plateNumber: (booking.vehicleNo || '').toUpperCase().trim(),
+      model: booking.vehicleType || booking.vehicleModel || '',
+      brand: '',
+      category: 'Car'
+    }] : []),
     serviceKey: booking.serviceKey || 'car-wash',
     serviceName: booking.serviceName || 'Car Wash',
     packageName: booking.packageName || booking.membershipName || 'Single Wash',
@@ -54,7 +70,7 @@ const mirrorOfflineSale = async (booking) => {
     gstAmount: Number(booking.gstAmount) || 0,
     includeGst: Boolean(booking.includeGst),
     paymentMode: booking.paymentMode || 'Cash',
-    saleDate: booking.saleDate || booking.date || new Date().toISOString().split('T')[0],
+    saleDate: toIsoDate(booking.saleDate || booking.date) || new Date().toISOString().split('T')[0],
     saleType: booking.saleType || 'service',
     staffId: booking.staffId || null,
     staffName: booking.staffAssigned || booking.staffName || '',
@@ -86,6 +102,9 @@ const mirrorMembershipPass = async (booking) => {
     new Date(startDate.getTime() + daysFromValidity(booking.membershipValidity) * 24 * 3600 * 1000);
 
   const plate = (booking.vehicleNo || '').toUpperCase().trim();
+  const vehiclePlates = Array.isArray(booking.vehicles) && booking.vehicles.length > 0
+    ? booking.vehicles.map(v => (v.plateNumber || v.plate || '').toUpperCase().trim()).filter(Boolean)
+    : (plate ? [plate] : []);
 
   const doc = {
     planName: booking.membershipName || booking.packageName || 'Monthly Membership',
@@ -93,7 +112,7 @@ const mirrorMembershipPass = async (booking) => {
     customerName: booking.customerName || 'Valued Member',
     customerEmail: (booking.customerEmail || '').toLowerCase().trim(),
     phone: booking.phone || '',
-    boundVehicles: plate ? [plate] : [],
+    boundVehicles: vehiclePlates.length > 0 ? Array.from(new Set(vehiclePlates)) : [],
     startDate,
     expiryDate,
     status: booking.status === 'Cancelled' ? 'Suspended' : 'Active',

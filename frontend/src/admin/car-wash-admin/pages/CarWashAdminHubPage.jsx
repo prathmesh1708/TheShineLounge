@@ -56,6 +56,7 @@ import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceM
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
+import { formatVehicleName } from '../../../common/services/vehicleService';
 
 export default function CarWashAdminHubPage() {
   const serviceKey = 'car-wash';
@@ -236,7 +237,7 @@ export default function CarWashAdminHubPage() {
     if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
     const matchedCust = findCustomerProfile(plate, v.ownerEmail, v.ownerPhone);
-    const modelName = [v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle';
+    const modelName = formatVehicleName(v.brand, v.model, 'Vehicle');
 
     registeredVehiclesMap[cleanPlate] = {
       _id: v._id,

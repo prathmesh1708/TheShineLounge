@@ -6,6 +6,7 @@ const { sendNotificationToUser } = require('../common/services/pushNotificationH
 const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
 const { tryMirrorBooking, trySoftDeleteMirrors } = require('../services/salesRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
+const { toDisplayDate } = require('../utils/dateFormat');
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
 // for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
@@ -78,7 +79,7 @@ const createBooking = async (req, res) => {
     const liveTimeStart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const liveTimeEnd = new Date(now.getTime() + 30 * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    const finalDate = (!date || date.includes('July 18')) ? liveDateStr : date;
+    const finalDate = (!date || date.includes('July 18')) ? liveDateStr : toDisplayDate(date);
     const finalTimeSlot = (!timeSlot || timeSlot === '02:00 PM - 02:30 PM') ? `${liveTimeStart} - ${liveTimeEnd}` : timeSlot;
 
     // Auto generate booking ID if not supplied
@@ -148,6 +149,19 @@ const createBooking = async (req, res) => {
       customerEmail: String(customerEmail || '').toLowerCase().trim(),
       vehicleNo: vehicleNo || '',
       vehicleType: vehicleType || '',
+      vehicles: Array.isArray(req.body.vehicles) && req.body.vehicles.length > 0
+        ? req.body.vehicles.map(v => ({
+            plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+            model: v.model || v.vehicleModel || '',
+            brand: v.brand || '',
+            category: v.category || 'Car'
+          })).filter(v => Boolean(v.plateNumber))
+        : (vehicleNo ? [{
+            plateNumber: String(vehicleNo).toUpperCase().trim(),
+            model: vehicleType || req.body.vehicleModel || '',
+            brand: '',
+            category: 'Car'
+          }] : []),
       items: Array.isArray(items) ? items : [],
       pickupTime: pickupTime || '',
       expectedAt: expectedAt ? new Date(expectedAt) : null,
@@ -189,6 +203,12 @@ const createBooking = async (req, res) => {
       const cleanVehicle = String(vehicleNo || '').toUpperCase().trim();
       const numPrice = Number(price) || 0;
 
+      const vehicleItems = (bookingData.vehicles && bookingData.vehicles.length > 0)
+        ? bookingData.vehicles
+        : (cleanVehicle ? [{ plateNumber: cleanVehicle, model: vehicleType || 'Car', brand: '', category: 'Car' }] : []);
+
+      const allVehiclePlates = vehicleItems.map(v => v.plateNumber).filter(Boolean);
+
       const isMembership = req.body.saleType === 'membership' || 
         (packageName && (packageName.toLowerCase().includes('membership') || packageName.toLowerCase().includes('pass') || packageName.toLowerCase().includes('vip')));
 
@@ -207,19 +227,20 @@ const createBooking = async (req, res) => {
           mobile: cleanPhone,
           role: 'user',
           totalSpent: numPrice,
-          vehicles: cleanVehicle ? [{
-            plateNumber: cleanVehicle,
-            model: vehicleType || 'Car',
-            brand: vehicleType || 'Car',
+          vehicles: vehicleItems.map(v => ({
+            plateNumber: v.plateNumber,
+            model: v.model || vehicleType || 'Car',
+            brand: v.brand || '',
+            category: v.category || 'Car',
             addedVia: 'staff'
-          }] : [],
+          })),
           membership: isMembership ? {
             planName: req.body.membershipName || packageName,
             serviceKey: serviceKey || 'car-wash',
             startDate: new Date(),
             expiryDate: new Date(Date.now() + (req.body.membershipExpiry ? (new Date(req.body.membershipExpiry).getTime() - Date.now()) : 30 * 24 * 3600 * 1000)),
             status: 'Active',
-            boundVehicles: cleanVehicle ? [cleanVehicle] : []
+            boundVehicles: allVehiclePlates
           } : undefined
         };
         if (cleanEmail) {
@@ -231,42 +252,51 @@ const createBooking = async (req, res) => {
           $inc: { totalSpent: numPrice },
           $set: { updatedAt: new Date() }
         };
-        if (cleanVehicle) {
-          const hasPlate = (existingUser.vehicles || []).some(v => v.plateNumber?.toUpperCase().trim() === cleanVehicle);
-          if (!hasPlate) {
-            updateDoc.$push = {
-              vehicles: {
-                plateNumber: cleanVehicle,
-                model: vehicleType || 'Car',
-                brand: vehicleType || 'Car',
+
+        const currentPlates = new Set((existingUser.vehicles || []).map(v => (v.plateNumber || '').toUpperCase().trim()));
+        const newVehiclesToAdd = vehicleItems.filter(v => v.plateNumber && !currentPlates.has(v.plateNumber));
+
+        if (newVehiclesToAdd.length > 0) {
+          updateDoc.$push = {
+            vehicles: {
+              $each: newVehiclesToAdd.map(v => ({
+                plateNumber: v.plateNumber,
+                model: v.model || vehicleType || 'Car',
+                brand: v.brand || '',
+                category: v.category || 'Car',
                 addedVia: 'staff'
-              }
-            };
-          }
+              }))
+            }
+          };
         }
+
         if (isMembership) {
           updateDoc.$set['membership.planName'] = req.body.membershipName || packageName;
           updateDoc.$set['membership.serviceKey'] = serviceKey || 'car-wash';
           updateDoc.$set['membership.startDate'] = new Date();
           updateDoc.$set['membership.expiryDate'] = new Date(Date.now() + (req.body.membershipExpiry ? (new Date(req.body.membershipExpiry).getTime() - Date.now()) : 30 * 24 * 3600 * 1000));
           updateDoc.$set['membership.status'] = 'Active';
-          if (cleanVehicle) {
-            updateDoc.$addToSet = { 'membership.boundVehicles': cleanVehicle };
+          if (allVehiclePlates.length > 0) {
+            updateDoc.$addToSet = { 'membership.boundVehicles': { $each: allVehiclePlates } };
           }
         }
         await User.updateOne({ _id: existingUser._id }, updateDoc);
       }
 
-      // Mirror the plate into the vehicle registry the admin fleet screen reads.
-      await tryUpsertRegisteredVehicle({
-        plateNumber: cleanVehicle,
-        brand: vehicleType,
-        model: vehicleType,
-        ownerName: cleanName,
-        ownerEmail: cleanEmail,
-        ownerPhone: cleanPhone,
-        addedVia: 'staff'
-      });
+      // Mirror all plates into the vehicle registry the admin fleet screen reads.
+      for (const v of vehicleItems) {
+        if (v.plateNumber) {
+          await tryUpsertRegisteredVehicle({
+            plateNumber: v.plateNumber,
+            brand: v.brand || '',
+            model: v.model || vehicleType || 'Vehicle',
+            ownerName: cleanName,
+            ownerEmail: cleanEmail,
+            ownerPhone: cleanPhone,
+            addedVia: 'staff'
+          });
+        }
+      }
     } catch (syncErr) {
       console.warn('Note: Could not auto-sync customer to User collection:', syncErr.message);
     }
@@ -483,7 +513,8 @@ const updateBooking = async (req, res) => {
     if (paymentMode !== undefined) booking.paymentMode = paymentMode;
     if (saleDate !== undefined) {
       booking.saleDate = saleDate;
-      booking.date = saleDate;
+      // `date` is the display string, never the raw ISO value -- see utils/dateFormat.
+      booking.date = toDisplayDate(req.body.date || saleDate);
     }
     if (saleType !== undefined) booking.saleType = saleType;
     if (membershipValidity !== undefined) booking.membershipValidity = membershipValidity;

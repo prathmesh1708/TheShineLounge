@@ -14,6 +14,7 @@ import {
   normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
+import { toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
 
 const formatBookingDateTime = (rawSlot, rawDate) => {
@@ -434,7 +435,9 @@ export const AdminProvider = ({ children }) => {
         lastFetchedRef.current.bookings = Date.now();
         if (res.data && res.data.bookings) {
           mapped = res.data.bookings.map(b => {
-            const rawDate = b.date || b.saleDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '');
+            // Normalize on read so rows saved with an ISO `date` by the old
+            // update path still display as "August 20, 2026".
+            const rawDate = toDisplayDate(b.date || b.saleDate || b.createdAt || '');
             const rawTime = b.timeSlot || '';
 
             return {
@@ -453,6 +456,9 @@ export const AdminProvider = ({ children }) => {
               plan: b.packageName || b.plan || 'Standard',
               packageName: b.packageName || b.plan || 'Standard',
               date: rawDate,
+              // Carried through so the edit modal and range filters read the
+              // unambiguous machine date instead of reverse-parsing `date`.
+              saleDate: b.saleDate || toIsoDate(b.date) || '',
               timeSlot: rawTime,
               total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
               price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
@@ -1680,6 +1686,9 @@ export const AdminProvider = ({ children }) => {
       customerEmail: (formData.customerEmail || '').toLowerCase().trim(),
       vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
       vehicleType: formData.vehicleModel || formData.vehicleType || '',
+      vehicles: Array.isArray(formData.vehicles) && formData.vehicles.length > 0
+        ? formData.vehicles
+        : (formData.vehicleNo ? [{ plateNumber: (formData.vehicleNo || '').toUpperCase().trim(), model: formData.vehicleModel || '', brand: '' }] : []),
       phone: formData.phone || '',
       status: 'Completed',
       isOfflineSale: true,
@@ -1735,20 +1744,25 @@ export const AdminProvider = ({ children }) => {
       window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
-    showToast(`✅ Offline sale ${newId} recorded successfully!`);
+    showToast(`✅ Offline sale recorded successfully! (${newId})`);
     return finalRecord;
   };
 
-  const updateOfflineSale = async (saleId, formData) => {
-    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : new Date();
+  const updateOfflineSale = async (saleIdOrData, maybeFormData) => {
+    const formData = maybeFormData || saleIdOrData;
+    const saleId = typeof saleIdOrData === 'string' ? saleIdOrData : (formData.id || formData.saleId || formData.bookingId);
+    if (!saleId) throw new Error('Sale ID is required for update');
+
+    const now = new Date();
+    const saleDateObj = formData.saleDate ? new Date(formData.saleDate + 'T12:00:00') : now;
     const dateStr = !isNaN(saleDateObj.getTime())
       ? saleDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      : now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
     let membershipExpiry = formData.membershipExpiry || '';
     let membershipValidity = formData.membershipValidity || '';
     if (formData.saleType === 'membership') {
-      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : new Date();
+      const baseDate = !isNaN(saleDateObj.getTime()) ? saleDateObj : now;
       const days = formData.validityDays === 'custom'
         ? Math.ceil((new Date(formData.customExpiryDate) - baseDate) / (1000 * 60 * 60 * 24))
         : Number(formData.validityDays) || 30;
@@ -1777,6 +1791,9 @@ export const AdminProvider = ({ children }) => {
       vehicleNo: (formData.vehicleNo || '').toUpperCase().trim(),
       vehicleType: formData.vehicleModel || formData.vehicleType || '',
       vehicleModel: formData.vehicleModel || formData.vehicleType || '',
+      vehicles: Array.isArray(formData.vehicles) && formData.vehicles.length > 0
+        ? formData.vehicles
+        : (formData.vehicleNo ? [{ plateNumber: (formData.vehicleNo || '').toUpperCase().trim(), model: formData.vehicleModel || '', brand: '' }] : []),
       serviceKey: formData.serviceKey || 'car-wash',
       serviceName: formData.serviceName || (formData.serviceKey === 'car-detailing' ? 'Car Detailing' : 'Car Wash'),
       paymentMode: formData.paymentMode || 'Cash',

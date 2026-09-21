@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const OfflineSale = require('../models/OfflineSale');
 const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
+const { toDisplayDate } = require('../utils/dateFormat');
 
 // @desc    Get all offline POS sales
 // @route   GET /api/offline-sales
@@ -31,7 +32,7 @@ const getOfflineSales = async (req, res) => {
 // @access  Private (Staff/Admin)
 const createOfflineSale = async (req, res) => {
   try {
-    const { customerName, customerEmail, phone, vehicleNo, vehicleType, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes } = req.body;
+    const { customerName, customerEmail, phone, vehicleNo, vehicleType, vehicles, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes } = req.body;
 
     if (!customerName || !packageName || price === undefined) {
       return res.status(400).json({
@@ -39,6 +40,22 @@ const createOfflineSale = async (req, res) => {
         message: 'Customer name, package name, and price are required'
       });
     }
+
+    const parsedVehicles = Array.isArray(vehicles) && vehicles.length > 0
+      ? vehicles.map(v => ({
+          plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+          model: v.model || v.vehicleModel || '',
+          brand: v.brand || '',
+          category: v.category || 'Car'
+        })).filter(v => Boolean(v.plateNumber))
+      : [];
+
+    const primaryVehicleNo = (vehicleNo || parsedVehicles[0]?.plateNumber || '').toUpperCase().trim();
+    const primaryVehicleType = vehicleType || parsedVehicles[0]?.model || '';
+
+    const finalVehicles = parsedVehicles.length > 0
+      ? parsedVehicles
+      : (primaryVehicleNo ? [{ plateNumber: primaryVehicleNo, model: primaryVehicleType, brand: '', category: 'Car' }] : []);
 
     // Highest existing id + 1, never the row count -- see utils/sequentialId.
     const saleId = req.body.saleId || (await nextSequentialId(OfflineSale, { field: 'saleId', prefix: 'OFS-TSH-' }));
@@ -48,8 +65,9 @@ const createOfflineSale = async (req, res) => {
       customerName,
       customerEmail: (customerEmail || '').toLowerCase().trim(),
       phone: phone || '',
-      vehicleNo: vehicleNo || '',
-      vehicleType: vehicleType || '',
+      vehicleNo: primaryVehicleNo,
+      vehicleType: primaryVehicleType,
+      vehicles: finalVehicles,
       serviceKey: serviceKey || 'car-wash',
       serviceName: serviceName || 'Car Wash',
       packageName: packageName || 'Single Wash',
@@ -65,16 +83,20 @@ const createOfflineSale = async (req, res) => {
       notes: notes || ''
     });
 
-    // A plate sold to at the counter is a registered vehicle from now on.
-    await tryUpsertRegisteredVehicle({
-      plateNumber: vehicleNo,
-      brand: vehicleType,
-      model: vehicleType,
-      ownerName: customerName,
-      ownerEmail: customerEmail,
-      ownerPhone: phone,
-      addedVia: 'pos'
-    });
+    // All plates sold to at the counter are registered vehicles from now on.
+    for (const v of finalVehicles) {
+      if (v.plateNumber) {
+        await tryUpsertRegisteredVehicle({
+          plateNumber: v.plateNumber,
+          brand: v.brand || '',
+          model: v.model || primaryVehicleType || 'Vehicle',
+          ownerName: customerName,
+          ownerEmail: customerEmail,
+          ownerPhone: phone,
+          addedVia: 'pos'
+        });
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -126,6 +148,7 @@ const updateOfflineSale = async (req, res) => {
       vehicleNo,
       vehicleType,
       vehicleModel,
+      vehicles,
       serviceKey,
       serviceName,
       packageName,
@@ -147,6 +170,20 @@ const updateOfflineSale = async (req, res) => {
     const resolvedPackageName = packageName || membershipName;
     const resolvedVehicleType = vehicleType || vehicleModel || '';
 
+    const parsedVehicles = Array.isArray(vehicles) && vehicles.length > 0
+      ? vehicles.map(v => ({
+          plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+          model: v.model || v.vehicleModel || '',
+          brand: v.brand || '',
+          category: v.category || 'Car'
+        })).filter(v => Boolean(v.plateNumber))
+      : (vehicleNo ? [{
+          plateNumber: String(vehicleNo).toUpperCase().trim(),
+          model: resolvedVehicleType || '',
+          brand: '',
+          category: 'Car'
+        }] : undefined);
+
     // If sale doesn't exist yet in offlinesales collection but was in bookings, instantiate it
     if (!sale) {
       sale = new OfflineSale({
@@ -164,6 +201,7 @@ const updateOfflineSale = async (req, res) => {
     if (phone !== undefined) sale.phone = phone;
     if (vehicleNo !== undefined) sale.vehicleNo = (vehicleNo || '').toUpperCase().trim();
     if (resolvedVehicleType) sale.vehicleType = resolvedVehicleType;
+    if (parsedVehicles !== undefined) sale.vehicles = parsedVehicles;
     if (serviceKey !== undefined) sale.serviceKey = serviceKey;
     if (serviceName !== undefined) sale.serviceName = serviceName;
     if (resolvedPackageName !== undefined) sale.packageName = resolvedPackageName;
@@ -190,6 +228,7 @@ const updateOfflineSale = async (req, res) => {
         booking.vehicleType = resolvedVehicleType;
         booking.vehicleModel = resolvedVehicleType;
       }
+      if (parsedVehicles !== undefined) booking.vehicles = parsedVehicles;
       if (serviceKey !== undefined) booking.serviceKey = serviceKey;
       if (serviceName !== undefined) booking.serviceName = serviceName;
       if (resolvedPackageName !== undefined) {
@@ -211,7 +250,8 @@ const updateOfflineSale = async (req, res) => {
       if (paymentMode !== undefined) booking.paymentMode = paymentMode;
       if (saleDate !== undefined) {
         booking.saleDate = saleDate;
-        booking.date = saleDate;
+        // `date` is the display string, never the raw ISO value -- see utils/dateFormat.
+        booking.date = toDisplayDate(req.body.date || saleDate);
       }
       if (saleType !== undefined) booking.saleType = saleType;
       if (membershipValidity !== undefined) booking.membershipValidity = membershipValidity;
@@ -222,16 +262,22 @@ const updateOfflineSale = async (req, res) => {
     }
 
     // Keep vehicle registry up to date
-    if (sale.vehicleNo) {
-      await tryUpsertRegisteredVehicle({
-        plateNumber: sale.vehicleNo,
-        brand: sale.vehicleType,
-        model: sale.vehicleType,
-        ownerName: sale.customerName,
-        ownerEmail: sale.customerEmail,
-        ownerPhone: sale.phone,
-        addedVia: 'pos'
-      });
+    const vehiclesToRegister = (parsedVehicles && parsedVehicles.length > 0)
+      ? parsedVehicles
+      : (sale.vehicleNo ? [{ plateNumber: sale.vehicleNo, model: sale.vehicleType || 'Vehicle' }] : []);
+
+    for (const v of vehiclesToRegister) {
+      if (v.plateNumber) {
+        await tryUpsertRegisteredVehicle({
+          plateNumber: v.plateNumber,
+          brand: v.brand || '',
+          model: v.model || sale.vehicleType || 'Vehicle',
+          ownerName: sale.customerName,
+          ownerEmail: sale.customerEmail,
+          ownerPhone: sale.phone,
+          addedVia: 'pos'
+        });
+      }
     }
 
     // Mirror to MembershipPass if it's a membership
