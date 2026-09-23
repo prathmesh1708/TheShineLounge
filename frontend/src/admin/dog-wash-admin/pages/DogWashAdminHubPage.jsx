@@ -531,7 +531,7 @@ export default function DogWashAdminHubPage() {
         payload.password = editStaffForm.password;
       }
 
-      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      const res = await apiClient.put(`/staff/${sId}`, payload);
       if (res.data && res.data.success) {
         alert('✅ Staff member updated successfully!');
         fetchLiveStaff();

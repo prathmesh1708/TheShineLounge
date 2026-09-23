@@ -48,17 +48,37 @@ export default function RevenueReportsPage() {
     return computeFinancialSummary(allTransactions, calculationSettings, timeRange);
   }, [allTransactions, calculationSettings, timeRange]);
 
-  // Dynamic monthly flow trajectory scaled to match configured rules
+  // Dynamic monthly flow trajectory aggregated strictly from real transactions
   const dynamicTrendData = useMemo(() => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const scale = summary.grossSales / 1420000;
-    const baseCurve = [850000, 920000, 1050000, 980000, 1120000, 1250000, 1180000, 1310000, 1280000, 1450000, 1520000, 1680000];
+    const monthlyTotals = new Array(12).fill(0);
+    const targetYear = new Date().getFullYear();
+
+    (allTransactions || []).forEach((item) => {
+      if (!item || String(item.status || item.bookingStatus || '').toLowerCase() === 'cancelled') return;
+      const rawDate = item.date || item.createdAt || item.bookedAt || item.saleDate || item.bookingDate;
+      if (!rawDate) return;
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return;
+      
+      const gross = Math.max(0, Number(item.total ?? item.amount ?? item.price ?? item.grandTotal ?? 0));
+      const monthIdx = d.getMonth(); // 0 - 11
+      if (timeRange === 'FY 2025-26') {
+        const startFY = new Date(2025, 3, 1, 0, 0, 0);
+        const endFY = new Date(2026, 2, 31, 23, 59, 59, 999);
+        if (d >= startFY && d <= endFY) {
+          monthlyTotals[monthIdx] += gross;
+        }
+      } else if (d.getFullYear() === targetYear || timeRange === 'All Time') {
+        monthlyTotals[monthIdx] += gross;
+      }
+    });
 
     return months.map((m, i) => ({
       month: m,
-      revenue: Math.round(baseCurve[i] * (scale > 0 ? scale : 1))
+      revenue: Math.round(monthlyTotals[i])
     }));
-  }, [summary.grossSales]);
+  }, [allTransactions, timeRange]);
 
   // 1. Downloadable Excel (.csv) Export
   const handleExportExcel = () => {
@@ -104,9 +124,9 @@ export default function RevenueReportsPage() {
         [''],
         ['3. DETAILED TRANSACTION AUDIT RECORDS'],
         ['Invoice ID', 'Customer Name', 'Department', 'Gross Amount (INR)', 'Taxable Base (INR)', 'CGST (INR)', 'SGST (INR)', 'Payment Mode', 'Status'],
-        ...summary.transactions.slice(0, 50).map(t => [
+        ...summary.transactions.map(t => [
           t.invoiceId || t.id,
-          t.customerName || 'Walk-in Client',
+          t.customerName || t.customer || 'Walk-in Client',
           t.serviceName || t.service || 'General Service',
           t.calculatedGross || t.total || t.amount || 0,
           Math.round(t.taxableBase || 0),
@@ -270,7 +290,7 @@ export default function RevenueReportsPage() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-base font-bold text-gray-900">Gross Sales vs Revenue Flow</h3>
-                <p className="text-xs text-gray-400">Monthly trajectory scaled to active calculation parameters</p>
+                <p className="text-xs text-gray-400">Actual monthly revenue trajectory from live bookings & counter sales</p>
               </div>
               <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-xl">
                 Avg Order Value: <strong>{formatINR(summary.aov)}</strong>
@@ -288,7 +308,7 @@ export default function RevenueReportsPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => v >= 100000 ? `₹${(v / 100000).toFixed(1)}L` : v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`} />
                   <Tooltip formatter={(v) => formatINR(v)} />
                   <Area type="monotone" dataKey="revenue" stroke="#e07b2a" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
                 </AreaChart>
@@ -304,7 +324,7 @@ export default function RevenueReportsPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={summary.departmentBreakdown} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis type="number" stroke="#94a3b8" fontSize={10} tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`} />
+                    <XAxis type="number" stroke="#94a3b8" fontSize={10} tickFormatter={(v) => v >= 100000 ? `₹${(v / 100000).toFixed(1)}L` : v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`} />
                     <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={10} width={110} />
                     <Tooltip formatter={(v) => formatINR(v)} />
                     <Bar dataKey="gross" fill="#1e4a7e" radius={[0, 6, 6, 0]} />

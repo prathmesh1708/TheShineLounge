@@ -1387,8 +1387,83 @@ export const AdminProvider = ({ children }) => {
   };
 
   // 4. Memberships
+  const updateMembership = async (id, updatedFields) => {
+    const memId = String(id || '');
+
+    // 1. Update memberships state
+    setMemberships(prev => prev.map(m => {
+      if (m.id === memId || m._id === memId || m.passId === memId || m.bookingId === memId) {
+        return {
+          ...m,
+          ...updatedFields,
+          customerName: updatedFields.customerName || m.customerName,
+          phone: updatedFields.phone || m.phone,
+          email: updatedFields.email || updatedFields.customerEmail || m.email || m.customerEmail,
+          vehicleNo: updatedFields.vehicleNo || m.vehicleNo,
+          vehicleModel: updatedFields.vehicleModel || m.vehicleModel,
+          planName: updatedFields.planName || m.planName,
+          amount: updatedFields.amount !== undefined ? updatedFields.amount : (updatedFields.price !== undefined ? updatedFields.price : m.amount),
+          price: updatedFields.price !== undefined ? updatedFields.price : (updatedFields.amount !== undefined ? updatedFields.amount : m.price),
+          washesUsed: updatedFields.washesUsed !== undefined ? Number(updatedFields.washesUsed) : m.washesUsed,
+          maxWashes: updatedFields.maxWashes !== undefined ? updatedFields.maxWashes : m.maxWashes,
+          startDate: updatedFields.startDate || m.startDate,
+          startDateLabel: updatedFields.startDate ? formatLongDate(parseFlexibleDate(updatedFields.startDate)) : m.startDateLabel,
+          expiryDate: updatedFields.expiryDate || m.expiryDate,
+          expiryDateLabel: updatedFields.expiryDate ? formatLongDate(parseFlexibleDate(updatedFields.expiryDate)) : m.expiryDateLabel,
+          status: updatedFields.status || m.status,
+          statusLabel: updatedFields.status || m.statusLabel
+        };
+      }
+      return m;
+    }));
+
+    // 2. Update matching bookings state
+    setBookings(prev => prev.map(b => {
+      const bId = String(b.bookingId || b.id || b._id || '');
+      if (bId === memId || b.membershipPassId === memId) {
+        return {
+          ...b,
+          customerName: updatedFields.customerName || b.customerName,
+          phone: updatedFields.phone || b.phone,
+          customerEmail: updatedFields.email || updatedFields.customerEmail || b.customerEmail,
+          vehicleNo: updatedFields.vehicleNo || b.vehicleNo,
+          vehicleModel: updatedFields.vehicleModel || b.vehicleModel,
+          packageName: updatedFields.planName || b.packageName,
+          membershipName: updatedFields.planName || b.membershipName,
+          price: updatedFields.amount !== undefined ? Number(updatedFields.amount) : b.price,
+          membershipStatus: updatedFields.status || b.membershipStatus,
+          membershipStartDate: updatedFields.startDate || b.membershipStartDate,
+          membershipExpiry: updatedFields.expiryDate || b.membershipExpiry,
+          washesUsed: updatedFields.washesUsed !== undefined ? Number(updatedFields.washesUsed) : b.washesUsed
+        };
+      }
+      return b;
+    }));
+
+    // 3. Persist to localStorage & trigger sync event
+    try {
+      const adminMems = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+      if (Array.isArray(adminMems)) {
+        const updatedList = adminMems.map(m => (m.id === memId || m._id === memId || m.passId === memId) ? { ...m, ...updatedFields } : m);
+        localStorage.setItem('tsl_admin_memberships', JSON.stringify(updatedList));
+      }
+      window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: memId, ...updatedFields } }));
+    } catch (_) {}
+
+    // 4. Update in backend MongoDB database
+    try {
+      await apiClient.put(`/memberships/${memId}`, updatedFields);
+    } catch (err) {
+      console.warn('Membership database update note:', err.message);
+    }
+
+    showToast('Membership details updated successfully!');
+  };
+
   const updateMembershipStatus = (id, newStatus) => {
     setMemberships(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m));
+    // Also sync to backend DB
+    apiClient.put(`/memberships/${id}`, { status: newStatus }).catch(() => {});
     showToast(`Membership status changed to ${newStatus}`);
   };
 
@@ -2353,6 +2428,7 @@ export const AdminProvider = ({ children }) => {
       updateBanner,
       deleteBanner,
       composeNotification,
+      updateMembership,
       updateMembershipStatus,
       renewMembership,
       deleteMembership,

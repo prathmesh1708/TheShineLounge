@@ -1,12 +1,168 @@
 import React, { useState } from 'react';
-import { CreditCard, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, User, Car, Clock, Sparkles, Trash2 } from 'lucide-react';
+import {
+  CreditCard,
+  ShieldCheck,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  User,
+  Car,
+  Clock,
+  Sparkles,
+  Trash2,
+  Pencil,
+  AlertCircle,
+  Phone,
+  Mail,
+  Calendar,
+  DollarSign
+} from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
 
+const POPULAR_PLANS = [
+  'Monthly Unlimited Wash',
+  'Annual VIP Pass',
+  'Gold Wash Pass',
+  'Silver Wash Pass',
+  'Monthly 4-Wash Pass',
+  'Premium Detailing Pass'
+];
+
+const STATUS_OPTIONS = [
+  'Active',
+  'Queued',
+  'Expiring Soon',
+  'Expired',
+  'Suspended'
+];
+
+const PAYMENT_MODES = [
+  'Cash',
+  'UPI',
+  'Credit Card',
+  'Debit Card',
+  'Net Banking',
+  'Wallet'
+];
+
 export default function ManageMembershipsPage() {
-  const { memberships, updateMembershipStatus, renewMembership, logMembershipWash, deleteMembership } = useAdmin();
+  const {
+    memberships,
+    updateMembership,
+    updateMembershipStatus,
+    renewMembership,
+    logMembershipWash,
+    deleteMembership
+  } = useAdmin();
+
   const [selectedMember, setSelectedMember] = useState(null);
+  const [editMember, setEditMember] = useState(null);
+  const [editForm, setEditForm] = useState({
+    customerName: '',
+    phone: '',
+    email: '',
+    vehicleNo: '',
+    vehicleModel: '',
+    planName: '',
+    amount: '',
+    status: 'Active',
+    washesUsed: 0,
+    maxWashes: 30,
+    isUnlimited: false,
+    startDate: '',
+    expiryDate: '',
+    paymentMode: 'Cash',
+    serviceKey: 'car-wash'
+  });
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState('');
+
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString().split('T')[0];
+  };
+
+  const openEditModal = (member) => {
+    if (!member) return;
+    setEditMember(member);
+    setModalError('');
+
+    const isUnlimited = member.maxWashes === 999 || member.maxWashes === 'Unlimited' || member.unlimited;
+    const sDate = formatDateForInput(member.startDate) || new Date().toISOString().split('T')[0];
+    const eDate = formatDateForInput(member.expiryDate) || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+    setEditForm({
+      customerName: member.customerName || '',
+      phone: member.phone || '',
+      email: member.email || member.customerEmail || '',
+      vehicleNo: member.vehicleNo || (Array.isArray(member.boundVehicles) ? member.boundVehicles[0] : '') || '',
+      vehicleModel: member.vehicleModel || '',
+      planName: member.planName || 'Monthly Unlimited Wash',
+      amount: Number(member.amount) || Number(member.price) || 0,
+      status: member.status || 'Active',
+      washesUsed: Number(member.washesUsed) || 0,
+      maxWashes: isUnlimited ? 'Unlimited' : (member.maxWashes || 30),
+      isUnlimited: Boolean(isUnlimited),
+      startDate: sDate,
+      expiryDate: eDate,
+      paymentMode: member.paymentMode || 'Cash',
+      serviceKey: member.serviceKey || 'car-wash'
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editMember) return;
+    setModalLoading(true);
+    setModalError('');
+
+    try {
+      if (!editForm.customerName.trim()) {
+        setModalError('Customer name is required');
+        setModalLoading(false);
+        return;
+      }
+
+      const payload = {
+        customerName: editForm.customerName.trim(),
+        phone: editForm.phone.trim(),
+        email: editForm.email.trim(),
+        customerEmail: editForm.email.trim(),
+        vehicleNo: editForm.vehicleNo.trim().toUpperCase(),
+        boundVehicles: [editForm.vehicleNo.trim().toUpperCase()],
+        vehicleModel: editForm.vehicleModel.trim(),
+        planName: editForm.planName.trim(),
+        amount: Number(editForm.amount) || 0,
+        price: Number(editForm.amount) || 0,
+        amountPaid: Number(editForm.amount) || 0,
+        status: editForm.status,
+        washesUsed: Number(editForm.washesUsed) || 0,
+        maxWashes: editForm.isUnlimited ? 999 : (Number(editForm.maxWashes) || 30),
+        unlimited: Boolean(editForm.isUnlimited),
+        startDate: editForm.startDate,
+        expiryDate: editForm.expiryDate,
+        paymentMode: editForm.paymentMode,
+        serviceKey: editForm.serviceKey
+      };
+
+      if (updateMembership) {
+        await updateMembership(editMember.id || editMember._id || editMember.passId, payload);
+      }
+
+      setEditMember(null);
+      if (selectedMember && (selectedMember.id === editMember.id || selectedMember._id === editMember._id)) {
+        setSelectedMember(prev => prev ? { ...prev, ...payload } : null);
+      }
+    } catch (err) {
+      setModalError(err.message || 'Failed to update membership');
+    } finally {
+      setModalLoading(false);
+    }
+  };
 
   const handleLogWash = async (member) => {
     if (!member || !logMembershipWash) return;
@@ -23,7 +179,7 @@ export default function ManageMembershipsPage() {
 
   const handleDeleteMembership = async (member) => {
     if (!member) return;
-    const id = member.id || '';
+    const id = member.id || member.passId || '';
     const name = member.customerName || 'customer';
     const plate = member.vehicleNo ? ` [${member.vehicleNo}]` : '';
     if (!window.confirm(`Are you sure you want to delete membership ${id} (${name}${plate})?`)) {
@@ -41,7 +197,7 @@ export default function ManageMembershipsPage() {
     {
       header: 'Membership ID',
       accessorKey: 'id',
-      cell: (row) => <span className="font-bold text-gray-900">{row.id}</span>
+      cell: (row) => <span className="font-bold text-gray-900">{row.id || row.passId}</span>
     },
     {
       header: 'Customer Details',
@@ -60,7 +216,7 @@ export default function ManageMembershipsPage() {
         <div className="flex items-center gap-1.5">
           <Car className="w-3.5 h-3.5 text-amber-500" />
           <div>
-            <span className="font-extrabold text-gray-800 block">{row.vehicleNo}</span>
+            <span className="font-extrabold text-gray-800 block">{row.vehicleNo || (Array.isArray(row.boundVehicles) ? row.boundVehicles[0] : '—')}</span>
             <span className="text-[10px] text-gray-400">{row.vehicleModel}</span>
           </div>
         </div>
@@ -84,7 +240,7 @@ export default function ManageMembershipsPage() {
       header: 'Washes Used',
       accessorKey: 'washesUsed',
       cell: (row) => {
-        const isUnlimited = row.maxWashes === 999 || row.maxWashes === 'Unlimited';
+        const isUnlimited = row.maxWashes === 999 || row.maxWashes === 'Unlimited' || row.unlimited;
         const displayLimit = isUnlimited ? '∞' : (row.maxWashes || 30);
         const percent = isUnlimited ? 100 : Math.min(100, ((row.washesUsed || 0) / (row.maxWashes || 1)) * 100);
         return (
@@ -95,7 +251,7 @@ export default function ManageMembershipsPage() {
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <span className="font-bold text-gray-700">{row.washesUsed}/{displayLimit}</span>
+            <span className="font-bold text-gray-700">{row.washesUsed || 0}/{displayLimit}</span>
           </div>
         );
       }
@@ -141,6 +297,13 @@ export default function ManageMembershipsPage() {
             <Sparkles className="w-3 h-3 text-emerald-200" /> Wash Done
           </button>
           <button
+            onClick={() => openEditModal(row)}
+            className="px-2 py-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg shadow-2xs flex items-center gap-1 active:scale-95 transition-all"
+            title="Edit membership details"
+          >
+            <Pencil className="w-3 h-3 text-amber-600" /> Edit
+          </button>
+          <button
             onClick={() => setSelectedMember(row)}
             className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-2xs hover:opacity-90 active:scale-95 transition-all"
             style={{ backgroundColor: '#e07b2a' }}
@@ -156,7 +319,7 @@ export default function ManageMembershipsPage() {
           </button>
           {(row.status === 'Expired' || row.status === 'Expiring Soon') && (
             <button
-              onClick={() => renewMembership(row.id)}
+              onClick={() => renewMembership(row.id || row.passId)}
               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
               title="Quick Renew"
             >
@@ -175,7 +338,7 @@ export default function ManageMembershipsPage() {
         <div>
           <h1 className="text-xl font-extrabold text-gray-900">Membership Subscriptions</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Monitor active monthly wash passes, annual VIP memberships, and expiration renewals.
+            Monitor active monthly wash passes, annual VIP memberships, expiration renewals, and update pass details.
           </p>
         </div>
       </div>
@@ -186,7 +349,6 @@ export default function ManageMembershipsPage() {
         const expiringCount = memberships.filter(m => m.status === 'Expiring Soon').length;
         const queuedCount = memberships.filter(m => m.status === 'Queued').length;
         const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 2499), 0);
-        const mrrInLakhs = (totalAmount / 100000).toFixed(2);
 
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -238,16 +400,246 @@ export default function ManageMembershipsPage() {
         columns={columns}
         data={memberships}
         searchPlaceholder="Search memberships by customer, vehicle, or ID..."
-        searchKeys={['customerName', 'vehicleNo', 'id', 'planName']}
+        searchKeys={['customerName', 'vehicleNo', 'id', 'passId', 'planName', 'phone']}
         filterKey="status"
         filterOptions={['All', 'Active', 'Queued', 'Expiring Soon', 'Expired']}
       />
 
-      {/* Modal: Manage Member */}
+      {/* ── MODAL: EDIT MEMBERSHIP ────────────────────────────────── */}
+      <AdminModal
+        isOpen={!!editMember}
+        onClose={() => setEditMember(null)}
+        title={`Edit Membership: ${editMember?.id || editMember?.passId || ''}`}
+        subtitle={`Update subscription details and database records for ${editMember?.customerName || 'Customer'}`}
+        maxWidth="max-w-2xl"
+      >
+        <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+          {modalError && (
+            <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-600">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{modalError}</span>
+            </div>
+          )}
+
+          {/* Section: Customer Info */}
+          <div>
+            <span className="font-extrabold text-gray-800 text-xs block mb-2">1. Customer Information</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Customer Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  value={editForm.customerName}
+                  onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  placeholder="e.g. 9876543210"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Customer Email</label>
+                <input
+                  type="email"
+                  placeholder="e.g. rahul@example.com"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Vehicle Info */}
+          <div className="pt-2 border-t border-gray-100">
+            <span className="font-extrabold text-gray-800 text-xs block mb-2">2. Registered Vehicle</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Vehicle Plate Number *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. MH01AB1234"
+                  value={editForm.vehicleNo}
+                  onChange={(e) => setEditForm({ ...editForm, vehicleNo: e.target.value.toUpperCase() })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-extrabold uppercase tracking-wider"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Vehicle Model / Brand</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Honda City / BMW 3 Series"
+                  value={editForm.vehicleModel}
+                  onChange={(e) => setEditForm({ ...editForm, vehicleModel: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Plan & Pricing */}
+          <div className="pt-2 border-t border-gray-100">
+            <span className="font-extrabold text-gray-800 text-xs block mb-2">3. Plan & Pricing</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Plan Tier / Name *</label>
+                <input
+                  type="text"
+                  required
+                  list="membership-plans"
+                  placeholder="e.g. Monthly Unlimited Wash"
+                  value={editForm.planName}
+                  onChange={(e) => setEditForm({ ...editForm, planName: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+                <datalist id="membership-plans">
+                  {POPULAR_PLANS.map(p => <option key={p} value={p} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Price / Amount (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 2499"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-black text-emerald-700"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Payment Mode</label>
+                <select
+                  value={editForm.paymentMode}
+                  onChange={(e) => setEditForm({ ...editForm, paymentMode: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                >
+                  {PAYMENT_MODES.map(pm => <option key={pm} value={pm}>{pm}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Usage & Limits */}
+          <div className="pt-2 border-t border-gray-100">
+            <span className="font-extrabold text-gray-800 text-xs block mb-2">4. Wash Limits & Usage</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Washes Completed / Used</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.washesUsed}
+                  onChange={(e) => setEditForm({ ...editForm, washesUsed: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-bold"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Max Total Washes</label>
+                <input
+                  type="number"
+                  min="1"
+                  disabled={editForm.isUnlimited}
+                  placeholder={editForm.isUnlimited ? 'Unlimited (∞)' : '30'}
+                  value={editForm.isUnlimited ? '' : editForm.maxWashes}
+                  onChange={(e) => setEditForm({ ...editForm, maxWashes: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-bold disabled:opacity-50 disabled:bg-gray-100"
+                />
+              </div>
+              <div className="flex items-center pb-2.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isUnlimited}
+                    onChange={(e) => setEditForm({ ...editForm, isUnlimited: e.target.checked })}
+                    className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                  />
+                  <span className="font-bold text-gray-800 text-xs">Unlimited Washes</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Dates & Status */}
+          <div className="pt-2 border-t border-gray-100">
+            <span className="font-extrabold text-gray-800 text-xs block mb-2">5. Validity & Status</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Expiration Date</label>
+                <input
+                  type="date"
+                  value={editForm.expiryDate}
+                  onChange={(e) => setEditForm({ ...editForm, expiryDate: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Subscription Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-amber-500 font-bold"
+                >
+                  {STATUS_OPTIONS.map(st => <option key={st} value={st}>{st}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setEditMember(null)}
+              className="px-4 py-2 font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={modalLoading}
+              className="px-5 py-2 font-extrabold text-white rounded-xl shadow-xs disabled:opacity-60 flex items-center gap-1.5 transition-all active:scale-95"
+              style={{ backgroundColor: '#e07b2a' }}
+            >
+              {modalLoading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Saving to Database...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Save Changes</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      {/* ── MODAL: MANAGE / DETAILS ────────────────────────────────── */}
       <AdminModal
         isOpen={!!selectedMember}
         onClose={() => setSelectedMember(null)}
-        title={`Membership Details: ${selectedMember?.id}`}
+        title={`Membership Details: ${selectedMember?.id || selectedMember?.passId || ''}`}
         subtitle={selectedMember?.customerName}
       >
         {selectedMember && (
@@ -255,11 +647,11 @@ export default function ManageMembershipsPage() {
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Customer Phone</span>
-                <span className="font-extrabold text-gray-900">{selectedMember.phone}</span>
+                <span className="font-extrabold text-gray-900">{selectedMember.phone || '—'}</span>
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Registered Vehicle</span>
-                <span className="font-extrabold text-gray-900">{selectedMember.vehicleNo} ({selectedMember.vehicleModel})</span>
+                <span className="font-extrabold text-gray-900">{selectedMember.vehicleNo || (Array.isArray(selectedMember.boundVehicles) ? selectedMember.boundVehicles[0] : '—')} ({selectedMember.vehicleModel || 'Car'})</span>
               </div>
               <div>
                 <span className="text-gray-400 font-bold block">Plan Tier & Price</span>
@@ -273,9 +665,9 @@ export default function ManageMembershipsPage() {
               <div>
                 <span className="text-gray-400 font-bold block">Washes Used</span>
                 <span className="font-extrabold text-gray-900">
-                  {selectedMember.maxWashes === 999 || selectedMember.maxWashes === 'Unlimited'
-                    ? `${selectedMember.washesUsed} Washes (Unlimited)`
-                    : `${selectedMember.washesUsed} of ${selectedMember.maxWashes || 30} Washes`}
+                  {selectedMember.maxWashes === 999 || selectedMember.maxWashes === 'Unlimited' || selectedMember.unlimited
+                    ? `${selectedMember.washesUsed || 0} Washes (Unlimited)`
+                    : `${selectedMember.washesUsed || 0} of ${selectedMember.maxWashes || 30} Washes`}
                 </span>
               </div>
             </div>
@@ -319,25 +711,36 @@ export default function ManageMembershipsPage() {
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-200" /> Log Completed Wash (Mark Wash Done)
               </button>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <button
                   onClick={() => {
-                    renewMembership(selectedMember.id);
+                    const m = selectedMember;
+                    setSelectedMember(null);
+                    openEditModal(m);
+                  }}
+                  className="py-2 px-2 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl shadow-xs flex items-center justify-center gap-1 text-center active:scale-95 transition-all"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  onClick={() => {
+                    renewMembership(selectedMember.id || selectedMember.passId);
                     setSelectedMember(null);
                   }}
                   className="py-2 px-2 text-xs font-bold text-white rounded-xl shadow-xs text-center active:scale-95 transition-all"
                   style={{ backgroundColor: '#e07b2a' }}
                 >
-                  Renew Pass
+                  Renew
                 </button>
                 <button
                   onClick={() => {
-                    updateMembershipStatus(selectedMember.id, 'Expired');
+                    updateMembershipStatus(selectedMember.id || selectedMember.passId, 'Expired');
                     setSelectedMember(null);
                   }}
                   className="py-2 px-2 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 text-center active:scale-95 transition-all"
                 >
-                  Suspend Pass
+                  Suspend
                 </button>
                 <button
                   onClick={() => {
@@ -346,7 +749,7 @@ export default function ManageMembershipsPage() {
                   className="py-2 px-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs flex items-center justify-center gap-1 text-center active:scale-95 transition-all"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Pass</span>
+                  <span>Delete</span>
                 </button>
               </div>
             </div>

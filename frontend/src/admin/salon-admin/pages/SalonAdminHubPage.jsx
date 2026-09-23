@@ -458,8 +458,8 @@ export default function SalonAdminHubPage() {
 
     // 2. Try updating backend database if valid ID
     try {
-      if (sId && String(sId).length === 24) {
-        const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      if (sId) {
+        const res = await apiClient.put(`/staff/${sId}`, payload);
         if (res.data && res.data.success) {
           fetchLiveStaff();
         }
