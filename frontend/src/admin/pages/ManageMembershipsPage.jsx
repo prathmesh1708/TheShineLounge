@@ -320,7 +320,7 @@ export default function ManageMembershipsPage() {
           </button>
           {(row.status === 'Expired' || row.status === 'Expiring Soon') && (
             <button
-              onClick={() => renewMembership(row.id || row.passId)}
+              onClick={() => renewMembership(row)}
               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
               title="Quick Renew"
             >
@@ -740,7 +740,7 @@ export default function ManageMembershipsPage() {
                 </button>
                 <button
                   onClick={() => {
-                    renewMembership(selectedMember.id || selectedMember.passId);
+                    renewMembership(selectedMember);
                     setSelectedMember(null);
                   }}
                   className="py-2 px-2 text-xs font-bold text-white rounded-xl shadow-xs text-center active:scale-95 transition-all"

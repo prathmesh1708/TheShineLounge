@@ -1497,7 +1497,21 @@ export const AdminProvider = ({ children }) => {
     // 2. Update matching bookings state
     setBookings(prev => prev.map(b => {
       const bId = String(b.bookingId || b.id || b._id || '');
-      if (bId === memId || b.membershipPassId === memId) {
+      const normPassId = normalizeMembershipId(memId);
+      const normBId = normalizeMembershipId(bId);
+      const bPlate = normalizePlate(b.vehicleNo);
+      const targetPlate = normalizePlate(updatedFields.vehicleNo);
+
+      const match = (normPassId && normBId && normPassId === normBId) ||
+                    bId === memId ||
+                    b.membershipPassId === memId ||
+                    (targetPlate && bPlate && targetPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
+
+      if (match) {
+        const startISO = updatedFields.startDate ? toISODateString(parseFlexibleDate(updatedFields.startDate)) : b.membershipStartDate;
+        const expiryISO = updatedFields.expiryDate ? toISODateString(parseFlexibleDate(updatedFields.expiryDate)) : b.membershipExpiry;
+        const displayDate = updatedFields.startDate ? formatLongDate(parseFlexibleDate(updatedFields.startDate)) : b.date;
+
         return {
           ...b,
           customerName: updatedFields.customerName || b.customerName,
@@ -1509,8 +1523,13 @@ export const AdminProvider = ({ children }) => {
           membershipName: updatedFields.planName || b.membershipName,
           price: updatedFields.amount !== undefined ? Number(updatedFields.amount) : b.price,
           membershipStatus: updatedFields.status || b.membershipStatus,
-          membershipStartDate: updatedFields.startDate || b.membershipStartDate,
-          membershipExpiry: updatedFields.expiryDate || b.membershipExpiry,
+          status: updatedFields.status === 'Active' ? 'Confirmed' : b.status,
+          membershipStartDate: startISO,
+          membershipExpiry: expiryISO,
+          startDate: startISO,
+          expiryDate: expiryISO,
+          date: displayDate,
+          saleDate: startISO || b.saleDate,
           washesUsed: updatedFields.washesUsed !== undefined ? Number(updatedFields.washesUsed) : b.washesUsed
         };
       }
@@ -1534,45 +1553,156 @@ export const AdminProvider = ({ children }) => {
       console.warn('Membership database update note:', err.message);
     }
 
+    try {
+      await apiClient.put(`/bookings/${memId}`, updatedFields);
+    } catch (_) {}
+
     showToast('Membership details updated successfully!');
   };
 
-  const updateMembershipStatus = (id, newStatus) => {
+  const updateMembershipStatus = async (id, newStatus) => {
     setMemberships(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m));
-    // Also sync to backend DB
-    apiClient.put(`/memberships/${id}`, { status: newStatus }).catch(() => {});
+    setBookings(prev => prev.map(b => {
+      const bId = String(b.bookingId || b.id || b._id || '');
+      const normPassId = normalizeMembershipId(id);
+      const normBId = normalizeMembershipId(bId);
+      if (bId === id || (normPassId && normBId && normPassId === normBId)) {
+        return { ...b, membershipStatus: newStatus, status: newStatus === 'Active' ? 'Confirmed' : b.status };
+      }
+      return b;
+    }));
+
+    try {
+      await apiClient.put(`/memberships/${id}`, { status: newStatus });
+    } catch (_) {}
+    try {
+      await apiClient.put(`/bookings/${id}`, { membershipStatus: newStatus });
+    } catch (_) {}
+
     showToast(`Membership status changed to ${newStatus}`);
   };
 
-  const renewMembership = (id) => {
-    let renewedFrom = null;
-    let renewedTo = null;
+  const renewMembership = async (idOrPass) => {
+    const memId = typeof idOrPass === 'object' ? (idOrPass.id || idOrPass.bookingId || idOrPass._id) : idOrPass;
+    const cleanId = String(memId || '').trim();
+    const target = memberships.find(m => m.id === cleanId || m.bookingId === cleanId || m._id === cleanId) ||
+                   (typeof idOrPass === 'object' ? idOrPass : null);
 
+    if (!target) return;
+
+    const now = new Date();
+    const currentExpiry = parseFlexibleDate(target.expiryDate);
+    const start = currentExpiry && currentExpiry > now ? currentExpiry : startOfDay(now);
+    const expiry = addPassDuration(start, target.planName || target.packageName || 'Monthly Membership');
+
+    const startISO = toISODateString(start);
+    const expiryISO = toISODateString(expiry);
+    const renewedFrom = formatLongDate(start);
+    const renewedTo = formatLongDate(expiry);
+    const newStatus = start > now ? 'Queued' : 'Active';
+
+    // 1. Update in-memory memberships state
     setMemberships(prev => prev.map(m => {
-      if (m.id !== id) return m;
-
-      // Renewing a pass that is still running extends it from its expiry date,
-      // so the customer keeps the days already paid for.
-      const now = new Date();
-      const currentExpiry = parseFlexibleDate(m.expiryDate);
-      const start = currentExpiry && currentExpiry > now ? currentExpiry : startOfDay(now);
-      const expiry = addPassDuration(start, m.planName);
-
-      renewedFrom = formatLongDate(start);
-      renewedTo = formatLongDate(expiry);
+      const match = m.id === cleanId || m.bookingId === cleanId || m._id === cleanId ||
+                    (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo));
+      if (!match) return m;
 
       return {
         ...m,
-        status: start > now ? 'Queued' : 'Active',
+        status: newStatus,
         statusLabel: start > now ? 'Upgraded (Scheduled)' : 'Active',
         isQueued: start > now,
+        isExpired: false,
         washesUsed: 0,
-        startDate: toISODateString(start),
-        expiryDate: toISODateString(expiry),
+        startDate: startISO,
+        expiryDate: expiryISO,
         startDateLabel: renewedFrom,
         expiryDateLabel: renewedTo
       };
     }));
+
+    // 2. Update underlying booking in bookings state
+    setBookings(prev => {
+      return prev.map(b => {
+        const bId = String(b.bookingId || b.id || b._id || '');
+        const normPassId = normalizeMembershipId(cleanId);
+        const normBId = normalizeMembershipId(bId);
+        const bPlate = normalizePlate(b.vehicleNo);
+        const tPlate = normalizePlate(target.vehicleNo);
+
+        const match = (normPassId && normBId && normPassId === normBId) ||
+                      bId === cleanId ||
+                      (tPlate && bPlate && tPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
+
+        if (match) {
+          return {
+            ...b,
+            date: renewedFrom,
+            saleDate: startISO,
+            membershipStartDate: startISO,
+            membershipExpiry: expiryISO,
+            membershipStatus: newStatus,
+            status: 'Confirmed',
+            washesUsed: 0
+          };
+        }
+        return b;
+      });
+    });
+
+    // 3. Persist renewal to backend MongoDB (both MembershipPass and Booking)
+    try {
+      await apiClient.put(`/memberships/${cleanId}`, {
+        startDate: startISO,
+        expiryDate: expiryISO,
+        status: newStatus,
+        washesUsed: 0,
+        customerName: target.customerName,
+        phone: target.phone,
+        customerEmail: target.email || target.customerEmail,
+        vehicleNo: target.vehicleNo
+      });
+    } catch (e) {
+      console.warn('Membership backend renewal notice:', e.message);
+    }
+
+    try {
+      const bId = target.bookingId || cleanId;
+      await apiClient.put(`/bookings/${bId}`, {
+        startDate: startISO,
+        date: renewedFrom,
+        saleDate: startISO,
+        membershipStartDate: startISO,
+        membershipExpiry: expiryISO,
+        membershipStatus: newStatus,
+        washesUsed: 0,
+        status: 'Confirmed'
+      });
+    } catch (e) {
+      console.warn('Booking backend renewal notice:', e.message);
+    }
+
+    // 4. Update localStorage cache & dispatch cross-portal events
+    try {
+      const rawMem = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
+      const updatedMem = rawMem.map(m => {
+        if (m.id === cleanId || (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo))) {
+          return {
+            ...m,
+            startDate: startISO,
+            expiryDate: expiryISO,
+            status: newStatus,
+            washesUsed: 0
+          };
+        }
+        return m;
+      });
+      localStorage.setItem('tsl_admin_memberships', JSON.stringify(updatedMem));
+    } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: cleanId, status: newStatus } }));
+    window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: { id: cleanId } }));
+    window.dispatchEvent(new Event('storage'));
 
     showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
   };

@@ -194,16 +194,18 @@ const updateMembership = async (req, res) => {
       });
     }
 
-    // Also update any matching Booking record in database
+    // Also update any matching Booking record and User in database
     try {
       const isObjectId = id && mongoose.Types.ObjectId.isValid(id);
       const bookingConditions = [
         { bookingId: id },
+        { bookingId: pass.passId },
         { 'membershipDetails.passId': id },
         { 'membershipDetails.passId': pass.passId }
       ];
       if (isObjectId) bookingConditions.unshift({ _id: id });
       if (phone) bookingConditions.push({ phone, saleType: 'membership' });
+      if (vehicleNo || finalVehicles[0]) bookingConditions.push({ vehicleNo: vehicleNo || finalVehicles[0], saleType: 'membership' });
 
       const booking = await Booking.findOne({ $or: bookingConditions });
       if (booking) {
@@ -216,15 +218,39 @@ const updateMembership = async (req, res) => {
           booking.membershipName = planName;
         }
         if (finalAmount !== undefined) booking.price = finalAmount;
-        if (startDate) booking.membershipStartDate = new Date(startDate);
+        if (startDate) {
+          booking.membershipStartDate = new Date(startDate);
+          booking.date = new Date(startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          booking.saleDate = new Date(startDate).toISOString().split('T')[0];
+          booking.purchasedAt = new Date(startDate);
+        }
         if (expiryDate) booking.membershipExpiry = new Date(expiryDate);
-        if (status) booking.membershipStatus = status;
+        if (status) {
+          booking.membershipStatus = status;
+          if (status === 'Active') booking.status = 'Confirmed';
+        }
         if (washesUsed !== undefined) booking.washesUsed = Number(washesUsed);
 
         await booking.save();
       }
+
+      // Sync customer's User profile if exists
+      const User = require('../models/User');
+      const user = await User.findOne({
+        $or: [
+          { email: finalEmail ? String(finalEmail).toLowerCase().trim() : '___none___' },
+          { mobile: phone ? String(phone).replace(/\D/g, '').slice(-10) : '___none___' }
+        ]
+      });
+      if (user && user.membership) {
+        if (startDate) user.membership.startDate = new Date(startDate);
+        if (expiryDate) user.membership.expiryDate = new Date(expiryDate);
+        if (status) user.membership.status = status;
+        if (planName) user.membership.planName = planName;
+        await user.save();
+      }
     } catch (bookingSyncErr) {
-      console.warn('Booking sync notice:', bookingSyncErr.message);
+      console.warn('Booking / User sync notice:', bookingSyncErr.message);
     }
 
     res.status(200).json({

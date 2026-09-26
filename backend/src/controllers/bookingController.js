@@ -515,10 +515,21 @@ const updateBooking = async (req, res) => {
       booking.saleDate = saleDate;
       // `date` is the display string, never the raw ISO value -- see utils/dateFormat.
       booking.date = toDisplayDate(req.body.date || saleDate);
+    } else if (req.body.date !== undefined) {
+      booking.date = toDisplayDate(req.body.date);
     }
     if (saleType !== undefined) booking.saleType = saleType;
     if (membershipValidity !== undefined) booking.membershipValidity = membershipValidity;
     if (membershipExpiry !== undefined) booking.membershipExpiry = membershipExpiry;
+    if (req.body.membershipStartDate !== undefined || req.body.startDate !== undefined) {
+      booking.membershipStartDate = req.body.membershipStartDate || req.body.startDate;
+    }
+    if (req.body.membershipStatus !== undefined) {
+      booking.membershipStatus = req.body.membershipStatus;
+    }
+    if (req.body.washesUsed !== undefined) {
+      booking.washesUsed = Number(req.body.washesUsed);
+    }
 
     if (assignedStaffId !== undefined || assignedStaffName !== undefined) {
       if (assignedStaffId && !assignedStaffName) {
