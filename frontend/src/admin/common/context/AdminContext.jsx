@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
+import userService from '../../../common/services/userService';
 import {
   isMembershipPackage,
   isWashRedemptionRecord,
@@ -14,7 +15,7 @@ import {
   normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
-import { toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
+import { getSaleDate, parseSaleDate, toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
 
 const formatBookingDateTime = (rawSlot, rawDate) => {
@@ -100,7 +101,13 @@ export const AdminProvider = ({ children }) => {
       const saved = localStorage.getItem('tsl_admin_memberships');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.sort((a, b) => {
+            const timeA = parseFlexibleDate(a.startDate || a.startDateLabel || a.purchasedAt || a.date || a.createdAt)?.getTime() || 0;
+            const timeB = parseFlexibleDate(b.startDate || b.startDateLabel || b.purchasedAt || b.date || b.createdAt)?.getTime() || 0;
+            return timeB - timeA;
+          });
+        }
       }
     } catch (e) {}
     return [];
@@ -414,8 +421,12 @@ export const AdminProvider = ({ children }) => {
       uniqueDerived.push(d);
     }
 
-    // Newest purchases first (no mock data appended)
-    uniqueDerived.reverse();
+    // Sort newest start/purchase date first in proper descending sequence
+    uniqueDerived.sort((a, b) => {
+      const timeA = parseFlexibleDate(a.startDate || a.startDateLabel || a.purchasedAt || a.date || a.createdAt)?.getTime() || 0;
+      const timeB = parseFlexibleDate(b.startDate || b.startDateLabel || b.purchasedAt || b.date || b.createdAt)?.getTime() || 0;
+      return timeB - timeA;
+    });
     return uniqueDerived;
   };
 
@@ -1051,39 +1062,65 @@ export const AdminProvider = ({ children }) => {
 
   // Compute dynamic stats based on live database records
   useEffect(() => {
-    const pending = (bookings || []).filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress').length;
+    const pending = (bookings || []).filter(b => !b?.isDeleted && (b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'In Progress')).length;
     const lowStock = (inventory || []).filter(i => {
       const qty = parseInt(i.currentStock ?? i.quantity) || 0;
       const min = parseInt(i.minStock) || 5;
       return qty <= min;
     }).length;
 
-    // Calculate dynamic revenue stats from real paid or completed bookings
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    const getBookingDate = (b) => {
+      if (!b) return null;
+      return getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
+    };
+
+    const isSameDay = (d1, d2) => {
+      if (!d1 || !d2) return false;
+      return (
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate()
+      );
+    };
+
+    const isTransactionPaid = (b) => {
+      if (!b || b.isDeleted) return false;
+      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
+      return (
+        b.status === 'Completed' ||
+        b.paymentStatus === 'Completed' ||
+        b.isOfflineSale === true ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-')) ||
+        Boolean(b.paymentMode)
+      );
+    };
+
+    // Calculate dynamic revenue stats from real paid or completed bookings and offline sales
     const totalRev = (bookings || []).reduce((sum, b) => {
-      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      if (!isTransactionPaid(b)) return sum;
       const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      return isPaid ? sum + amt : sum;
+      return sum + amt;
     }, 0);
 
-    const todayStr = new Date().toISOString().split('T')[0];
     const todaySales = (bookings || []).reduce((sum, b) => {
-      const raw = b.date || b.createdAt || b.bookedAt || '';
-      const matchesToday = typeof raw === 'string' && raw.startsWith(todayStr);
-      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      if (!isTransactionPaid(b)) return sum;
+      const d = getBookingDate(b);
+      const matchesToday = isSameDay(d, today);
       const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      return (matchesToday && isPaid) ? sum + amt : sum;
+      return matchesToday ? sum + amt : sum;
     }, 0);
 
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
     const monthlySales = (bookings || []).reduce((sum, b) => {
-      const raw = b.date || b.createdAt || b.bookedAt || '';
-      const d = new Date(raw);
-      const isCurrentMonth = !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      const isPaid = b.status === 'Completed' || b.paymentStatus === 'Completed' || b.isOfflineSale;
+      if (!isTransactionPaid(b)) return sum;
+      const d = getBookingDate(b);
+      const isCurrentMonth = d && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      return (isCurrentMonth && isPaid) ? sum + amt : sum;
+      return isCurrentMonth ? sum + amt : sum;
     }, 0);
 
     const activeMembersCount = (memberships || []).filter(m => m.status === 'active' || m.status === 'Active').length;
@@ -1115,11 +1152,23 @@ export const AdminProvider = ({ children }) => {
       map[m] = { month: m, revenue: 0, bookings: 0 };
     });
 
+    const isTransactionPaid = (b) => {
+      if (!b || b.isDeleted) return false;
+      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
+      return (
+        b.status === 'Completed' ||
+        b.paymentStatus === 'Completed' ||
+        b.isOfflineSale === true ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-')) ||
+        Boolean(b.paymentMode)
+      );
+    };
+
     (bookings || []).forEach(b => {
-      const rawDate = b.date || b.createdAt || b.bookedAt;
-      if (!rawDate) return;
-      const d = new Date(rawDate);
-      if (isNaN(d.getTime())) return;
+      if (!isTransactionPaid(b)) return;
+      const d = getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
+      if (!d || isNaN(d.getTime())) return;
       if (d.getFullYear() === currentYear) {
         const mName = monthNames[d.getMonth()];
         if (map[mName]) {
@@ -1152,13 +1201,27 @@ export const AdminProvider = ({ children }) => {
       'salon': "Men's Salon"
     };
 
+    const isTransactionPaid = (b) => {
+      if (!b || b.isDeleted) return false;
+      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
+      return (
+        b.status === 'Completed' ||
+        b.paymentStatus === 'Completed' ||
+        b.isOfflineSale === true ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-')) ||
+        Boolean(b.paymentMode)
+      );
+    };
+
     const map = {};
     (bookings || []).forEach(b => {
-      const key = b.serviceKey || 'car-wash';
+      if (!isTransactionPaid(b)) return;
+      const key = b.serviceKey || (b.category ? String(b.category).toLowerCase().replace(/\s+/g, '-') : 'car-wash');
       const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
       if (!map[key]) {
         map[key] = {
-          name: titleMap[key] || b.service || key,
+          name: titleMap[key] || b.service || b.serviceName || key,
           value: 0,
           color: colorMap[key] || '#6366f1'
         };
@@ -1175,8 +1238,22 @@ export const AdminProvider = ({ children }) => {
 
   // Dynamic Payment Mode Distribution
   const dynamicPaymentModeData = React.useMemo(() => {
+    const isTransactionPaid = (b) => {
+      if (!b || b.isDeleted) return false;
+      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
+      return (
+        b.status === 'Completed' ||
+        b.paymentStatus === 'Completed' ||
+        b.isOfflineSale === true ||
+        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
+        (b.id && String(b.id).startsWith('OFS-')) ||
+        Boolean(b.paymentMode)
+      );
+    };
+
     const map = {};
     (bookings || []).forEach(b => {
+      if (!isTransactionPaid(b)) return;
       const mode = b.paymentMode || 'Cash';
       const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
       if (!map[mode]) {
@@ -2158,6 +2235,30 @@ export const AdminProvider = ({ children }) => {
     showToast('Staff status updated');
   };
 
+  const updateStaffBreak = async (id, action, duration = 30, reason = 'Rest / Lunch Break') => {
+    try {
+      const res = await userService.updateStaffBreak(id, { action, duration, reason });
+      if (res.success && res.staff) {
+        setStaffList(prev => prev.map(s => {
+          if (s._id === res.staff._id || s.id === res.staff.staffId || (s.email && res.staff.email && s.email.toLowerCase() === res.staff.email.toLowerCase())) {
+            return { ...s, ...res.staff };
+          }
+          return s;
+        }));
+        showToast(res.message || 'Staff break status updated');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+        return res;
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update break status', 'error');
+      throw err;
+    }
+  };
+
+
   // 7. Customers
   const addCustomer = async (customerData) => {
     try {
@@ -2443,6 +2544,7 @@ export const AdminProvider = ({ children }) => {
       logMembershipWash,
       addStaff,
       updateStaff,
+      updateStaffBreak,
       deleteStaff,
       toggleStaffStatus,
       addCustomer,

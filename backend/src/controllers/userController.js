@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const Customer = require('../models/Customer');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
 const DeregisteredVehicle = require('../models/DeregisteredVehicle');
@@ -34,7 +35,6 @@ const getStaffFindQuery = (idParam) => {
 
 const staffController = require('./staffController');
 
-// ─── STAFF MANAGEMENT (Admin Only) ──────────────────────────
 const createStaff = staffController.createStaff;
 const getStaffList = staffController.getStaffList;
 const getStaffById = staffController.getStaffById;
@@ -42,6 +42,8 @@ const updateStaff = staffController.updateStaff;
 const toggleStaffStatus = staffController.toggleStaffStatus;
 const resetStaffPassword = staffController.resetStaffPassword;
 const deleteStaff = staffController.deleteStaff;
+const updateStaffBreak = staffController.updateStaffBreak;
+const getStaffBreakStatus = staffController.getStaffBreakStatus;
 
 // ─── CUSTOMER CRM & MEMBERSHIP MANAGEMENT ─────────────────────────────────────
 
@@ -68,13 +70,14 @@ const getCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [rawCustomers, total, allBookings] = await Promise.all([
+    const [rawCustomers, total, allBookings, customerModelRecords] = await Promise.all([
       User.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
       User.countDocuments(query),
-      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
+      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean(),
+      Customer.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
     ]);
 
     const customers = rawCustomers.map(u => {
@@ -133,7 +136,42 @@ const getCustomers = async (req, res) => {
     const existingEmails = new Set(customers.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean));
     const existingPhones = new Set(customers.map(c => String(c.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
 
-    const extraCustomersMap = new Map();
+    // Also include any customer from Customer collection
+    for (const cm of (customerModelRecords || [])) {
+      const cmEmail = (cm.email || '').toLowerCase().trim();
+      const cmPhone = String(cm.mobile || cm.phone || '').replace(/\D/g, '').slice(-10);
+      const cmName = (cm.fullName || cm.name || '').trim();
+
+      const alreadyInUsers = (cmEmail && existingEmails.has(cmEmail)) ||
+                             (cmPhone && existingPhones.has(cmPhone));
+      if (alreadyInUsers) continue;
+
+      const groupKey = cmEmail || cmPhone || (cm.customerId || cmName.toLowerCase());
+      if (!groupKey) continue;
+
+      extraCustomersMap.set(groupKey, {
+        _id: cm._id,
+        id: cm.customerId || cmEmail || cmPhone || cm._id,
+        customerId: cm.customerId,
+        name: cmName || 'Customer',
+        fullName: cmName || 'Customer',
+        email: cm.email || '',
+        phone: cm.mobile || '',
+        mobile: cm.mobile || '',
+        city: cm.city || 'Gurgaon',
+        segment: cm.segment || 'Regular Customer',
+        totalSpent: Number(cm.totalSpent) || 0,
+        loyaltyPoints: cm.loyaltyPoints !== undefined ? cm.loyaltyPoints : Math.floor((Number(cm.totalSpent) || 0) / 100),
+        vehicles: [],
+        rawVehicles: [],
+        membership: null,
+        lastVisit: cm.updatedAt ? new Date(cm.updatedAt).toISOString().split('T')[0] : null,
+        createdAt: cm.createdAt || new Date()
+      });
+      if (cmEmail) existingEmails.add(cmEmail);
+      if (cmPhone) existingPhones.add(cmPhone);
+    }
+
     for (const b of allBookings) {
       const bEmail = sanitizeCustomerEmail(b.customerEmail);
       const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
@@ -1006,6 +1044,8 @@ module.exports = {
   toggleStaffStatus,
   resetStaffPassword,
   deleteStaff,
+  updateStaffBreak,
+  getStaffBreakStatus,
   getCustomers,
   getCustomerById,
   updateCustomerMembership,

@@ -64,7 +64,7 @@ export function NotificationProvider({ children }) {
     }
   }, []);
 
-  // Initial single on-demand fetch on mount (Zero background polling loops)
+  // Initial single on-demand fetch on mount & sync on staff update
   useEffect(() => {
     const path = typeof window !== 'undefined' ? window.location.pathname : '';
     if (path.startsWith('/admin')) {
@@ -74,6 +74,14 @@ export function NotificationProvider({ children }) {
     } else {
       fetchUserNotifications();
     }
+
+    const handleSync = () => {
+      if (path.startsWith('/staff')) fetchStaffNotifications();
+      if (path.startsWith('/admin')) fetchAdminNotifications();
+    };
+
+    window.addEventListener('tsl_staff_updated', handleSync);
+    return () => window.removeEventListener('tsl_staff_updated', handleSync);
   }, [fetchUserNotifications, fetchStaffNotifications, fetchAdminNotifications]);
 
   // Admin Actions: Create Broadcast / Targeted Notification

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
-import { Phone, Mail, ShieldCheck, LogOut, Briefcase, Calendar, Clock, DollarSign } from 'lucide-react';
+import { Phone, Mail, LogOut } from 'lucide-react';
 
 export default function StaffProfilePage() {
   const navigate = useNavigate();
@@ -74,16 +74,6 @@ export default function StaffProfilePage() {
             <div>
               <span className="text-[9px] text-gray-400 font-bold block uppercase">Official Email</span>
               <span className="font-extrabold text-gray-900">{currentStaff?.email || 'rohan@theshinelounge.com'}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-gray-50/80 border border-gray-100">
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[9px] text-gray-400 font-bold block uppercase">Assigned Branch</span>
-              <span className="font-extrabold text-gray-900">Thane Main Branch Operations</span>
             </div>
           </div>
         </div>

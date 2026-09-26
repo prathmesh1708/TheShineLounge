@@ -38,6 +38,16 @@ export const userService = {
     return response.data;
   },
 
+  updateStaffBreak: async (id, data) => {
+    const response = await apiClient.post(`/staff/${id}/break`, data);
+    return response.data;
+  },
+
+  getStaffBreakStatus: async (id) => {
+    const response = await apiClient.get(`/staff/${id}/break`);
+    return response.data;
+  },
+
   // ─── Customer Management (Admin Only) ──────────────────
 
   getCustomers: async (params = {}) => {

@@ -27,7 +27,12 @@ import {
   X,
   Search,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Coffee,
+  Timer,
+  Play,
+  Pause,
+  AlertCircle
 } from 'lucide-react';
 import {
   buildMembershipSchedule,
@@ -77,6 +82,7 @@ export default function CarWashAdminHubPage() {
     deleteBooking,
     addStaff,
     updateStaff,
+    updateStaffBreak,
     deleteStaff,
     toggleStaffStatus,
     addBanner,
@@ -743,7 +749,26 @@ export default function CarWashAdminHubPage() {
     permissions: []
   });
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
-  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'attendance'
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'break' | 'attendance'
+  const [breakDuration, setBreakDuration] = useState(30);
+  const [breakReason, setBreakReason] = useState('Rest / Lunch Break');
+  const [breakLoading, setBreakLoading] = useState(false);
+  const [staffLiveBreakState, setStaffLiveBreakState] = useState(null);
+  const [adminBreakCountdown, setAdminBreakCountdown] = useState(0);
+
+  useEffect(() => {
+    if (!editStaffModal || !staffLiveBreakState?.isOnBreak || !staffLiveBreakState?.breakEndTime) {
+      return;
+    }
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((new Date(staffLiveBreakState.breakEndTime).getTime() - Date.now()) / 1000));
+      setAdminBreakCountdown(diff);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [editStaffModal, staffLiveBreakState]);
+
 
   // Marketing Banner CRUD States
   const [addBannerModal, setAddBannerModal] = useState(false);
@@ -909,6 +934,9 @@ export default function CarWashAdminHubPage() {
 
   const handleOpenEditStaff = async (stf) => {
     setSelectedStaff(stf);
+    setStaffLiveBreakState(stf);
+    setBreakDuration(stf.breakDuration || 30);
+    setBreakReason(stf.breakReason || 'Rest / Lunch Break');
     setEditStaffForm({
       fullName: stf.fullName || stf.name || '',
       email: stf.email || '',
@@ -927,6 +955,13 @@ export default function CarWashAdminHubPage() {
     const sId = stf._id || stf.id;
     if (sId && !sId.toString().startsWith('STF-')) {
       try {
+        const breakRes = await userService.getStaffBreakStatus(sId);
+        if (breakRes && breakRes.success) {
+          setStaffLiveBreakState(breakRes.staff);
+        }
+      } catch (e) {}
+
+      try {
         const res = await apiClient.get(`/attendance/staff/${sId}`);
         if (res.data && res.data.attendance) {
           setStaffAttendanceLogs(res.data.attendance);
@@ -936,6 +971,43 @@ export default function CarWashAdminHubPage() {
       }
     }
   };
+
+  const handleStartBreak = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+    setBreakLoading(true);
+    try {
+      const res = await updateStaffBreak(sId, 'start', breakDuration, breakReason);
+      if (res && res.staff) {
+        setSelectedStaff(res.staff);
+        setStaffLiveBreakState(res.staff);
+      }
+      fetchLiveStaff();
+    } catch (err) {
+      console.warn('Error starting break:', err);
+    } finally {
+      setBreakLoading(false);
+    }
+  };
+
+  const handleEndBreak = async () => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+    setBreakLoading(true);
+    try {
+      const res = await updateStaffBreak(sId, 'end');
+      if (res && res.staff) {
+        setSelectedStaff(res.staff);
+        setStaffLiveBreakState(res.staff);
+      }
+      fetchLiveStaff();
+    } catch (err) {
+      console.warn('Error ending break:', err);
+    } finally {
+      setBreakLoading(false);
+    }
+  };
+
 
   const handleUpdateStaff = async (e) => {
     e.preventDefault();
@@ -1701,9 +1773,15 @@ export default function CarWashAdminHubPage() {
                     <div className="space-y-1 overflow-hidden">
                       <div className="flex items-center gap-1.5">
                         <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                          {stf.isActive !== false ? 'Active' : 'Inactive'}
-                        </span>
+                        {stf.isOnBreak ? (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
+                            <Coffee className="w-2.5 h-2.5" /> On Break ({stf.breakDuration || 30}m)
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {stf.isActive !== false ? 'On Duty' : 'Inactive'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
@@ -3022,11 +3100,11 @@ export default function CarWashAdminHubPage() {
       >
         <div className="space-y-4 text-xs p-1">
           {/* Modal Sub-Tabs */}
-          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+          <div className="flex border-b border-gray-200 gap-3 pb-2 mb-2 overflow-x-auto">
             <button
               type="button"
               onClick={() => setActiveStaffModalTab('details')}
-              className={`pb-1.5 font-bold border-b-2 transition-all ${
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all ${
                 activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -3034,14 +3112,144 @@ export default function CarWashAdminHubPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveStaffModalTab('break')}
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                activeStaffModalTab === 'break' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Coffee className="w-3.5 h-3.5 text-amber-500" />
+              <span>Break System & Timer</span>
+              {staffLiveBreakState?.isOnBreak && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveStaffModalTab('attendance')}
-              className={`pb-1.5 font-bold border-b-2 transition-all ${
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all ${
                 activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               Shift Attendance Logs ({staffAttendanceLogs.length})
             </button>
           </div>
+
+          {activeStaffModalTab === 'break' && (
+            <div className="space-y-4 py-1">
+              {staffLiveBreakState?.isOnBreak ? (
+                <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                        <Coffee className="w-4 h-4 text-amber-100 animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
+                          Staff Break In Progress
+                        </span>
+                        <h4 className="text-sm font-black mt-0.5">{staffLiveBreakState.breakReason || 'Rest / Lunch Break'}</h4>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] font-extrabold bg-white/20 px-2.5 py-1 rounded-xl">
+                      {staffLiveBreakState.breakDuration || 30}m Break
+                    </span>
+                  </div>
+
+                  {/* Reverse Countdown Display */}
+                  <div className="bg-black/25 backdrop-blur-md rounded-xl p-3 border border-white/15 text-center">
+                    <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1 mb-0.5">
+                      <Timer className="w-3 h-3 text-amber-300" />
+                      Time Remaining (Live Reverse Clock)
+                    </p>
+                    <div className="text-3xl font-black font-mono tracking-tight text-white py-0.5">
+                      {`${String(Math.floor(adminBreakCountdown / 60)).padStart(2, '0')}:${String(adminBreakCountdown % 60).padStart(2, '0')}`}
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-amber-100 font-semibold px-2 mt-1">
+                      <span>Started: {staffLiveBreakState.breakStartTime ? new Date(staffLiveBreakState.breakStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                      <span>Return By: {staffLiveBreakState.breakEndTime ? new Date(staffLiveBreakState.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleEndBreak}
+                    className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>{breakLoading ? 'Updating MongoDB...' : '⏹️ End Break Early & Resume Duty'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <Coffee className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-black text-xs">Set Break Time & Start Session</h4>
+                      <p className="text-[11px] text-amber-700">The staff dashboard will receive a notification and show a 30-min reverse countdown timer.</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1.5">Select Break Duration</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[15, 30, 45, 60].map((d) => (
+                        <button
+                          key={`dur-${d}`}
+                          type="button"
+                          onClick={() => setBreakDuration(d)}
+                          className={`py-2 rounded-xl font-bold text-xs border transition-all ${
+                            breakDuration === d
+                              ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          {d} Min {d === 30 && '(Default)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">Custom Duration (Minutes)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        value={breakDuration}
+                        onChange={(e) => setBreakDuration(Math.max(1, Number(e.target.value) || 30))}
+                        className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">Break Reason / Note</label>
+                      <input
+                        type="text"
+                        value={breakReason}
+                        onChange={(e) => setBreakReason(e.target.value)}
+                        placeholder="e.g. Lunch Break, Tea Break"
+                        className="w-full p-2.5 border rounded-xl font-semibold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleStartBreak}
+                    className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    <Coffee className="w-4 h-4 text-white" />
+                    <span>{breakLoading ? 'Saving to MongoDB...' : `☕ Start ${breakDuration}-Minute Break for ${editStaffForm.fullName || 'Staff'}`}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
 
           {activeStaffModalTab === 'details' && (
             <form onSubmit={handleUpdateStaff} className="space-y-3">

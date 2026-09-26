@@ -4,6 +4,7 @@ import { StaffProvider } from '../context/StaffContext';
 import StaffHeader from './StaffHeader';
 import StaffBottomNav from './StaffBottomNav';
 import CameraCapture from './CameraCapture';
+import StaffBreakAlertModal from './StaffBreakAlertModal';
 
 function StaffLayoutInner() {
   const location = useLocation();
@@ -35,6 +36,9 @@ function StaffLayoutInner() {
 
         {/* Live Selfie Camera Modal */}
         <CameraCapture />
+
+        {/* Global Staff Break Alert Popup */}
+        <StaffBreakAlertModal />
       </div>
     </div>
   );

@@ -511,14 +511,6 @@ export default function CustomerDatabasePage() {
                 Membership Details
               </button>
               <button
-                onClick={() => setActiveTab('audit')}
-                className={`px-3 py-1.5 font-bold rounded-lg transition-colors ${
-                  activeTab === 'audit' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Misuse & Audit Log
-              </button>
-              <button
                 onClick={() => setActiveTab('history')}
                 className={`px-3 py-1.5 font-bold rounded-lg transition-colors ${
                   activeTab === 'history' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'
@@ -656,40 +648,6 @@ export default function CustomerDatabasePage() {
                       </span>
                     </div>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: MISUSE & AUDIT LOG */}
-            {activeTab === 'audit' && (
-              <div className="space-y-3">
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 font-semibold">
-                  🛡️ Anti-Abuse System monitors plate match, redemption cool-offs, and daily caps.
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-extrabold text-gray-900 text-xs">Flagged Misuse & Security Audit History</h4>
-                  
-                  {selectedCustomer.membership?.misuseAlerts && selectedCustomer.membership.misuseAlerts.length > 0 ? (
-                    selectedCustomer.membership.misuseAlerts.map((alert, idx) => (
-                      <div key={idx} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-start gap-3">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-gray-900">{alert.alertType || 'Misuse Alert'}</span>
-                            <span className="text-[10px] text-gray-400 font-bold">
-                              {alert.date ? new Date(alert.date).toLocaleString() : 'Recent'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-gray-600 mt-0.5">{alert.description}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl text-center text-gray-500">
-                      No misuse alerts flagged for this customer profile.
-                    </div>
-                  )}
                 </div>
               </div>
             )}

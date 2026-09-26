@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import apiClient from '../../../common/utils/apiClient';
+import userService from '../../../common/services/userService';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 
@@ -150,6 +151,317 @@ export function StaffProvider({ children }) {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInPhoto, setCheckInPhoto] = useState('');
   const [checkInTime, setCheckInTime] = useState('');
+
+  // Break Management State in MongoDB
+  const [breakStatus, setBreakStatus] = useState({
+    isOnBreak: false,
+    breakStartTime: null,
+    breakEndTime: null,
+    breakDuration: 30,
+    breakReason: 'Rest / Lunch Break',
+    remainingSeconds: 0
+  });
+
+  const [breakAlertModal, setBreakAlertModal] = useState({
+    isOpen: false,
+    type: 'started',
+    title: '',
+    message: '',
+    duration: 30,
+    returnTime: ''
+  });
+
+  const prevBreakStateRef = useRef(false);
+  const notifiedBreakStartSet = useRef(new Set());
+  const notifiedBreakEndSet = useRef(new Set());
+
+  const playBreakAudio = (type = 'start') => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      if (type === 'completed') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.setValueAtTime(880, now + 0.15);
+        osc.frequency.setValueAtTime(1174.66, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+        osc.start(now);
+        osc.stop(now + 0.6);
+      } else {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+    } catch (err) {
+      // AudioContext blocked before user gesture
+    }
+  };
+
+  const triggerBreakOverModal = (breakReason = 'Break', duration = 30) => {
+    playBreakAudio('completed');
+    setBreakAlertModal({
+      isOpen: true,
+      type: 'completed',
+      title: '⏰ Break Over! Time to Get Back to Work',
+      message: 'Your break time has finished. Please return to your workstation and resume pending service tasks.',
+      duration,
+      returnTime: 'Now'
+    });
+  };
+
+  const fetchLiveBreakStatus = async (staffId) => {
+    const targetId = staffId || currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    if (!targetId) return;
+    try {
+      const res = await userService.getStaffBreakStatus(targetId);
+      if (res && res.success) {
+        const rawIsOnBreak = Boolean(res.isOnBreak);
+        const endMs = res.breakEndTime ? new Date(res.breakEndTime).getTime() : 0;
+        const nowMs = Date.now();
+        const diffSeconds = endMs > 0 ? Math.max(0, Math.floor((endMs - nowMs) / 1000)) : (res.remainingSeconds || 0);
+        const isStillValidBreak = rawIsOnBreak && diffSeconds > 0;
+        const breakKey = res.breakStartTime ? String(res.breakStartTime) : 'active_break';
+        const endKey = res.breakEndTime ? String(res.breakEndTime) : 'end_break';
+
+        // Case 1: Break has just completed or expired
+        if ((!rawIsOnBreak || diffSeconds <= 0) && (prevBreakStateRef.current || (rawIsOnBreak && diffSeconds <= 0))) {
+          if (!notifiedBreakEndSet.current.has(endKey)) {
+            notifiedBreakEndSet.current.add(endKey);
+            triggerBreakOverModal(res.breakReason || 'Break', res.breakDuration || 30);
+          }
+          prevBreakStateRef.current = false;
+          setBreakStatus({
+            isOnBreak: false,
+            breakStartTime: null,
+            breakEndTime: null,
+            breakDuration: res.breakDuration || 30,
+            breakReason: res.breakReason || 'Rest / Lunch Break',
+            remainingSeconds: 0
+          });
+          userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
+          return;
+        }
+
+        // Case 2: Break is actively in progress
+        if (isStillValidBreak) {
+          setBreakStatus(prev => ({
+            ...prev,
+            isOnBreak: true,
+            breakStartTime: res.breakStartTime,
+            breakEndTime: res.breakEndTime,
+            breakDuration: res.breakDuration || 30,
+            breakReason: res.breakReason || 'Rest / Lunch Break',
+            remainingSeconds: diffSeconds
+          }));
+
+          // Trigger Start Alert Modal ONCE only if break has > 5 seconds remaining
+          if (!notifiedBreakStartSet.current.has(breakKey) && diffSeconds > 5) {
+            notifiedBreakStartSet.current.add(breakKey);
+            prevBreakStateRef.current = true;
+            const returnTimeStr = res.breakEndTime 
+              ? new Date(res.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : `${res.breakDuration || 30} mins`;
+            
+            playBreakAudio('start');
+            setBreakAlertModal({
+              isOpen: true,
+              type: 'started',
+              title: `☕ ${res.breakDuration || 30}-Minute Break Started`,
+              message: `Your break has officially started (${res.breakReason || 'Rest / Lunch Break'}). Please enjoy your rest until ${returnTimeStr}.`,
+              duration: res.breakDuration || 30,
+              returnTime: returnTimeStr
+            });
+          } else {
+            prevBreakStateRef.current = true;
+          }
+        } else {
+          // Break is completely inactive
+          setBreakStatus({
+            isOnBreak: false,
+            breakStartTime: null,
+            breakEndTime: null,
+            breakDuration: res.breakDuration || 30,
+            breakReason: res.breakReason || 'Rest / Lunch Break',
+            remainingSeconds: 0
+          });
+          prevBreakStateRef.current = false;
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching live break status from MongoDB:', err.message);
+    }
+  };
+
+  const startStaffBreak = async (duration = 30, reason = 'Rest / Lunch Break') => {
+    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    if (!targetId) return;
+    try {
+      const res = await userService.updateStaffBreak(targetId, { action: 'start', duration, reason });
+      if (res.success && res.staff) {
+        const s = res.staff;
+        const remaining = duration * 60;
+        const breakKey = s.breakStartTime ? String(s.breakStartTime) : String(Date.now());
+        notifiedBreakStartSet.current.add(breakKey);
+        prevBreakStateRef.current = true;
+
+        setBreakStatus({
+          isOnBreak: true,
+          breakStartTime: s.breakStartTime,
+          breakEndTime: s.breakEndTime,
+          breakDuration: s.breakDuration || duration,
+          breakReason: s.breakReason || reason,
+          remainingSeconds: remaining
+        });
+
+        const returnTimeStr = s.breakEndTime 
+          ? new Date(s.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : `${duration} mins`;
+        
+        playBreakAudio('start');
+        setBreakAlertModal({
+          isOpen: true,
+          type: 'started',
+          title: `☕ ${duration}-Minute Break Started`,
+          message: `Your ${duration}-minute break is now active. Return time: ${returnTimeStr}.`,
+          duration,
+          returnTime: returnTimeStr
+        });
+        showToast(`☕ Break started (${duration} minutes)`, 'info');
+
+        // Broadcast update to Admin Panel
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to start break', 'error');
+    }
+  };
+
+  const endStaffBreak = async () => {
+    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    if (!targetId) return;
+    try {
+      const res = await userService.updateStaffBreak(targetId, { action: 'end' });
+      if (res.success) {
+        setBreakStatus(prev => ({
+          ...prev,
+          isOnBreak: false,
+          breakStartTime: null,
+          breakEndTime: null,
+          remainingSeconds: 0
+        }));
+        prevBreakStateRef.current = false;
+        triggerBreakOverModal('Break', 30);
+        showToast('Shift Resumed. Back on duty!', 'success');
+
+        // Broadcast update to Admin Panel
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to end break', 'error');
+    }
+  };
+
+  const dismissBreakAlertModal = async () => {
+    const wasCompleted = breakAlertModal.type === 'completed';
+    setBreakAlertModal(prev => ({ ...prev, isOpen: false }));
+    
+    if (wasCompleted) {
+      const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+      if (targetId) {
+        await userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+    }
+  };
+
+  // 1-second reverse countdown interval & live timer tick
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBreakStatus(prev => {
+        if (!prev.isOnBreak || !prev.breakEndTime) return prev;
+        const now = Date.now();
+        const end = new Date(prev.breakEndTime).getTime();
+        const diffSeconds = Math.max(0, Math.floor((end - now) / 1000));
+
+        if (diffSeconds === 0 && (prev.remainingSeconds > 0 || prev.isOnBreak)) {
+          const endKey = String(prev.breakEndTime);
+          if (!notifiedBreakEndSet.current.has(endKey)) {
+            notifiedBreakEndSet.current.add(endKey);
+            triggerBreakOverModal(prev.breakReason || 'Break', prev.breakDuration || 30);
+          }
+          const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+          if (targetId) {
+            userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+              window.dispatchEvent(new Event('storage'));
+            }
+          }
+          prevBreakStateRef.current = false;
+          return {
+            ...prev,
+            isOnBreak: false,
+            breakStartTime: null,
+            breakEndTime: null,
+            remainingSeconds: 0
+          };
+        }
+
+        return {
+          ...prev,
+          remainingSeconds: diffSeconds
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentStaff]);
+
+  // Fast MongoDB poll every 2.5 seconds + live event listeners for immediate sync
+  useEffect(() => {
+    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    if (!targetId) return;
+
+    fetchLiveBreakStatus(targetId);
+    const poller = setInterval(() => {
+      fetchLiveBreakStatus(targetId);
+    }, 2500);
+
+    const handleStaffBreakSync = () => {
+      fetchLiveBreakStatus(targetId);
+    };
+
+    window.addEventListener('tsl_staff_updated', handleStaffBreakSync);
+    window.addEventListener('storage', handleStaffBreakSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleStaffBreakSync);
+      window.removeEventListener('storage', handleStaffBreakSync);
+    };
+  }, [currentStaff?.id, currentStaff?._id, currentStaff?.email]);
+
 
   const fetchLiveAttendance = async (staffId) => {
     if (!staffId || staffId.toString().startsWith('STF-')) return;
@@ -854,19 +1166,45 @@ export function StaffProvider({ children }) {
   };
 
   // Add New Customer
-  const addCustomer = (customerData) => {
-    const newCust = {
-      id: `CUST-${Date.now().toString().slice(-3)}`,
-      ...customerData,
-      serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
-      totalSpent: 0,
-      loyaltyPoints: 100,
-      joinDate: new Date().toISOString().split('T')[0],
-      lastVisit: new Date().toISOString().split('T')[0]
-    };
-    setCustomers(prev => [newCust, ...prev]);
-    showToast(`Registered new customer ${customerData.name}`, 'success');
-    return newCust;
+  const addCustomer = async (customerData) => {
+    try {
+      const cleanName = customerData.name || customerData.fullName || 'Customer';
+      const cleanMobile = customerData.mobile || customerData.phone || '';
+      const cleanEmail = customerData.email || '';
+      const cleanCity = customerData.city || 'Gurgaon';
+      const cleanSegment = customerData.segment || 'New Customer';
+      const vehicles = Array.isArray(customerData.vehicles) ? customerData.vehicles : [];
+
+      const res = await apiClient.post('/customers', {
+        fullName: cleanName,
+        email: cleanEmail,
+        mobile: cleanMobile,
+        city: cleanCity,
+        segment: cleanSegment,
+        vehicles: vehicles
+      });
+
+      // Refresh customers list from database
+      await fetchLiveCustomers();
+
+      showToast(`Registered new customer ${cleanName}`, 'success');
+      return res.data?.data;
+    } catch (err) {
+      console.error('Error adding customer via staff panel:', err);
+      // Fallback local update if offline
+      const newCust = {
+        id: `CUST-${Date.now().toString().slice(-3)}`,
+        ...customerData,
+        serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
+        totalSpent: 0,
+        loyaltyPoints: 100,
+        joinDate: new Date().toISOString().split('T')[0],
+        lastVisit: new Date().toISOString().split('T')[0]
+      };
+      setCustomers(prev => [newCust, ...prev]);
+      showToast(err.response?.data?.message || `Registered new customer ${customerData.name || 'Customer'}`, 'success');
+      return newCust;
+    }
   };
 
   // Update Customer Vehicle
@@ -1071,6 +1409,11 @@ export function StaffProvider({ children }) {
         checkInTime,
         processCheckIn,
         processCheckOut,
+        breakStatus,
+        startStaffBreak,
+        endStaffBreak,
+        breakAlertModal,
+        dismissBreakAlertModal,
         notifications,
         isCameraOpen,
         setIsCameraOpen,

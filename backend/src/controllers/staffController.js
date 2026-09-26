@@ -2,7 +2,14 @@ const Staff = require('../models/Staff');
 const User = require('../models/User');
 
 // Helper to build query for staff lookup by _id, staffId, or email
-const buildStaffSearch = (idParam) => {
+const buildStaffSearch = (idParam, reqUser) => {
+  if (idParam === 'me' && reqUser) {
+    const conditions = [];
+    if (reqUser._id) conditions.push({ _id: reqUser._id });
+    if (reqUser.email) conditions.push({ email: String(reqUser.email).toLowerCase().trim() });
+    if (reqUser.staffId) conditions.push({ staffId: reqUser.staffId });
+    if (conditions.length > 0) return { $or: conditions };
+  }
   const isObjectId = idParam && /^[0-9a-fA-F]{24}$/.test(idParam);
   const conditions = [
     { staffId: idParam },
@@ -19,28 +26,53 @@ const buildStaffSearch = (idParam) => {
 // @access  Private (Staff/Admin)
 const getStaffList = async (req, res) => {
   try {
-    const { department, serviceKey, page = 1, limit = 20 } = req.query;
+    const { department, serviceKey, page = 1, limit = 50 } = req.query;
     const query = { isDeleted: { $ne: true } };
     if (department && department !== 'All') query.department = department;
     if (serviceKey) query.serviceKey = serviceKey;
 
     const total = await Staff.countDocuments(query);
     const pages = Math.ceil(total / Number(limit)) || 1;
-    const staff = await Staff.find(query)
+    const staffList = await Staff.find(query)
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
 
+    // Auto-expire any finished breaks in MongoDB
+    const now = new Date();
+    const updatedStaff = await Promise.all(
+      staffList.map(async (stf) => {
+        if (stf.isOnBreak && stf.breakEndTime && new Date(stf.breakEndTime) <= now) {
+          stf.isOnBreak = false;
+          if (stf.breakStartTime) {
+            stf.breakHistory.push({
+              startTime: stf.breakStartTime,
+              endTime: stf.breakEndTime,
+              duration: stf.breakDuration || 30,
+              reason: stf.breakReason,
+              startedBy: 'admin',
+              endedBy: 'system_timer',
+              completedNaturally: true
+            });
+          }
+          stf.breakStartTime = null;
+          stf.breakEndTime = null;
+          await stf.save().catch(() => {});
+        }
+        return stf;
+      })
+    );
+
     res.status(200).json({
       success: true,
-      count: staff.length,
+      count: updatedStaff.length,
       pagination: {
         total,
         page: Number(page),
         limit: Number(limit),
         pages
       },
-      staff
+      staff: updatedStaff
     });
   } catch (error) {
     res.status(500).json({
@@ -55,7 +87,7 @@ const getStaffList = async (req, res) => {
 // @access  Private (Staff/Admin)
 const getStaffById = async (req, res) => {
   try {
-    const search = buildStaffSearch(req.params.id);
+    const search = buildStaffSearch(req.params.id, req.user);
     let staff = await Staff.findOne({ ...search, isDeleted: { $ne: true } });
 
     if (!staff) {
@@ -67,6 +99,14 @@ const getStaffById = async (req, res) => {
         success: false,
         message: 'Staff member not found'
       });
+    }
+
+    // Auto-expire break if time elapsed
+    if (staff.isOnBreak && staff.breakEndTime && new Date(staff.breakEndTime) <= new Date()) {
+      staff.isOnBreak = false;
+      staff.breakStartTime = null;
+      staff.breakEndTime = null;
+      await staff.save().catch(() => {});
     }
 
     res.status(200).json({
@@ -436,6 +476,161 @@ const resetStaffPassword = async (req, res) => {
   }
 };
 
+// @desc    Start or End a staff break in MongoDB
+// @route   POST /api/staff/:id/break
+// @access  Private (Admin or Staff)
+const updateStaffBreak = async (req, res) => {
+  try {
+    const { action, duration = 30, reason = 'Rest / Lunch Break' } = req.body;
+    const search = buildStaffSearch(req.params.id, req.user);
+    let staff = await Staff.findOne(search);
+
+    if (!staff) {
+      return res.status(404).json({ success: false, message: 'Staff member not found' });
+    }
+
+    const now = new Date();
+    const durationNum = Number(duration) || 30;
+
+    if (action === 'start') {
+      const breakEndTime = new Date(now.getTime() + durationNum * 60 * 1000);
+      staff.isOnBreak = true;
+      staff.breakStartTime = now;
+      staff.breakEndTime = breakEndTime;
+      staff.breakDuration = durationNum;
+      staff.breakReason = reason || 'Rest / Lunch Break';
+
+      await staff.save();
+
+      try {
+        const Notification = require('../models/Notification');
+        await Notification.create({
+          title: `☕ ${durationNum}-Minute Break Started`,
+          message: `Your ${durationNum}-minute break has started (${reason}). Return time: ${breakEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+          recipientType: 'staff',
+          targetUserId: staff._id,
+          serviceKey: staff.serviceKey || 'car-wash',
+          category: 'service_update',
+          priority: 'high',
+          actionUrl: '/staff/dashboard'
+        });
+      } catch (err) {
+        console.warn('Failed to insert break start notification:', err);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Break started for ${staff.fullName} (${durationNum} minutes)`,
+        staff
+      });
+    } else if (action === 'end' || action === 'complete') {
+      if (staff.breakStartTime) {
+        const actualEnd = now;
+        const actualDurationMinutes = Math.round((actualEnd.getTime() - new Date(staff.breakStartTime).getTime()) / 60000);
+        staff.breakHistory.push({
+          startTime: staff.breakStartTime,
+          endTime: actualEnd,
+          duration: actualDurationMinutes,
+          reason: staff.breakReason || 'Rest / Lunch Break',
+          startedBy: 'admin',
+          endedBy: req.user?.role || 'staff',
+          completedNaturally: action === 'complete'
+        });
+      }
+
+      staff.isOnBreak = false;
+      staff.breakStartTime = null;
+      staff.breakEndTime = null;
+
+      await staff.save();
+
+      try {
+        const Notification = require('../models/Notification');
+        await Notification.create({
+          title: `⏰ Break Completed`,
+          message: `Your break is over. Please return to your workstation.`,
+          recipientType: 'staff',
+          targetUserId: staff._id,
+          serviceKey: staff.serviceKey || 'car-wash',
+          category: 'service_update',
+          priority: 'urgent',
+          actionUrl: '/staff/dashboard'
+        });
+      } catch (err) {
+        console.warn('Failed to insert break end notification:', err);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Break ended for ${staff.fullName}. Status reset to active.`,
+        staff
+      });
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid action. Must be "start" or "end".' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message || 'Server error updating staff break' });
+  }
+};
+
+// @desc    Get staff break status
+// @route   GET /api/staff/:id/break
+// @access  Private (Staff/Admin)
+const getStaffBreakStatus = async (req, res) => {
+  try {
+    const search = buildStaffSearch(req.params.id, req.user);
+    let staff = await Staff.findOne(search);
+
+    if (!staff) {
+      return res.status(404).json({ success: false, message: 'Staff member not found' });
+    }
+
+    let isStillOnBreak = Boolean(staff.isOnBreak);
+    let remainingSeconds = 0;
+
+    if (isStillOnBreak && staff.breakEndTime) {
+      const now = new Date();
+      const end = new Date(staff.breakEndTime);
+      const diffMs = end.getTime() - now.getTime();
+      if (diffMs <= 0) {
+        // Break has naturally finished in MongoDB
+        staff.isOnBreak = false;
+        if (staff.breakStartTime) {
+          staff.breakHistory.push({
+            startTime: staff.breakStartTime,
+            endTime: staff.breakEndTime,
+            duration: staff.breakDuration || 30,
+            reason: staff.breakReason,
+            startedBy: 'admin',
+            endedBy: 'system_timer',
+            completedNaturally: true
+          });
+        }
+        staff.breakStartTime = null;
+        staff.breakEndTime = null;
+        await staff.save();
+        isStillOnBreak = false;
+        remainingSeconds = 0;
+      } else {
+        remainingSeconds = Math.floor(diffMs / 1000);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      isOnBreak: isStillOnBreak,
+      breakStartTime: staff.breakStartTime,
+      breakEndTime: staff.breakEndTime,
+      breakDuration: staff.breakDuration,
+      breakReason: staff.breakReason,
+      remainingSeconds,
+      staff
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message || 'Server error getting break status' });
+  }
+};
+
 module.exports = {
   getStaffList,
   getStaffById,
@@ -443,5 +638,8 @@ module.exports = {
   updateStaff,
   deleteStaff,
   toggleStaffStatus,
-  resetStaffPassword
+  resetStaffPassword,
+  updateStaffBreak,
+  getStaffBreakStatus
 };
+

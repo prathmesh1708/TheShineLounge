@@ -575,6 +575,12 @@ export function getCarWashMembershipsList({ bookings = [], offlineSales = [], me
     }
   });
 
+  passItems.sort((a, b) => {
+    const timeA = parseFlexibleDate(a.startDate || a.date || a.createdAt || a.purchasedAt)?.getTime() || 0;
+    const timeB = parseFlexibleDate(b.startDate || b.date || b.createdAt || b.purchasedAt)?.getTime() || 0;
+    return timeB - timeA;
+  });
+
   return passItems;
 }
 

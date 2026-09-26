@@ -1,13 +1,15 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles, ShieldCheck } from 'lucide-react';
+import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles, ShieldCheck, Coffee } from 'lucide-react';
 import NotificationBell from '../../common/components/NotificationBell';
 import { isCarWashStaff } from '../common/utils/staffMembershipUtils';
+import StaffBreakTimerWidget from '../common/components/StaffBreakTimerWidget';
+import StaffBreakAlertModal from '../common/components/StaffBreakAlertModal';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
-  const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose } = useStaff();
+  const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose, breakStatus } = useStaff();
 
   const isCarWash = isCarWashStaff(currentStaff);
   const staffKey = (currentStaff?.serviceKey || '').toLowerCase();
@@ -37,6 +39,11 @@ export default function StaffDashboardPage() {
 
   return (
     <div className="space-y-4">
+      <StaffBreakAlertModal />
+
+      {/* Real-time Reverse Countdown Clock for Active Break */}
+      <StaffBreakTimerWidget />
+
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-2xl p-4 text-white shadow-md relative">
         <div className="flex items-center justify-between">
@@ -49,7 +56,6 @@ export default function StaffDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <NotificationBell isStaff={true} />
             <img
               src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80'}
               alt="Avatar"

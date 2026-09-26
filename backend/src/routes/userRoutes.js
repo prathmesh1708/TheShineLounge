@@ -11,6 +11,8 @@ const {
   toggleStaffStatus,
   resetStaffPassword,
   deleteStaff,
+  updateStaffBreak,
+  getStaffBreakStatus,
   getCustomers,
   getCustomerById,
   updateCustomerMembership,
@@ -65,6 +67,8 @@ router.get('/staff/:id', authMiddleware, canManageStaff, getStaffById);
 router.put('/staff/:id', authMiddleware, canManageStaff, updateStaff);
 router.patch('/staff/:id/status', authMiddleware, canManageStaff, toggleStaffStatus);
 router.patch('/staff/:id/reset-password', authMiddleware, canManageStaff, resetStaffPassword);
+router.post('/staff/:id/break', authMiddleware, staffOnly, updateStaffBreak);
+router.get('/staff/:id/break', authMiddleware, staffOnly, getStaffBreakStatus);
 router.delete('/staff/:id', authMiddleware, canManageStaff, deleteStaff);
 
 // ─── Customer Management (Admin & Staff) ───────────────────────

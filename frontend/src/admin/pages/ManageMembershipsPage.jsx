@@ -20,6 +20,7 @@ import {
 import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
+import { parseFlexibleDate } from '../../common/utils/membershipUtils';
 
 const POPULAR_PLANS = [
   'Monthly Unlimited Wash',
@@ -396,14 +397,28 @@ export default function ManageMembershipsPage() {
       })()}
 
       {/* Main Table */}
-      <DataTable
-        columns={columns}
-        data={memberships}
-        searchPlaceholder="Search memberships by customer, vehicle, or ID..."
-        searchKeys={['customerName', 'vehicleNo', 'id', 'passId', 'planName', 'phone']}
-        filterKey="status"
-        filterOptions={['All', 'Active', 'Queued', 'Expiring Soon', 'Expired']}
-      />
+      {(() => {
+        const sortedMemberships = [...(memberships || [])].sort((a, b) => {
+          const getSortTime = (item) => {
+            if (!item) return 0;
+            const raw = item.startDate || item.startDateLabel || item.purchasedAt || item.date || item.createdAt;
+            const d = parseFlexibleDate(raw);
+            return (d && !isNaN(d.getTime())) ? d.getTime() : 0;
+          };
+          return getSortTime(b) - getSortTime(a);
+        });
+
+        return (
+          <DataTable
+            columns={columns}
+            data={sortedMemberships}
+            searchPlaceholder="Search memberships by customer, vehicle, or ID..."
+            searchKeys={['customerName', 'vehicleNo', 'id', 'passId', 'planName', 'phone']}
+            filterKey="status"
+            filterOptions={['All', 'Active', 'Queued', 'Expiring Soon', 'Expired']}
+          />
+        );
+      })()}
 
       {/* ── MODAL: EDIT MEMBERSHIP ────────────────────────────────── */}
       <AdminModal

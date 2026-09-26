@@ -21,29 +21,50 @@ export default function StaffCustomersPage() {
   const [brand, setBrand] = useState('Hyundai');
   const [model, setModel] = useState('Creta');
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.mobile.includes(searchTerm) ||
-    c.vehicles?.some(v => v.registrationNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+    (c.name || c.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.mobile || c.phone || '').includes(searchTerm) ||
+    c.vehicles?.some(v => (v.registrationNumber || v.plateNumber || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    addCustomer({
-      name,
-      mobile: mobile.startsWith('+91') ? mobile : `+91 ${mobile}`,
-      email,
-      address,
-      city: 'Gurgaon',
-      segment: 'New Customer',
-      vehicles: [
-        { id: `V-${Date.now()}`, registrationNumber: vehicleNo.toUpperCase(), brand, model, color: 'White', fuelType: 'Petrol' }
-      ]
-    });
-    setShowAddModal(false);
-    setName('');
-    setMobile('');
-    setVehicleNo('');
+    setIsSubmitting(true);
+    try {
+      await addCustomer({
+        name,
+        fullName: name,
+        mobile: mobile.startsWith('+91') ? mobile : `+91 ${mobile}`,
+        phone: mobile.startsWith('+91') ? mobile : `+91 ${mobile}`,
+        email: email.trim() || undefined,
+        address,
+        city: 'Gurgaon',
+        segment: 'New Customer',
+        vehicles: vehicleNo ? [
+          {
+            id: `V-${Date.now()}`,
+            registrationNumber: vehicleNo.toUpperCase().trim(),
+            plateNumber: vehicleNo.toUpperCase().trim(),
+            brand,
+            model,
+            color: 'White',
+            fuelType: 'Petrol'
+          }
+        ] : []
+      });
+      setShowAddModal(false);
+      setName('');
+      setMobile('');
+      setEmail('');
+      setAddress('');
+      setVehicleNo('');
+    } catch (err) {
+      console.error('Registration failed:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Open customer profile & fetch their bookings
@@ -385,7 +406,7 @@ export default function StaffCustomersPage() {
             <form onSubmit={handleRegister} className="space-y-3">
               <input
                 type="text"
-                placeholder="Full Name"
+                placeholder="Full Name *"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 required
@@ -393,10 +414,17 @@ export default function StaffCustomersPage() {
               />
               <input
                 type="text"
-                placeholder="Mobile (+91 98200...)"
+                placeholder="Mobile (+91 98200...) *"
                 value={mobile}
                 onChange={e => setMobile(e.target.value)}
                 required
+                className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
+              />
+              <input
+                type="email"
+                placeholder="Email Address (optional)"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
               />
               <input
@@ -404,7 +432,6 @@ export default function StaffCustomersPage() {
                 placeholder="Vehicle Registration No (MH01AB1234)"
                 value={vehicleNo}
                 onChange={e => setVehicleNo(e.target.value)}
-                required
                 className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
               />
               <div className="grid grid-cols-2 gap-2">
@@ -425,10 +452,11 @@ export default function StaffCustomersPage() {
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md"
+                disabled={isSubmitting}
+                className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md disabled:opacity-50 active:scale-98 transition-transform"
                 style={{ backgroundColor: '#e07b2a' }}
               >
-                Save Profile & Register Vehicle
+                {isSubmitting ? 'Saving Customer...' : 'Save Profile & Register Vehicle'}
               </button>
             </form>
           </div>

@@ -83,7 +83,38 @@ const staffSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
       default: null
-    }
+    },
+    isOnBreak: {
+      type: Boolean,
+      default: false
+    },
+    breakStartTime: {
+      type: Date,
+      default: null
+    },
+    breakEndTime: {
+      type: Date,
+      default: null
+    },
+    breakDuration: {
+      type: Number,
+      default: 30
+    },
+    breakReason: {
+      type: String,
+      default: 'Rest / Lunch Break'
+    },
+    breakHistory: [
+      {
+        startTime: { type: Date },
+        endTime: { type: Date },
+        duration: { type: Number },
+        reason: { type: String },
+        startedBy: { type: String, default: 'admin' },
+        endedBy: { type: String, default: 'system' },
+        completedNaturally: { type: Boolean, default: true }
+      }
+    ]
   },
   {
     timestamps: true
