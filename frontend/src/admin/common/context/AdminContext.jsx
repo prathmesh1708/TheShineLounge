@@ -18,6 +18,8 @@ import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import { getSaleDate, parseSaleDate, toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
 
+const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 const formatBookingDateTime = (rawSlot, rawDate) => {
   if (!rawSlot && !rawDate) return 'N/A';
   let text = String(rawSlot || '').trim();
