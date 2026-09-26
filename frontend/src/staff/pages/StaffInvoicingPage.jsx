@@ -581,33 +581,35 @@ export default function StaffInvoicingPage() {
 
         {/* Department Service Dropdown Selector */}
         <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200/80 space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <label className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" /> Select {currentDeptLabel} Service
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Select {currentDeptLabel} Service
             </label>
-            <span className="text-[10px] font-bold text-amber-700">
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">
               {deptServices.length} Services Available
             </span>
           </div>
           
-          <div className="flex gap-2">
-            <select
-              value={selectedServiceId}
-              onChange={e => setSelectedServiceId(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-xl border border-amber-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 truncate"
-            >
-              {deptServices.map(srv => (
-                <option key={srv.id} value={srv.id}>
-                  {srv.name} — ₹{srv.price}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <select
+                value={selectedServiceId}
+                onChange={e => setSelectedServiceId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-amber-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 truncate"
+              >
+                {deptServices.map(srv => (
+                  <option key={srv.id} value={srv.id}>
+                    {srv.name} — ₹{srv.price}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               onClick={handleAddSelectedService}
-              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Service
+              <Plus className="w-3.5 h-3.5 shrink-0" /> Add Service
             </button>
           </div>
         </div>
@@ -690,7 +692,7 @@ export default function StaffInvoicingPage() {
         <div className="pt-1">
           <label className="block text-xs font-bold text-gray-700 mb-1">Apply Promo / Coupon</label>
           <div className="flex gap-2">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Tag className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
               <input
                 type="text"
@@ -703,7 +705,7 @@ export default function StaffInvoicingPage() {
             <button
               type="button"
               onClick={handleApplyCoupon}
-              className="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-black text-white font-extrabold text-xs shadow-xs transition-colors"
+              className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-black active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all shrink-0 cursor-pointer"
             >
               Apply
             </button>
