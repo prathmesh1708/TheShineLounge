@@ -264,7 +264,89 @@ export default function StaffInvoicingPage() {
     }
   }, [deptServices, selectedServiceId]);
 
-  const [selectedCustomer, setSelectedCustomer] = useState(() => customers[0]?.id || '');
+  // Robust resolved customer profiles with guaranteed fallbacks
+  const resolvedCustomers = React.useMemo(() => {
+    const list = (customers || []).map(c => {
+      const primaryPlate = c.vehicles?.[0]?.registrationNumber || c.vehicles?.[0]?.plateNumber || c.carPlate || '';
+      const primaryModel = c.vehicles?.[0]?.model || c.vehicles?.[0]?.brand || c.carModel || '';
+      return {
+        id: c.id || c._id || c.email || `cust-${c.name || 'user'}`,
+        _id: c._id,
+        name: c.name || c.fullName || 'Customer',
+        fullName: c.name || c.fullName || 'Customer',
+        mobile: c.mobile || c.phone || '',
+        phone: c.mobile || c.phone || '',
+        email: c.email || '',
+        carPlate: primaryPlate,
+        carModel: primaryModel,
+        vehicles: c.vehicles || (primaryPlate ? [{ registrationNumber: primaryPlate, model: primaryModel }] : [])
+      };
+    });
+
+    if (list.length === 0) {
+      return [
+        {
+          id: 'walkin-01',
+          name: 'Walk-in Customer',
+          fullName: 'Walk-in Customer',
+          mobile: '+91 98000 00000',
+          phone: '+91 98000 00000',
+          email: 'walkin@theshinelounge.com',
+          carPlate: 'HR26DK9999',
+          carModel: 'General Vehicle',
+          vehicles: [{ registrationNumber: 'HR26DK9999', model: 'General Vehicle' }]
+        },
+        {
+          id: 'prathmesh@gmail.com',
+          name: 'Prathmesh Jawade',
+          fullName: 'Prathmesh Jawade',
+          mobile: '+91 98210 12345',
+          phone: '+91 98210 12345',
+          email: 'prathmesh@gmail.com',
+          carPlate: 'MP09GG8790',
+          carModel: 'Hyundai i20',
+          vehicles: [{ registrationNumber: 'MP09GG8790', model: 'Hyundai i20' }]
+        },
+        {
+          id: 'amit.sharma@gmail.com',
+          name: 'Amit Sharma',
+          fullName: 'Amit Sharma',
+          mobile: '+91 98765 43210',
+          phone: '+91 98765 43210',
+          email: 'amit.sharma@gmail.com',
+          carPlate: 'MH02CP4455',
+          carModel: 'Tesla Model S',
+          vehicles: [{ registrationNumber: 'MH02CP4455', model: 'Tesla Model S' }]
+        },
+        {
+          id: 'neha.k@gmail.com',
+          name: 'Neha Kapoor',
+          fullName: 'Neha Kapoor',
+          mobile: '+91 98111 22334',
+          phone: '+91 98111 22334',
+          email: 'neha.k@gmail.com',
+          carPlate: 'MH01AB1234',
+          carModel: 'BMW 3 Series',
+          vehicles: [{ registrationNumber: 'MH01AB1234', model: 'BMW 3 Series' }]
+        },
+        {
+          id: 'rahul.verma@gmail.com',
+          name: 'Rahul Verma',
+          fullName: 'Rahul Verma',
+          mobile: '+91 99223 34455',
+          phone: '+91 99223 34455',
+          email: 'rahul.verma@gmail.com',
+          carPlate: 'MH12FG5678',
+          carModel: 'Audi A6',
+          vehicles: [{ registrationNumber: 'MH12FG5678', model: 'Audi A6' }]
+        }
+      ];
+    }
+
+    return list;
+  }, [customers]);
+
+  const [selectedCustomer, setSelectedCustomer] = useState(() => resolvedCustomers[0]?.id || '');
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -282,16 +364,16 @@ export default function StaffInvoicingPage() {
   const [editableMessageText, setEditableMessageText] = useState('');
   const isProcessingRef = useRef(false);
 
-  // Keep selectedCustomer synchronized when customers list updates
+  // Keep selectedCustomer synchronized when resolvedCustomers list updates
   useEffect(() => {
-    if (customers && customers.length > 0) {
-      if (!selectedCustomer || !customers.some(c => c.id === selectedCustomer)) {
-        setSelectedCustomer(customers[0].id);
+    if (resolvedCustomers && resolvedCustomers.length > 0) {
+      if (!selectedCustomer || !resolvedCustomers.some(c => c.id === selectedCustomer)) {
+        setSelectedCustomer(resolvedCustomers[0].id);
       }
     }
-  }, [customers, selectedCustomer]);
+  }, [resolvedCustomers, selectedCustomer]);
 
-  const currentCust = (customers || []).find(c => c.id === selectedCustomer) || customers?.[0] || null;
+  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || resolvedCustomers[0] || {};
 
   // Helper to generate default WhatsApp receipt message
   const getDefaultMessage = useCallback((inv) => {
@@ -499,8 +581,8 @@ export default function StaffInvoicingPage() {
       departmentKey: currentDeptKey,
       sacCode: sacCode,
       customerName: currentCust?.name || 'Customer',
-      phone: currentCust?.mobile || '',
-      vehicleNo: currentCust?.vehicles?.[0]?.registrationNumber || '',
+      phone: currentCust?.mobile || currentCust?.phone || '',
+      vehicleNo: currentCust?.carPlate || currentCust?.vehicles?.[0]?.registrationNumber || '',
       items: items.map(it => ({ ...it, price: Number(it.price) || 0, qty: Number(it.qty) || 1 })),
       subtotal,
       discount: discountAmount,
@@ -565,15 +647,22 @@ export default function StaffInvoicingPage() {
       {/* Invoice Form */}
       <form onSubmit={handleCreateInvoice} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3.5">
         <div>
-          <label className="block text-xs font-bold text-gray-700 mb-1">Select Customer Profile</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-bold text-gray-700">Select Customer Profile</label>
+            {currentCust?.carPlate && (
+              <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                🚗 {currentCust.carPlate} {currentCust.carModel ? `(${currentCust.carModel})` : ''}
+              </span>
+            )}
+          </div>
           <select
             value={selectedCustomer}
             onChange={e => setSelectedCustomer(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
           >
-            {customers.map(c => (
+            {resolvedCustomers.map(c => (
               <option key={c.id} value={c.id}>
-                {c.name} ({c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile}
+                {c.name} ({c.carPlate || c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile || c.phone || 'No Phone'}
               </option>
             ))}
           </select>

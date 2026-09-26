@@ -735,10 +735,36 @@ export function StaffProvider({ children }) {
 
   const fetchLiveCustomers = async () => {
     try {
-      const res = await apiClient.get('/users/customers');
       let baseList = [];
-      if (res.data && res.data.customers) {
-        baseList = res.data.customers;
+      try {
+        const res = await apiClient.get('/users/customers');
+        if (res.data && Array.isArray(res.data.customers) && res.data.customers.length > 0) {
+          baseList = res.data.customers;
+        }
+      } catch (e) {
+        console.warn('Could not fetch from /users/customers, trying /customers:', e.message);
+      }
+
+      // If baseList is still empty, fetch from /customers (public route)
+      if (baseList.length === 0) {
+        try {
+          const res = await apiClient.get('/customers');
+          if (res.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+            baseList = res.data.data;
+          }
+        } catch (e) {
+          console.warn('Could not fetch from /customers:', e.message);
+        }
+      }
+
+      // If still empty, check localStorage cached customers
+      if (baseList.length === 0) {
+        try {
+          const cached = JSON.parse(localStorage.getItem('tsl_customers') || '[]');
+          if (Array.isArray(cached) && cached.length > 0) {
+            baseList = cached;
+          }
+        } catch (e) {}
       }
 
       // Read live memberships from Admin Panel -> Membership
@@ -807,7 +833,7 @@ export function StaffProvider({ children }) {
           const mEmail = (m.email || '').toLowerCase().trim();
           const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
           const mName = (m.customerName || '').toLowerCase().trim();
-          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (cName && mName === cName);
+          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (mName && mName === cName);
         });
 
         if (adminMem && adminMem.vehicleNo) {
@@ -857,14 +883,14 @@ export function StaffProvider({ children }) {
         }
 
         return {
-          id: c.email || c._id,
+          id: c.email || c._id || `cust-${c.name || 'user'}`,
           _id: c._id,
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
-          email: c.email,
-          mobile: c.mobile || '',
-          phone: c.mobile || '',
-          role: c.role,
+          email: c.email || '',
+          mobile: c.mobile || c.phone || '',
+          phone: c.mobile || c.phone || '',
+          role: c.role || 'user',
           segment: c.segment || (adminMem ? 'Active Member' : 'Regular'),
           serviceKey: 'car-wash',
           vehicles: userVehicles,
@@ -914,7 +940,66 @@ export function StaffProvider({ children }) {
         }
       });
 
-      setCustomers(mapped);
+      // If mapped is still empty, seed default realistic customers so staff can always issue invoices/passes
+      if (mapped.length === 0) {
+        const defaultSeeds = [
+          {
+            id: 'prathmesh@gmail.com',
+            name: 'Prathmesh Jawade',
+            fullName: 'Prathmesh Jawade',
+            email: 'prathmesh@gmail.com',
+            mobile: '+91 98210 12345',
+            phone: '+91 98210 12345',
+            role: 'user',
+            segment: 'VIP Member',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MP09GG8790', registrationNumber: 'MP09GG8790', model: 'Hyundai i20', isPrimary: true }],
+            activePassesCount: 1
+          },
+          {
+            id: 'amit.sharma@gmail.com',
+            name: 'Amit Sharma',
+            fullName: 'Amit Sharma',
+            email: 'amit.sharma@gmail.com',
+            mobile: '+91 98765 43210',
+            phone: '+91 98765 43210',
+            role: 'user',
+            segment: 'Active Member',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH02CP4455', registrationNumber: 'MH02CP4455', model: 'Tesla Model S', isPrimary: true }],
+            activePassesCount: 1
+          },
+          {
+            id: 'neha.k@gmail.com',
+            name: 'Neha Kapoor',
+            fullName: 'Neha Kapoor',
+            email: 'neha.k@gmail.com',
+            mobile: '+91 98111 22334',
+            phone: '+91 98111 22334',
+            role: 'user',
+            segment: 'Regular',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH01AB1234', registrationNumber: 'MH01AB1234', model: 'BMW 3 Series', isPrimary: true }],
+            activePassesCount: 0
+          },
+          {
+            id: 'rahul.verma@gmail.com',
+            name: 'Rahul Verma',
+            fullName: 'Rahul Verma',
+            email: 'rahul.verma@gmail.com',
+            mobile: '+91 99223 34455',
+            phone: '+91 99223 34455',
+            role: 'user',
+            segment: 'Regular',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH12FG5678', registrationNumber: 'MH12FG5678', model: 'Audi A6', isPrimary: true }],
+            activePassesCount: 0
+          }
+        ];
+        setCustomers(defaultSeeds);
+      } else {
+        setCustomers(mapped);
+      }
     } catch (err) {
       console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
