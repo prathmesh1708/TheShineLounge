@@ -1073,15 +1073,14 @@ export function StaffProvider({ children }) {
   const processCheckIn = async (photoUrl) => {
     try {
       const res = await apiClient.post('/attendance/check-in', {
-        photoUrl,
-        location: '19.0760° N, 72.8777° E (Main Branch)'
+        photoUrl
       });
       if (res.data && res.data.success) {
         setIsCheckedIn(true);
         setCheckInPhoto(photoUrl);
         const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setCheckInTime(timeNow);
-        showToast('Check-In Successful! Selfie & Location Logged.', 'success');
+        showToast('Check-In Successful! Selfie Logged.', 'success');
         fetchLiveAttendance(currentStaff.id);
       }
     } catch (err) {

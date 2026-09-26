@@ -1994,9 +1994,6 @@ export default function DriveThroughCafeAdminHubPage() {
                         <p className="text-[10px] text-gray-500">
                           ⏱️ check-in: <strong className="text-gray-700">{log.checkInTime}</strong> | checkout: <strong className="text-gray-700">{log.checkOutTime}</strong>
                         </p>
-                        <p className="text-[10px] text-gray-400 italic">
-                          📍 {log.location || 'Main Branch'}
-                        </p>
                       </div>
                       {log.photoUrl && (
                         <div className="flex flex-col items-center">

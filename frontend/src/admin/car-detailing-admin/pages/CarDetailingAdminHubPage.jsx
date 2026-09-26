@@ -2364,11 +2364,6 @@ export default function CarDetailingAdminHubPage() {
                               check-in: <strong className="text-gray-900">{checkIn}</strong> | checkout: <strong className="text-gray-900">{checkOut}</strong>
                             </span>
                           </div>
-
-                          <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 italic">
-                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                            <span>{log.location || '19.0760° N, 72.8777° E (Main Branch)'}</span>
-                          </div>
                         </div>
 
                         <div className="flex flex-col items-center gap-1 shrink-0">
