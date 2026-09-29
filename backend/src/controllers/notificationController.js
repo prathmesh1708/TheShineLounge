@@ -197,6 +197,9 @@ const getUserNotifications = async (req, res) => {
         { recipientType: 'user', targetUserId: userId }
       ]
     };
+    if (userId) {
+      query.deletedBy = { $ne: userId };
+    }
 
     const rawNotifications = await Notification.find(query).sort({ createdAt: -1 });
 
@@ -249,6 +252,9 @@ const getStaffNotifications = async (req, res) => {
         { recipientType: 'staff', targetUserId: staffId }
       ]
     };
+    if (staffId) {
+      query.deletedBy = { $ne: staffId };
+    }
 
     const notifications = await Notification.find(query).sort({ createdAt: -1 });
 
@@ -335,6 +341,77 @@ const markAllAsRead = async (req, res) => {
   }
 };
 
+// @desc    Dismiss / Delete a notification for current user or staff
+// @route   DELETE /api/notifications/dismiss/:id or POST /api/notifications/dismiss/:id
+// @access  Private
+const dismissNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user ? String(req.user._id) : (req.body?.userId || req.query?.userId);
+
+    const notification = await Notification.findById(id);
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
+    if (userId) {
+      if (!notification.deletedBy.includes(userId)) {
+        notification.deletedBy.push(userId);
+        await notification.save();
+      }
+    } else {
+      await notification.deleteOne();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Notification removed successfully.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error dismissing notification.'
+    });
+  }
+};
+
+// @desc    Clear / Deplete all notifications for current user or staff
+// @route   POST /api/notifications/clear-all
+// @access  Private
+const clearAllNotifications = async (req, res) => {
+  try {
+    const userId = req.user ? String(req.user._id) : (req.body?.userId || req.query?.userId);
+    const isStaff = req.body?.isStaff || req.query?.isStaff === 'true';
+
+    if (userId) {
+      const matchCriteria = isStaff
+        ? { $or: [{ recipientType: 'all_staff' }, { recipientType: 'staff', targetUserId: userId }] }
+        : { $or: [{ recipientType: 'all_users' }, { recipientType: 'segment' }, { recipientType: 'user', targetUserId: userId }] };
+
+      await Notification.updateMany(
+        { ...matchCriteria, deletedBy: { $ne: userId } },
+        { $addToSet: { deletedBy: userId } }
+      );
+    } else {
+      // If general fallback (e.g. staff dev session), soft-clear staff alerts
+      const matchCriteria = isStaff
+        ? { recipientType: 'all_staff' }
+        : { recipientType: 'all_users' };
+      await Notification.deleteMany(matchCriteria);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'All notifications cleared successfully.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error clearing notifications.'
+    });
+  }
+};
+
 module.exports = {
   createNotification,
   getAdminNotifications,
@@ -343,5 +420,7 @@ module.exports = {
   getUserNotifications,
   getStaffNotifications,
   markAsRead,
-  markAllAsRead
+  markAllAsRead,
+  dismissNotification,
+  clearAllNotifications
 };

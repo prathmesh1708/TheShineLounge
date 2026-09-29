@@ -1,21 +1,14 @@
 import React, { useState } from 'react';
 import { useStaff } from '../common/context/StaffContext';
-import { Camera, Calendar, CheckCircle2, MapPin, Clock, FileText, Send } from 'lucide-react';
+import StaffLeaveSection from '../common/components/StaffLeaveSection';
+import { Camera, Calendar, CheckCircle2, MapPin, Clock, FileText } from 'lucide-react';
 
 export default function StaffAttendancePage() {
-  const { currentStaff, isCheckedIn, checkInPhoto, checkInTime, attendance, processCheckOut, setIsCameraOpen, setCameraPurpose, showToast } = useStaff();
+  const { currentStaff, isCheckedIn, checkInPhoto, checkInTime, attendance, processCheckOut, setIsCameraOpen, setCameraPurpose } = useStaff();
 
   const [activeTab, setActiveTab] = useState('summary'); // 'summary' | 'calendar' | 'leave'
-  const [leaveReason, setLeaveReason] = useState('');
-  const [leaveType, setLeaveType] = useState('Casual');
 
   const myAttendance = attendance.filter(a => a.staffId === currentStaff?.id || true);
-
-  const handleApplyLeave = (e) => {
-    e.preventDefault();
-    showToast(`Leave application (${leaveType}) submitted to Branch Manager`, 'success');
-    setLeaveReason('');
-  };
 
   return (
     <div className="space-y-4">
@@ -120,45 +113,7 @@ export default function StaffAttendancePage() {
         </div>
       )}
 
-      {activeTab === 'leave' && (
-        <form onSubmit={handleApplyLeave} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
-          <h4 className="text-xs font-black text-gray-900 uppercase">Leave Application Form</h4>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Leave Type</label>
-            <select
-              value={leaveType}
-              onChange={e => setLeaveType(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold"
-            >
-              <option value="Casual">Casual Leave ({currentStaff?.leaveBalance?.casual || 6} Days Left)</option>
-              <option value="Sick">Sick Leave ({currentStaff?.leaveBalance?.sick || 4} Days Left)</option>
-              <option value="Earned">Earned Leave ({currentStaff?.leaveBalance?.earned || 10} Days Left)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Reason for Leave</label>
-            <textarea
-              rows={3}
-              value={leaveReason}
-              onChange={e => setLeaveReason(e.target.value)}
-              placeholder="Provide reason for leave..."
-              required
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md flex items-center justify-center gap-1.5"
-            style={{ backgroundColor: '#e07b2a' }}
-          >
-            <Send className="w-4 h-4" />
-            <span>Submit Leave Request</span>
-          </button>
-        </form>
-      )}
+      {activeTab === 'leave' && <StaffLeaveSection />}
     </div>
   );
 }

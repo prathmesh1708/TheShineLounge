@@ -5,7 +5,7 @@ import { useStaff } from '../context/StaffContext';
 export default function StaffBreakTimerWidget() {
   const { breakStatus } = useStaff();
 
-  if (!breakStatus || !breakStatus.isOnBreak) {
+  if (!breakStatus || breakStatus.status !== 'active') {
     return null;
   }
 

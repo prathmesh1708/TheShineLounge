@@ -48,9 +48,18 @@ const staffSchema = new mongoose.Schema(
       type: String,
       default: 'Staff Specialist'
     },
+    // Display text only (e.g. "₹35,000 / month"), derived from monthlySalary.
+    // Kept so older screens keep rendering; never used for calculations.
     salary: {
       type: String,
       default: ''
+    },
+    // Source of truth for payroll, in whole rupees. Change it through
+    // services/payroll.changeBaseSalary so every change lands in salary_revisions.
+    monthlySalary: {
+      type: Number,
+      default: 0,
+      min: 0
     },
     leaveBalance: {
       type: Number,
@@ -84,6 +93,13 @@ const staffSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    // idle -> pending (admin assigned, waiting for staff) -> active (staff started) -> idle
+    breakStatus: {
+      type: String,
+      enum: ['idle', 'pending', 'active', 'completed'],
+      default: 'idle'
+    },
+    // true only while breakStatus === 'active'
     isOnBreak: {
       type: Boolean,
       default: false

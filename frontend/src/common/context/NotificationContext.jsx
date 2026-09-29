@@ -162,6 +162,31 @@ export function NotificationProvider({ children }) {
     }
   };
 
+  // Dismiss / Delete single notification for staff or user
+  const dismissNotification = async (id) => {
+    try {
+      setUserNotifications(prev => prev.filter(n => n._id !== id));
+      setStaffNotifications(prev => prev.filter(n => n._id !== id));
+      await apiClient.delete(`/notifications/dismiss/${id}`);
+    } catch (err) {
+      console.warn('Could not dismiss notification:', err.message);
+    }
+  };
+
+  // Clear / Deplete all notifications for staff or user
+  const clearAllNotifications = async (isStaff = false) => {
+    try {
+      if (isStaff) {
+        setStaffNotifications([]);
+      } else {
+        setUserNotifications([]);
+      }
+      await apiClient.post('/notifications/clear-all', { isStaff });
+    } catch (err) {
+      console.warn('Could not clear all notifications:', err.message);
+    }
+  };
+
   const unreadUserCount = userNotifications.filter(n => !n.isRead).length;
   const unreadStaffCount = staffNotifications.filter(n => !n.isRead).length;
 
@@ -180,6 +205,8 @@ export function NotificationProvider({ children }) {
         createNotification,
         updateNotification,
         deleteNotification,
+        dismissNotification,
+        clearAllNotifications,
         markAsRead,
         markAllAsRead
       }}

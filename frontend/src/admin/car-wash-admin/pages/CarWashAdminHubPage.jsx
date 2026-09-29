@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   Coffee,
   Timer,
+  Hourglass,
   Play,
   Pause,
   AlertCircle
@@ -51,6 +52,8 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
+import AdminLeaveRequestsPanel from '../../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
@@ -728,7 +731,7 @@ export default function CarWashAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Car Wash Specialist',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings', 'orders']
@@ -743,7 +746,7 @@ export default function CarWashAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Car Wash Specialist',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: []
@@ -757,7 +760,7 @@ export default function CarWashAdminHubPage() {
   const [adminBreakCountdown, setAdminBreakCountdown] = useState(0);
 
   useEffect(() => {
-    if (!editStaffModal || !staffLiveBreakState?.isOnBreak || !staffLiveBreakState?.breakEndTime) {
+    if (!editStaffModal || (!staffLiveBreakState?.isOnBreak && staffLiveBreakState?.breakStatus !== 'active') || !staffLiveBreakState?.breakEndTime) {
       return;
     }
     const tick = () => {
@@ -768,6 +771,47 @@ export default function CarWashAdminHubPage() {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [editStaffModal, staffLiveBreakState]);
+
+  // 'idle' | 'pending' (assigned, waiting for staff to tap Start) | 'active' (countdown running)
+  const staffBreakPhase = (staffLiveBreakState?.isOnBreak || staffLiveBreakState?.breakStatus === 'active')
+    ? 'active'
+    : staffLiveBreakState?.breakStatus === 'pending' ? 'pending' : 'idle';
+
+  // Live listener + fast poll MongoDB while the staff modal is open so the panel flips to the live countdown as soon as staff taps Start
+  useEffect(() => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!editStaffModal || !sId || sId.toString().startsWith('STF-')) return;
+
+    const poll = async () => {
+      try {
+        const res = await userService.getStaffBreakStatus(sId);
+        if (res && res.success) {
+          setStaffLiveBreakState(prev => ({
+            ...(res.staff || prev || {}),
+            breakStatus: res.breakStatus,
+            isOnBreak: res.isOnBreak || res.breakStatus === 'active',
+            breakStartTime: res.breakStartTime,
+            breakEndTime: res.breakEndTime,
+            breakDuration: res.breakDuration,
+            breakReason: res.breakReason,
+            remainingSeconds: res.remainingSeconds
+          }));
+        }
+      } catch (e) {}
+    };
+
+    poll();
+    const poller = setInterval(poll, 1500);
+    const handleSync = () => poll();
+    window.addEventListener('tsl_staff_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [editStaffModal, selectedStaff?._id, selectedStaff?.id]);
 
 
   // Marketing Banner CRUD States
@@ -925,7 +969,7 @@ export default function CarWashAdminHubPage() {
       password: '',
       mobile: '',
       staffRole: 'Car Wash Specialist',
-      salary: '₹35,000 / month',
+      salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings', 'orders']
@@ -943,7 +987,7 @@ export default function CarWashAdminHubPage() {
       password: '',
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Car Wash Specialist',
-      salary: stf.salary || '₹35,000 / month',
+      salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
@@ -957,7 +1001,7 @@ export default function CarWashAdminHubPage() {
       try {
         const breakRes = await userService.getStaffBreakStatus(sId);
         if (breakRes && breakRes.success) {
-          setStaffLiveBreakState(breakRes.staff);
+          setStaffLiveBreakState({ ...breakRes.staff, breakStatus: breakRes.breakStatus, isOnBreak: breakRes.isOnBreak });
         }
       } catch (e) {}
 
@@ -972,41 +1016,27 @@ export default function CarWashAdminHubPage() {
     }
   };
 
-  const handleStartBreak = async () => {
+  const runBreakAction = async (action, ...args) => {
     const sId = selectedStaff?._id || selectedStaff?.id;
     if (!sId) return;
     setBreakLoading(true);
     try {
-      const res = await updateStaffBreak(sId, 'start', breakDuration, breakReason);
+      const res = await updateStaffBreak(sId, action, ...args);
       if (res && res.staff) {
         setSelectedStaff(res.staff);
         setStaffLiveBreakState(res.staff);
       }
       fetchLiveStaff();
     } catch (err) {
-      console.warn('Error starting break:', err);
+      console.warn(`Error running break action "${action}":`, err);
     } finally {
       setBreakLoading(false);
     }
   };
 
-  const handleEndBreak = async () => {
-    const sId = selectedStaff?._id || selectedStaff?.id;
-    if (!sId) return;
-    setBreakLoading(true);
-    try {
-      const res = await updateStaffBreak(sId, 'end');
-      if (res && res.staff) {
-        setSelectedStaff(res.staff);
-        setStaffLiveBreakState(res.staff);
-      }
-      fetchLiveStaff();
-    } catch (err) {
-      console.warn('Error ending break:', err);
-    } finally {
-      setBreakLoading(false);
-    }
-  };
+  const handleAssignBreak = () => runBreakAction('assign', breakDuration, breakReason);
+  const handleCancelBreak = () => runBreakAction('cancel');
+  const handleEndBreak = () => runBreakAction('end');
 
 
   const handleUpdateStaff = async (e) => {
@@ -1737,6 +1767,9 @@ export default function CarWashAdminHubPage() {
       {/* DEPARTMENT STAFF TAB */}
       {activeTab === 'staff' && (
         <div className="space-y-6">
+          <AdminLeaveRequestsPanel serviceKey={serviceKey} />
+          <AdminPayrollPanel serviceKey={serviceKey} />
+
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
               <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({displayedStaffList.length})</h3>
@@ -1777,6 +1810,10 @@ export default function CarWashAdminHubPage() {
                           <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
                             <Coffee className="w-2.5 h-2.5" /> On Break ({stf.breakDuration || 30}m)
                           </span>
+                        ) : stf.breakStatus === 'pending' ? (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
+                            <Hourglass className="w-2.5 h-2.5" /> Break Assigned ({stf.breakDuration || 30}m)
+                          </span>
                         ) : (
                           <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
                             {stf.isActive !== false ? 'On Duty' : 'Inactive'}
@@ -1799,7 +1836,7 @@ export default function CarWashAdminHubPage() {
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || 'Not set'}</span>
                     </div>
                   </div>
 
@@ -3004,12 +3041,14 @@ export default function CarWashAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                step="1"
                 value={staffForm.salary}
                 onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
-                placeholder="₹35,000 / month"
+                placeholder="e.g. 35000"
                 className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -3119,7 +3158,7 @@ export default function CarWashAdminHubPage() {
             >
               <Coffee className="w-3.5 h-3.5 text-amber-500" />
               <span>Break System & Timer</span>
-              {staffLiveBreakState?.isOnBreak && (
+              {staffBreakPhase !== 'idle' && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
               )}
             </button>
@@ -3136,7 +3175,7 @@ export default function CarWashAdminHubPage() {
 
           {activeStaffModalTab === 'break' && (
             <div className="space-y-4 py-1">
-              {staffLiveBreakState?.isOnBreak ? (
+              {staffBreakPhase === 'active' ? (
                 <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -3181,13 +3220,45 @@ export default function CarWashAdminHubPage() {
                     <span>{breakLoading ? 'Updating MongoDB...' : '⏹️ End Break Early & Resume Duty'}</span>
                   </button>
                 </div>
+              ) : staffBreakPhase === 'pending' ? (
+                <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+                        <Hourglass className="w-4 h-4 text-amber-600 animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                          ⏳ Break Assigned — Waiting for Staff to Start
+                        </span>
+                        <h4 className="text-sm font-black text-amber-950 mt-0.5">{staffLiveBreakState.breakReason || 'Rest / Lunch Break'}</h4>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-extrabold text-amber-900 bg-amber-200/70 px-2.5 py-1 rounded-xl">
+                      {staffLiveBreakState.breakDuration || 30}m Break
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                    {staffLiveBreakState.breakDuration || 30}m Break assigned for {editStaffForm.fullName || 'Staff'}. The countdown timer will start simultaneously once the staff member taps Start on their device.
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleCancelBreak}
+                    className="w-full py-2.5 bg-white hover:bg-red-50 active:scale-98 text-red-700 border border-red-200 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <span>{breakLoading ? 'Updating MongoDB...' : '❌ Cancel / Revoke Break Request'}</span>
+                  </button>
+                </div>
               ) : (
                 <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5">
                   <div className="flex items-center gap-2 text-amber-900">
                     <Coffee className="w-5 h-5 text-amber-600 flex-shrink-0" />
                     <div>
-                      <h4 className="font-black text-xs">Set Break Time & Start Session</h4>
-                      <p className="text-[11px] text-amber-700">The staff dashboard will receive a notification and show a 30-min reverse countdown timer.</p>
+                      <h4 className="font-black text-xs">Assign Break Time</h4>
+                      <p className="text-[11px] text-amber-700">The staff app will show a break request. The countdown starts once they tap Start.</p>
                     </div>
                   </div>
 
@@ -3239,11 +3310,11 @@ export default function CarWashAdminHubPage() {
                   <button
                     type="button"
                     disabled={breakLoading}
-                    onClick={handleStartBreak}
+                    onClick={handleAssignBreak}
                     className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
                   >
                     <Coffee className="w-4 h-4 text-white" />
-                    <span>{breakLoading ? 'Saving to MongoDB...' : `☕ Start ${breakDuration}-Minute Break for ${editStaffForm.fullName || 'Staff'}`}</span>
+                    <span>{breakLoading ? 'Saving to MongoDB...' : `☕ Assign ${breakDuration}-Min Break for ${editStaffForm.fullName || 'Staff'}`}</span>
                   </button>
                 </div>
               )}
@@ -3327,9 +3398,11 @@ export default function CarWashAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
+                    step="1"
                     value={editStaffForm.salary}
                     onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
                     className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"

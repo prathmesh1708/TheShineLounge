@@ -30,6 +30,8 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
+import AdminLeaveRequestsPanel from '../../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import AdminModal from '../../common/components/AdminModal';
@@ -219,7 +221,7 @@ export default function CafeAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Cafe Barista',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: ['bookings', 'orders']
@@ -237,7 +239,7 @@ export default function CafeAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Cafe Barista',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: []
@@ -483,7 +485,7 @@ export default function CafeAdminHubPage() {
       password: '',
       mobile: '',
       staffRole: 'Cafe Barista',
-      salary: '₹35,000 / month',
+      salary: '',
       leaveBalance: 12,
       photo: '',
       permissions: ['bookings', 'orders']
@@ -498,7 +500,7 @@ export default function CafeAdminHubPage() {
       password: '',
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Cafe Barista',
-      salary: stf.salary || '₹35,000 / month',
+      salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
@@ -888,6 +890,9 @@ export default function CafeAdminHubPage() {
 
         return (
           <div className="space-y-6">
+            <AdminLeaveRequestsPanel serviceKey={serviceKey} />
+            <AdminPayrollPanel serviceKey={serviceKey} />
+
             <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <div>
                 <h3 className="text-base font-black text-gray-900">Café Department Staff ({displayStaff.length})</h3>
@@ -1439,12 +1444,14 @@ export default function CafeAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                step="1"
                 value={staffForm.salary}
                 onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
-                placeholder="₹35,000 / month"
+                placeholder="e.g. 35000"
                 className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -1633,9 +1640,11 @@ export default function CafeAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
+                    step="1"
                     value={editStaffForm.salary}
                     onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
                     className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"

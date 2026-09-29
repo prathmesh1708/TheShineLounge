@@ -35,6 +35,8 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
+import AdminLeaveRequestsPanel from '../../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
@@ -202,7 +204,7 @@ export default function SalonAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Salon Styling Master',
-    salary: '₹45,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings', 'orders']
@@ -217,7 +219,7 @@ export default function SalonAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Salon Styling Master',
-    salary: '₹45,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: []
@@ -390,7 +392,7 @@ export default function SalonAdminHubPage() {
       password: '',
       mobile: '',
       staffRole: 'Salon Styling Master',
-      salary: '₹45,000 / month',
+      salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings', 'orders']
@@ -405,7 +407,7 @@ export default function SalonAdminHubPage() {
       password: '',
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Salon Styling Master',
-      salary: stf.salary || '₹45,000 / month',
+      salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
@@ -1081,6 +1083,9 @@ export default function SalonAdminHubPage() {
       {/* TAB 4: STAFF */}
       {activeTab === 'staff' && (
         <div className="space-y-6">
+          <AdminLeaveRequestsPanel serviceKey={serviceKey} />
+          <AdminPayrollPanel serviceKey={serviceKey} />
+
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-base font-black text-gray-900">
@@ -1134,7 +1139,7 @@ export default function SalonAdminHubPage() {
                   </div>
                   <div className="p-2 bg-gray-50 rounded-lg">
                     <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                    <span className="font-bold text-emerald-700">{stf.salary || '₹45,000 / month'}</span>
+                    <span className="font-bold text-emerald-700">{stf.salary || 'Not set'}</span>
                   </div>
                 </div>
 
@@ -1945,12 +1950,14 @@ export default function SalonAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                step="1"
                 value={staffForm.salary}
                 onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
-                placeholder="₹45,000 / month"
+                placeholder="e.g. 35000"
                 className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -2124,9 +2131,11 @@ export default function SalonAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
+                    step="1"
                     value={editStaffForm.salary}
                     onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
                     className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"

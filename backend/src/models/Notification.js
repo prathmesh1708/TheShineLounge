@@ -66,6 +66,12 @@ const notificationSchema = new mongoose.Schema(
         trim: true
       }
     ],
+    deletedBy: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
     actionUrl: {
       type: String,
       default: ''

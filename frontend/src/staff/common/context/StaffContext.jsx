@@ -29,7 +29,6 @@ const formatStaffUser = (u) => {
       serviceKey: 'car-detailing',
       email: 'suryansh@theshinelounge.com',
       mobile: '+91 98210 55555',
-      salary: '₹45,000 / mo',
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       permissions: ['bookings', 'orders']
@@ -75,7 +74,6 @@ const formatStaffUser = (u) => {
     serviceKey: key,
     email: u.email || '',
     mobile: u.mobile || '',
-    salary: u.salary || '',
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     permissions: u.permissions || ['bookings', 'orders']
@@ -152,8 +150,9 @@ export function StaffProvider({ children }) {
   const [checkInPhoto, setCheckInPhoto] = useState('');
   const [checkInTime, setCheckInTime] = useState('');
 
-  // Break Management State in MongoDB
+  // Break lifecycle synced with MongoDB: idle -> pending (admin assigned) -> active (staff tapped Start) -> idle
   const [breakStatus, setBreakStatus] = useState({
+    status: 'idle',
     isOnBreak: false,
     breakStartTime: null,
     breakEndTime: null,
@@ -161,19 +160,33 @@ export function StaffProvider({ children }) {
     breakReason: 'Rest / Lunch Break',
     remainingSeconds: 0
   });
+  const [isStartingBreak, setIsStartingBreak] = useState(false);
 
+  // Only drives the "break over" popup; the pending popup is derived from breakStatus.status
   const [breakAlertModal, setBreakAlertModal] = useState({
     isOpen: false,
-    type: 'started',
+    type: 'completed',
     title: '',
     message: '',
     duration: 30,
     returnTime: ''
   });
 
-  const prevBreakStateRef = useRef(false);
-  const notifiedBreakStartSet = useRef(new Set());
+  const prevBreakStatusRef = useRef('idle');
   const notifiedBreakEndSet = useRef(new Set());
+  const activeBreakRef = useRef({ breakEndTime: null, breakDuration: 30 });
+
+  const getStaffTargetId = () => currentStaff?.id || currentStaff?._id || currentStaff?.email;
+
+  const broadcastStaffUpdate = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+      window.dispatchEvent(new Event('storage'));
+      try {
+        localStorage.setItem('tsl_staff_updated_event', Date.now().toString());
+      } catch (e) {}
+    }
+  };
 
   const playBreakAudio = (type = 'start') => {
     try {
@@ -209,7 +222,10 @@ export function StaffProvider({ children }) {
     }
   };
 
-  const triggerBreakOverModal = (breakReason = 'Break', duration = 30) => {
+  const triggerBreakOverModal = (endKey, duration = 30) => {
+    const key = String(endKey || 'end_break');
+    if (notifiedBreakEndSet.current.has(key)) return;
+    notifiedBreakEndSet.current.add(key);
     playBreakAudio('completed');
     setBreakAlertModal({
       isOpen: true,
@@ -221,226 +237,162 @@ export function StaffProvider({ children }) {
     });
   };
 
+  const resetBreakToIdle = (duration, reason) => {
+    prevBreakStatusRef.current = 'idle';
+    setBreakStatus(prev => ({
+      ...prev,
+      status: 'idle',
+      isOnBreak: false,
+      breakStartTime: null,
+      breakEndTime: null,
+      breakDuration: duration ?? prev.breakDuration,
+      breakReason: reason ?? prev.breakReason,
+      remainingSeconds: 0
+    }));
+  };
+
+  // Countdown reached zero on this device: show the popup and close the break in MongoDB
+  const finishActiveBreakLocally = (breakEndTime, duration) => {
+    triggerBreakOverModal(breakEndTime, duration);
+    resetBreakToIdle();
+    const targetId = getStaffTargetId();
+    if (targetId) {
+      userService.updateStaffBreak(targetId, { action: 'complete' })
+        .then(broadcastStaffUpdate)
+        .catch(() => {});
+    }
+  };
+
+  // Applies a server snapshot and reacts to state transitions (assigned, cancelled, ended)
+  const applyBreakSnapshot = (snap) => {
+    const status = snap.breakStatus || (snap.isOnBreak ? 'active' : 'idle');
+    const prevStatus = prevBreakStatusRef.current;
+    const duration = snap.breakDuration || 30;
+    const reason = snap.breakReason || 'Rest / Lunch Break';
+
+    if (status === 'active') {
+      const endMs = snap.breakEndTime ? new Date(snap.breakEndTime).getTime() : 0;
+      const remainingSeconds = endMs ? Math.max(0, Math.floor((endMs - Date.now()) / 1000)) : 0;
+      if (remainingSeconds <= 0) {
+        finishActiveBreakLocally(snap.breakEndTime, duration);
+        return;
+      }
+      prevBreakStatusRef.current = 'active';
+      activeBreakRef.current = { breakEndTime: snap.breakEndTime, breakDuration: duration };
+      setBreakStatus({
+        status: 'active',
+        isOnBreak: true,
+        breakStartTime: snap.breakStartTime,
+        breakEndTime: snap.breakEndTime,
+        breakDuration: duration,
+        breakReason: reason,
+        remainingSeconds
+      });
+      return;
+    }
+
+    if (status === 'pending') {
+      if (prevStatus !== 'pending') playBreakAudio('start');
+      prevBreakStatusRef.current = 'pending';
+      setBreakStatus({
+        status: 'pending',
+        isOnBreak: false,
+        breakStartTime: null,
+        breakEndTime: null,
+        breakDuration: duration,
+        breakReason: reason,
+        remainingSeconds: 0
+      });
+      return;
+    }
+
+    // idle
+    if (prevStatus === 'active') {
+      // Ended by admin or expired on the server
+      triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+    } else if (prevStatus === 'pending') {
+      showToast('Your assigned break was cancelled by admin.', 'info');
+    }
+    resetBreakToIdle(duration, reason);
+  };
+
   const fetchLiveBreakStatus = async (staffId) => {
-    const targetId = staffId || currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    const targetId = staffId || getStaffTargetId();
     if (!targetId) return;
     try {
       const res = await userService.getStaffBreakStatus(targetId);
       if (res && res.success) {
-        const rawIsOnBreak = Boolean(res.isOnBreak);
-        const endMs = res.breakEndTime ? new Date(res.breakEndTime).getTime() : 0;
-        const nowMs = Date.now();
-        const diffSeconds = endMs > 0 ? Math.max(0, Math.floor((endMs - nowMs) / 1000)) : (res.remainingSeconds || 0);
-        const isStillValidBreak = rawIsOnBreak && diffSeconds > 0;
-        const breakKey = res.breakStartTime ? String(res.breakStartTime) : 'active_break';
-        const endKey = res.breakEndTime ? String(res.breakEndTime) : 'end_break';
-
-        // Case 1: Break has just completed or expired
-        if ((!rawIsOnBreak || diffSeconds <= 0) && (prevBreakStateRef.current || (rawIsOnBreak && diffSeconds <= 0))) {
-          if (!notifiedBreakEndSet.current.has(endKey)) {
-            notifiedBreakEndSet.current.add(endKey);
-            triggerBreakOverModal(res.breakReason || 'Break', res.breakDuration || 30);
-          }
-          prevBreakStateRef.current = false;
-          setBreakStatus({
-            isOnBreak: false,
-            breakStartTime: null,
-            breakEndTime: null,
-            breakDuration: res.breakDuration || 30,
-            breakReason: res.breakReason || 'Rest / Lunch Break',
-            remainingSeconds: 0
-          });
-          userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
-          return;
-        }
-
-        // Case 2: Break is actively in progress
-        if (isStillValidBreak) {
-          setBreakStatus(prev => ({
-            ...prev,
-            isOnBreak: true,
-            breakStartTime: res.breakStartTime,
-            breakEndTime: res.breakEndTime,
-            breakDuration: res.breakDuration || 30,
-            breakReason: res.breakReason || 'Rest / Lunch Break',
-            remainingSeconds: diffSeconds
-          }));
-
-          // Trigger Start Alert Modal ONCE only if break has > 5 seconds remaining
-          if (!notifiedBreakStartSet.current.has(breakKey) && diffSeconds > 5) {
-            notifiedBreakStartSet.current.add(breakKey);
-            prevBreakStateRef.current = true;
-            const returnTimeStr = res.breakEndTime 
-              ? new Date(res.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : `${res.breakDuration || 30} mins`;
-            
-            playBreakAudio('start');
-            setBreakAlertModal({
-              isOpen: true,
-              type: 'started',
-              title: `☕ ${res.breakDuration || 30}-Minute Break Started`,
-              message: `Your break has officially started (${res.breakReason || 'Rest / Lunch Break'}). Please enjoy your rest until ${returnTimeStr}.`,
-              duration: res.breakDuration || 30,
-              returnTime: returnTimeStr
-            });
-          } else {
-            prevBreakStateRef.current = true;
-          }
-        } else {
-          // Break is completely inactive
-          setBreakStatus({
-            isOnBreak: false,
-            breakStartTime: null,
-            breakEndTime: null,
-            breakDuration: res.breakDuration || 30,
-            breakReason: res.breakReason || 'Rest / Lunch Break',
-            remainingSeconds: 0
-          });
-          prevBreakStateRef.current = false;
-        }
+        applyBreakSnapshot(res);
       }
     } catch (err) {
       console.warn('Error fetching live break status from MongoDB:', err.message);
     }
   };
 
-  const startStaffBreak = async (duration = 30, reason = 'Rest / Lunch Break') => {
-    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
-    if (!targetId) return;
+  // Staff tapped "Got it, start break" on an admin-assigned break; the countdown begins now
+  const startStaffBreak = async () => {
+    const targetId = getStaffTargetId();
+    if (!targetId || isStartingBreak) return;
+    setIsStartingBreak(true);
     try {
-      const res = await userService.updateStaffBreak(targetId, { action: 'start', duration, reason });
+      const res = await userService.updateStaffBreak(targetId, { action: 'start' });
       if (res.success && res.staff) {
-        const s = res.staff;
-        const remaining = duration * 60;
-        const breakKey = s.breakStartTime ? String(s.breakStartTime) : String(Date.now());
-        notifiedBreakStartSet.current.add(breakKey);
-        prevBreakStateRef.current = true;
-
-        setBreakStatus({
-          isOnBreak: true,
-          breakStartTime: s.breakStartTime,
-          breakEndTime: s.breakEndTime,
-          breakDuration: s.breakDuration || duration,
-          breakReason: s.breakReason || reason,
-          remainingSeconds: remaining
-        });
-
-        const returnTimeStr = s.breakEndTime 
-          ? new Date(s.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : `${duration} mins`;
-        
-        playBreakAudio('start');
-        setBreakAlertModal({
-          isOpen: true,
-          type: 'started',
-          title: `☕ ${duration}-Minute Break Started`,
-          message: `Your ${duration}-minute break is now active. Return time: ${returnTimeStr}.`,
-          duration,
-          returnTime: returnTimeStr
-        });
-        showToast(`☕ Break started (${duration} minutes)`, 'info');
-
-        // Broadcast update to Admin Panel
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
-          window.dispatchEvent(new Event('storage'));
-        }
+        applyBreakSnapshot({ ...res.staff, breakStatus: res.breakStatus || 'active' });
+        showToast(`☕ Break started (${res.staff.breakDuration || 30} minutes)`, 'info');
+        broadcastStaffUpdate();
       }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to start break', 'error');
+      fetchLiveBreakStatus(targetId);
+    } finally {
+      setIsStartingBreak(false);
     }
   };
 
   const endStaffBreak = async () => {
-    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    const targetId = getStaffTargetId();
     if (!targetId) return;
     try {
       const res = await userService.updateStaffBreak(targetId, { action: 'end' });
       if (res.success) {
-        setBreakStatus(prev => ({
-          ...prev,
-          isOnBreak: false,
-          breakStartTime: null,
-          breakEndTime: null,
-          remainingSeconds: 0
-        }));
-        prevBreakStateRef.current = false;
-        triggerBreakOverModal('Break', 30);
+        triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+        resetBreakToIdle();
         showToast('Shift Resumed. Back on duty!', 'success');
-
-        // Broadcast update to Admin Panel
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
-          window.dispatchEvent(new Event('storage'));
-        }
+        broadcastStaffUpdate();
       }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to end break', 'error');
     }
   };
 
-  const dismissBreakAlertModal = async () => {
-    const wasCompleted = breakAlertModal.type === 'completed';
+  const dismissBreakAlertModal = () => {
     setBreakAlertModal(prev => ({ ...prev, isOpen: false }));
-    
-    if (wasCompleted) {
-      const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
-      if (targetId) {
-        await userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
-          window.dispatchEvent(new Event('storage'));
-        }
-      }
-    }
   };
 
-  // 1-second reverse countdown interval & live timer tick
+  // 1-second reverse countdown, only while the break is active
   useEffect(() => {
-    const timer = setInterval(() => {
-      setBreakStatus(prev => {
-        if (!prev.isOnBreak || !prev.breakEndTime) return prev;
-        const now = Date.now();
-        const end = new Date(prev.breakEndTime).getTime();
-        const diffSeconds = Math.max(0, Math.floor((end - now) / 1000));
+    if (breakStatus.status !== 'active' || !breakStatus.breakEndTime) return;
+    const endTime = breakStatus.breakEndTime;
+    const duration = breakStatus.breakDuration;
+    const endMs = new Date(endTime).getTime();
 
-        if (diffSeconds === 0 && (prev.remainingSeconds > 0 || prev.isOnBreak)) {
-          const endKey = String(prev.breakEndTime);
-          if (!notifiedBreakEndSet.current.has(endKey)) {
-            notifiedBreakEndSet.current.add(endKey);
-            triggerBreakOverModal(prev.breakReason || 'Break', prev.breakDuration || 30);
-          }
-          const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
-          if (targetId) {
-            userService.updateStaffBreak(targetId, { action: 'complete' }).catch(() => {});
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
-              window.dispatchEvent(new Event('storage'));
-            }
-          }
-          prevBreakStateRef.current = false;
-          return {
-            ...prev,
-            isOnBreak: false,
-            breakStartTime: null,
-            breakEndTime: null,
-            remainingSeconds: 0
-          };
-        }
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      if (remaining > 0) {
+        setBreakStatus(prev => (prev.status === 'active' ? { ...prev, remainingSeconds: remaining } : prev));
+      } else {
+        clearInterval(timer);
+        finishActiveBreakLocally(endTime, duration);
+      }
+    };
 
-        return {
-          ...prev,
-          remainingSeconds: diffSeconds
-        };
-      });
-    }, 1000);
-
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [currentStaff]);
+  }, [breakStatus.status, breakStatus.breakEndTime]);
 
   // Fast MongoDB poll every 2.5 seconds + live event listeners for immediate sync
   useEffect(() => {
-    const targetId = currentStaff?.id || currentStaff?._id || currentStaff?.email;
+    const targetId = getStaffTargetId();
     if (!targetId) return;
 
     fetchLiveBreakStatus(targetId);
@@ -461,7 +413,6 @@ export function StaffProvider({ children }) {
       window.removeEventListener('storage', handleStaffBreakSync);
     };
   }, [currentStaff?.id, currentStaff?._id, currentStaff?.email]);
-
 
   const fetchLiveAttendance = async (staffId) => {
     if (!staffId || staffId.toString().startsWith('STF-')) return;
@@ -1495,6 +1446,7 @@ export function StaffProvider({ children }) {
         processCheckOut,
         breakStatus,
         startStaffBreak,
+        isStartingBreak,
         endStaffBreak,
         breakAlertModal,
         dismissBreakAlertModal,

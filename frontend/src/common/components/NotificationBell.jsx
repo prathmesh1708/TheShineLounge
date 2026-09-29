@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, CheckCheck, X, Sparkles, Tag, Car, AlertTriangle, ShieldCheck, Info } from 'lucide-react';
+import { Bell, CheckCheck, X, Sparkles, Tag, Car, AlertTriangle, ShieldCheck, Info, Trash2 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 
 export default function NotificationBell({ isStaff = false }) {
@@ -9,7 +9,9 @@ export default function NotificationBell({ isStaff = false }) {
     unreadUserCount,
     unreadStaffCount,
     markAsRead,
-    markAllAsRead
+    markAllAsRead,
+    dismissNotification,
+    clearAllNotifications
   } = useNotifications();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -99,9 +101,20 @@ export default function NotificationBell({ isStaff = false }) {
                   <button
                     type="button"
                     onClick={markAllAsRead}
-                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
+                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
+                    title="Mark all as read"
                   >
                     <CheckCheck className="w-3 h-3" /> Mark Read
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => clearAllNotifications(isStaff)}
+                    className="text-[10px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
+                    title="Clear all notifications"
+                  >
+                    <Trash2 className="w-3 h-3" /> Clear All
                   </button>
                 )}
                 <button
@@ -144,7 +157,7 @@ export default function NotificationBell({ isStaff = false }) {
                   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                     <Info className="w-5 h-5" />
                   </div>
-                  <p className="text-xs font-bold text-slate-700">No notifications yet</p>
+                  <p className="text-xs font-bold text-slate-700">No notifications</p>
                   <p className="text-[11px] text-slate-400">You are all caught up with your updates and announcements.</p>
                 </div>
               ) : (
@@ -152,7 +165,7 @@ export default function NotificationBell({ isStaff = false }) {
                   <div
                     key={n._id}
                     onClick={() => !n.isRead && markAsRead(n._id)}
-                    className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer ${
+                    className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer group relative ${
                       n.isRead ? 'bg-white hover:bg-slate-50/60' : 'bg-orange-50/30 hover:bg-orange-50/60 border-l-4 border-orange-500'
                     }`}
                   >
@@ -164,9 +177,22 @@ export default function NotificationBell({ isStaff = false }) {
                         <h4 className={`text-xs ${n.isRead ? 'font-bold text-slate-800' : 'font-black text-slate-900'}`}>
                           {n.title}
                         </h4>
-                        <span className="text-[9px] font-semibold text-slate-400 whitespace-nowrap">
-                          {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-semibold text-slate-400 whitespace-nowrap">
+                            {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dismissNotification(n._id);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-70 hover:opacity-100"
+                            title="Delete notification"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <p className="text-[11px] text-slate-600 font-medium leading-snug line-clamp-2">
                         {n.message}

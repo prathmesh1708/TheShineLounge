@@ -123,10 +123,15 @@ export const AdminProvider = ({ children }) => {
       console.warn('Could not save memberships to localStorage:', e);
     }
   }, [memberships]);
+  // Pay data lives only in MongoDB: the cached roster never holds salary fields,
+  // and caches written by older builds are scrubbed on load and on the next write
+  const withoutPayroll = (list) =>
+    (Array.isArray(list) ? list : []).map(({ salary, monthlySalary, ...rest }) => rest);
+
   const [staffList, setStaffList] = useState(() => {
     try {
       const saved = localStorage.getItem('tsl_admin_staff_list');
-      return saved ? JSON.parse(saved) : [];
+      return saved ? withoutPayroll(JSON.parse(saved)) : [];
     } catch (e) {
       return [];
     }
@@ -134,7 +139,7 @@ export const AdminProvider = ({ children }) => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('tsl_admin_staff_list', JSON.stringify(staffList));
+      localStorage.setItem('tsl_admin_staff_list', JSON.stringify(withoutPayroll(staffList)));
     } catch (e) {
       console.warn('Could not save staffList to localStorage:', e);
     }
@@ -558,6 +563,7 @@ export const AdminProvider = ({ children }) => {
             staffRole: s.staffRole || 'Specialist',
             serviceKey: s.serviceKey || '',
             salary: s.salary || '',
+            monthlySalary: s.monthlySalary || 0,
             leaveBalance: s.leaveBalance || 12,
             photo: s.photo || '',
             permissions: s.permissions || [],

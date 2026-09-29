@@ -2,6 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
 import { Phone, Mail, LogOut } from 'lucide-react';
+import StaffLeaveSection from '../common/components/StaffLeaveSection';
+import StaffSalarySection from '../common/components/StaffSalarySection';
 
 export default function StaffProfilePage() {
   const navigate = useNavigate();
@@ -79,7 +81,13 @@ export default function StaffProfilePage() {
         </div>
       </div>
 
-      {/* 3. Logout Action */}
+      {/* 3. Leave Balance, Requests & History */}
+      <StaffLeaveSection />
+
+      {/* 4. Salary, Deductions & Remaining Amount */}
+      <StaffSalarySection />
+
+      {/* 5. Logout Action */}
       <button
         onClick={handleLogout}
         className="w-full py-3.5 rounded-xl text-white font-extrabold text-xs shadow-md bg-rose-600 hover:bg-rose-700 flex items-center justify-center gap-2 active:scale-95 transition-transform"

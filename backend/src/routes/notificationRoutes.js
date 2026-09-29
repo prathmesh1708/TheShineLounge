@@ -9,7 +9,9 @@ const {
   getUserNotifications,
   getStaffNotifications,
   markAsRead,
-  markAllAsRead
+  markAllAsRead,
+  dismissNotification,
+  clearAllNotifications
 } = require('../controllers/notificationController');
 
 // User & Staff routes
@@ -17,6 +19,10 @@ router.get('/user', authMiddleware, getUserNotifications);
 router.get('/staff', authMiddleware, getStaffNotifications);
 router.post('/read-all', authMiddleware, markAllAsRead);
 router.post('/read/:id', authMiddleware, markAsRead);
+router.delete('/dismiss/:id', authMiddleware, dismissNotification);
+router.post('/dismiss/:id', authMiddleware, dismissNotification);
+router.post('/clear-all', authMiddleware, clearAllNotifications);
+router.delete('/clear-all', authMiddleware, clearAllNotifications);
 
 // Admin CRUD routes
 router.get('/admin', authMiddleware, getAdminNotifications);

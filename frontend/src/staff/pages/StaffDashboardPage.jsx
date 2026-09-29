@@ -1,11 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, TrendingUp, Bell, Sparkles, ShieldCheck, Coffee } from 'lucide-react';
+import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, Bell, Sparkles, ShieldCheck, Coffee } from 'lucide-react';
 import NotificationBell from '../../common/components/NotificationBell';
 import { isCarWashStaff } from '../common/utils/staffMembershipUtils';
 import StaffBreakTimerWidget from '../common/components/StaffBreakTimerWidget';
-import StaffBreakAlertModal from '../common/components/StaffBreakAlertModal';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
@@ -39,8 +38,6 @@ export default function StaffDashboardPage() {
 
   return (
     <div className="space-y-4">
-      <StaffBreakAlertModal />
-
       {/* Real-time Reverse Countdown Clock for Active Break */}
       <StaffBreakTimerWidget />
 
@@ -146,19 +143,6 @@ export default function StaffDashboardPage() {
               <span className="text-[10px] font-bold text-gray-800 leading-tight">Memberships</span>
             </button>
           )}
-        </div>
-      </div>
-
-      {/* Revenue Target Progress Bar */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-xs">
-        <div className="flex items-center justify-between text-xs mb-1.5">
-          <span className="font-extrabold text-gray-900 flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Daily Target (₹25,000)
-          </span>
-          <span className="font-black text-amber-600">74% Done</span>
-        </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full bg-amber-500 rounded-full" style={{ width: '74%' }} />
         </div>
       </div>
 

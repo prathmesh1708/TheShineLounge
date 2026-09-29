@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight, Coffee, Timer, CheckCircle2 } from 'lucide-react';
+import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight, Coffee, Timer, CheckCircle2, Hourglass } from 'lucide-react';
 import AdminModal from '../common/components/AdminModal';
+import AdminLeaveRequestsPanel from '../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../common/components/AdminPayrollPanel';
 import userService from '../../common/services/userService';
 
 const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Drive-Through Café', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
@@ -189,13 +191,18 @@ export default function ManageStaffPage() {
     try {
       const res = await userService.getStaffBreakStatus(staff._id);
       if (res && res.success) {
-        setBreakStaff(res.staff);
+        setBreakStaff({ ...res.staff, breakStatus: res.breakStatus, isOnBreak: res.isOnBreak });
       }
     } catch (e) {}
   };
 
+  // 'idle' | 'pending' (assigned, waiting for staff to tap Start) | 'active' (countdown running)
+  const breakPhase = (breakStaff?.isOnBreak || breakStaff?.breakStatus === 'active')
+    ? 'active'
+    : breakStaff?.breakStatus === 'pending' ? 'pending' : 'idle';
+
   useEffect(() => {
-    if (!isBreakOpen || !breakStaff?.isOnBreak || !breakStaff?.breakEndTime) return;
+    if (!isBreakOpen || (!breakStaff?.isOnBreak && breakStaff?.breakStatus !== 'active') || !breakStaff?.breakEndTime) return;
     const tick = () => {
       const diff = Math.max(0, Math.floor((new Date(breakStaff.breakEndTime).getTime() - Date.now()) / 1000));
       setBreakCountdown(diff);
@@ -205,16 +212,46 @@ export default function ManageStaffPage() {
     return () => clearInterval(interval);
   }, [isBreakOpen, breakStaff]);
 
-  const handleStartBreak = async () => {
+  // Live listener + fast poll MongoDB while the modal is open so it flips to the live countdown as soon as staff taps Start
+  useEffect(() => {
+    if (!isBreakOpen || !selectedStaff?._id) return;
+    const poll = async () => {
+      try {
+        const res = await userService.getStaffBreakStatus(selectedStaff._id);
+        if (res && res.success) {
+          setBreakStaff(prev => ({
+            ...(res.staff || prev || {}),
+            breakStatus: res.breakStatus,
+            isOnBreak: res.isOnBreak || res.breakStatus === 'active',
+            breakStartTime: res.breakStartTime,
+            breakEndTime: res.breakEndTime,
+            breakDuration: res.breakDuration,
+            breakReason: res.breakReason,
+            remainingSeconds: res.remainingSeconds
+          }));
+        }
+      } catch (e) {}
+    };
+
+    poll();
+    const poller = setInterval(poll, 1500);
+    const handleSync = () => poll();
+    window.addEventListener('tsl_staff_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [isBreakOpen, selectedStaff?._id]);
+
+  const runBreakAction = async (payload, fallbackError) => {
     if (!selectedStaff?._id) return;
     setModalLoading(true);
     setModalError('');
     try {
-      const res = await userService.updateStaffBreak(selectedStaff._id, {
-        action: 'start',
-        duration: breakDuration,
-        reason: breakReason
-      });
+      const res = await userService.updateStaffBreak(selectedStaff._id, payload);
       if (res.success && res.staff) {
         setBreakStaff(res.staff);
         fetchStaff(pagination?.page || 1);
@@ -224,32 +261,16 @@ export default function ManageStaffPage() {
         }
       }
     } catch (err) {
-      setModalError(err.response?.data?.message || 'Failed to start break');
+      setModalError(err.response?.data?.message || fallbackError);
     } finally {
       setModalLoading(false);
     }
   };
 
-  const handleEndBreak = async () => {
-    if (!selectedStaff?._id) return;
-    setModalLoading(true);
-    setModalError('');
-    try {
-      const res = await userService.updateStaffBreak(selectedStaff._id, { action: 'end' });
-      if (res.success && res.staff) {
-        setBreakStaff(res.staff);
-        fetchStaff(pagination?.page || 1);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
-          window.dispatchEvent(new Event('storage'));
-        }
-      }
-    } catch (err) {
-      setModalError(err.response?.data?.message || 'Failed to end break');
-    } finally {
-      setModalLoading(false);
-    }
-  };
+  const handleAssignBreak = () =>
+    runBreakAction({ action: 'assign', duration: breakDuration, reason: breakReason }, 'Failed to assign break');
+  const handleCancelBreak = () => runBreakAction({ action: 'cancel' }, 'Failed to cancel break request');
+  const handleEndBreak = () => runBreakAction({ action: 'end' }, 'Failed to end break');
 
 
   // Permission toggle helper
@@ -280,6 +301,10 @@ export default function ManageStaffPage() {
           <Plus className="w-4 h-4" /> Onboard New Staff Member
         </button>
       </div>
+
+      {/* Leave requests and payroll across every department */}
+      <AdminLeaveRequestsPanel />
+      <AdminPayrollPanel />
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -387,6 +412,10 @@ export default function ManageStaffPage() {
                         {staff.isOnBreak ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
                             <Coffee className="w-3 h-3" /> On Break ({staff.breakDuration || 30}m)
+                          </span>
+                        ) : staff.breakStatus === 'pending' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
+                            <Hourglass className="w-3 h-3" /> Break Assigned ({staff.breakDuration || 30}m)
                           </span>
                         ) : (
                           <button
@@ -648,7 +677,7 @@ export default function ManageStaffPage() {
             </div>
           )}
 
-          {breakStaff?.isOnBreak ? (
+          {breakPhase === 'active' ? (
             <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -690,7 +719,39 @@ export default function ManageStaffPage() {
                 className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>{modalLoading ? 'Updating...' : '⏹️ End Break Early & Resume Workstation Duty'}</span>
+                <span>{modalLoading ? 'Updating...' : '⏹️ End Break Early & Resume Duty'}</span>
+              </button>
+            </div>
+          ) : breakPhase === 'pending' ? (
+            <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+                    <Hourglass className="w-4 h-4 text-amber-600 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                      ⏳ Break Assigned — Waiting for Staff to Start
+                    </span>
+                    <h4 className="text-sm font-black text-amber-950 mt-0.5">{breakStaff.breakReason || 'Rest / Lunch Break'}</h4>
+                  </div>
+                </div>
+                <span className="text-[11px] font-extrabold text-amber-900 bg-amber-200/70 px-2.5 py-1 rounded-xl">
+                  {breakStaff.breakDuration || 30}m Break
+                </span>
+              </div>
+
+              <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                {breakStaff.breakDuration || 30}m Break assigned for {selectedStaff?.fullName || 'Staff'}. The countdown timer will start simultaneously once the staff member taps Start on their device.
+              </p>
+
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={handleCancelBreak}
+                className="w-full py-2.5 bg-white hover:bg-red-50 active:scale-98 text-red-700 border border-red-200 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <span>{modalLoading ? 'Updating...' : '❌ Cancel / Revoke Break Request'}</span>
               </button>
             </div>
           ) : (
@@ -698,8 +759,8 @@ export default function ManageStaffPage() {
               <div className="flex items-center gap-2 text-amber-900">
                 <Coffee className="w-5 h-5 text-amber-600 flex-shrink-0" />
                 <div>
-                  <h4 className="font-black text-xs">Assign Break Duration & Start</h4>
-                  <p className="text-[11px] text-amber-700">Staff dashboard will immediately receive a notification and show a 30-min reverse timer.</p>
+                  <h4 className="font-black text-xs">Assign Break Duration</h4>
+                  <p className="text-[11px] text-amber-700">The staff app will show a break request. The countdown starts once they tap Start.</p>
                 </div>
               </div>
 
@@ -751,11 +812,11 @@ export default function ManageStaffPage() {
               <button
                 type="button"
                 disabled={modalLoading}
-                onClick={handleStartBreak}
+                onClick={handleAssignBreak}
                 className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
               >
                 <Coffee className="w-4 h-4 text-white" />
-                <span>{modalLoading ? 'Starting...' : `☕ Start ${breakDuration}-Minute Break for ${selectedStaff?.fullName || 'Staff'}`}</span>
+                <span>{modalLoading ? 'Assigning...' : `☕ Assign ${breakDuration}-Min Break for ${selectedStaff?.fullName || 'Staff'}`}</span>
               </button>
             </div>
           )}

@@ -111,6 +111,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
+app.use('/api/leaves', require('./routes/leaveRoutes'));
+app.use('/api/salary', require('./routes/salaryRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
