@@ -31,6 +31,7 @@ import {
   HelpCircle,
   MessageSquare,
   ShoppingBag,
+  Wallet,
   X
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
@@ -72,6 +73,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     { label: 'Offline Sales', path: '/admin/offline-sales', icon: ShoppingBag },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
+    { label: 'Misc. Expenses', path: '/admin/expenses', icon: Wallet },
     { label: 'Feedback & Support', path: '/admin/feedback', icon: HelpCircle },
     { label: 'Customer CRM', path: '/admin/customers', icon: Users },
     { label: 'All Staff Roster', path: '/admin/staff', icon: UserCheck },

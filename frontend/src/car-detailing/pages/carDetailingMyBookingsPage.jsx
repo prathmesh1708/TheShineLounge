@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Compass } from 'lucide-react';
+import { ShieldAlert, Compass, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import CarDetailingBookingCard from '../components/carDetailingBookingCard';
 import { getBookings } from '../services/carDetailingApi';
+import { getMyWarranties, formatWarrantyDate } from '../services/warrantyApi';
 
 export default function CarDetailingMyBookingsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [warranties, setWarranties] = useState([]);
+
+  useEffect(() => {
+    getMyWarranties()
+      .then((list) => setWarranties(Array.isArray(list) ? list : []))
+      .catch(() => setWarranties([]));
+  }, []);
 
   const fetchLatestBookings = () => {
     getBookings()
@@ -51,7 +59,7 @@ export default function CarDetailingMyBookingsPage() {
   }, []);
 
   const filteredBookings = (bookings || []).filter(b => b && b.status === activeTab);
-  const tabs = ["Upcoming", "Completed", "Cancelled"];
+  const tabs = ["Upcoming", "Completed", "Cancelled", "Warranty"];
 
   return (
     <motion.div
@@ -87,8 +95,76 @@ export default function CarDetailingMyBookingsPage() {
         })}
       </div>
 
+      {/* Warranty tab — certificates issued against detailing work */}
+      {activeTab === 'Warranty' && (
+        <div className="pt-2 space-y-5">
+          {warranties.length === 0 ? (
+            <div className="bg-white border border-zinc-200 rounded-24 py-16 text-center shadow-sm">
+              <ShieldCheck className="w-10 h-10 text-zinc-300 mx-auto mb-3" />
+              <p className="text-sm font-extrabold text-zinc-850">No warranties yet</p>
+              <p className="text-xs text-zinc-500 font-semibold mt-1">
+                Warranties appear here once a detailing package covered by one is completed.
+              </p>
+            </div>
+          ) : (
+            warranties.map((w) => {
+              const isActive = w.status === 'Active';
+              const isSoon = w.status === 'Expiring Soon';
+              const tone = isActive
+                ? 'border-emerald-200 bg-emerald-50/50'
+                : isSoon
+                  ? 'border-amber-200 bg-amber-50/50'
+                  : 'border-zinc-200 bg-zinc-50';
+              const badge = isActive
+                ? 'bg-emerald-100 text-emerald-700'
+                : isSoon
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-zinc-200 text-zinc-600';
+              return (
+                <div key={w._id} className={`rounded-24 border-2 border-dashed p-5 shadow-sm ${tone}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span className="text-[11px] font-black uppercase tracking-wide text-zinc-500">Warranty Certificate</span>
+                      </div>
+                      <p className="text-lg font-extrabold text-zinc-850 mt-1">{w.warrantyNo}</p>
+                      <p className="text-xs font-semibold text-zinc-500">{w.packageName}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-[11px] font-black ${badge}`}>{w.status}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-zinc-200/70">
+                    {[
+                      ['Vehicle', w.vehicleNo || '—'],
+                      ['Cover', `${w.years} year${w.years === 1 ? '' : 's'}`],
+                      ['Started', formatWarrantyDate(w.startDate)],
+                      ['Valid Until', formatWarrantyDate(w.expiryDate)]
+                    ].map(([k, v]) => (
+                      <div key={k}>
+                        <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{k}</p>
+                        <p className="text-sm font-extrabold text-zinc-850">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {isActive && (
+                    <p className="text-[11px] font-bold text-emerald-700 mt-3">
+                      {w.daysRemaining} days of cover remaining
+                    </p>
+                  )}
+                  {w.notes && (
+                    <p className="text-[11px] font-semibold text-zinc-500 mt-2 pt-2 border-t border-zinc-200/70">{w.notes}</p>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* Bookings Grid list */}
-      <div className="pt-2">
+      <div className="pt-2" style={{ display: activeTab === 'Warranty' ? 'none' : undefined }}>
         {loading ? (
           <div className="space-y-6">
             <div className="h-44 bg-white border border-zinc-200 rounded-24 animate-pulse shadow-sm" />

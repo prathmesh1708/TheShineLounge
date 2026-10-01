@@ -30,6 +30,7 @@ import {
   OffersCouponsPage,
   AdminSettingsPage,
   ManageOfflineSalesPage,
+  ManageExpensesPage,
   AdminCalculationSettingsPage,
   ServiceModulePage
 } from './admin';
@@ -133,6 +134,7 @@ function MainAppContent() {
               <Route path="memberships" element={<ManageMembershipsPage />} />
               <Route path="bookings" element={<ManageBookingsPage />} />
               <Route path="offline-sales" element={<ManageOfflineSalesPage />} />
+              <Route path="expenses" element={<ManageExpensesPage />} />
               <Route path="staff" element={<ManageStaffPage />} />
               <Route path="customers" element={<CustomerDatabasePage />} />
               <Route path="inventory" element={<InventoryManagementPage />} />

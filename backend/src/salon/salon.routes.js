@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const salonController = require('./salon.controller');
 const salonMiddleware = require('./salon.middleware');
+const salonProducts = require('./salon.products.controller');
 const authMiddleware = require('../middleware/authMiddleware');
 const { staffOnly } = require('../middleware/roleMiddleware');
 
@@ -25,5 +26,23 @@ router.get('/slots', salonController.getTimeSlots);
 router.post('/slots', authMiddleware, staffOnly, salonController.createTimeSlot);
 router.put('/slots/:id', authMiddleware, staffOnly, salonController.updateTimeSlot);
 router.delete('/slots/:id', authMiddleware, staffOnly, salonController.deleteTimeSlot);
+
+// Salon Retail Products (counter stock) + POS bills.
+// Scoped to this module on purpose: product stock, barcodes and billing are a
+// salon concern, and nothing here is mounted for the other services.
+router.get('/products', authMiddleware, staffOnly, salonProducts.getProducts);
+router.get('/products/barcode/:code', authMiddleware, staffOnly, salonProducts.getProductByBarcode);
+router.post('/products', authMiddleware, staffOnly, salonProducts.createProduct);
+router.put('/products/:id', authMiddleware, staffOnly, salonProducts.updateProduct);
+router.patch('/products/:id/stock', authMiddleware, staffOnly, salonProducts.adjustStock);
+router.delete('/products/:id', authMiddleware, staffOnly, salonProducts.deleteProduct);
+
+router.get('/product-options', authMiddleware, staffOnly, salonProducts.getProductOptions);
+router.post('/product-options', authMiddleware, staffOnly, salonProducts.createProductOption);
+router.delete('/product-options/:id', authMiddleware, staffOnly, salonProducts.deleteProductOption);
+
+router.get('/product-sales', authMiddleware, staffOnly, salonProducts.getProductSales);
+router.post('/product-sales', authMiddleware, staffOnly, salonProducts.createProductSale);
+router.delete('/product-sales/:id', authMiddleware, staffOnly, salonProducts.deleteProductSale);
 
 module.exports = router;
