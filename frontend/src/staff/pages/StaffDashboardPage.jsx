@@ -1,14 +1,35 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, Bell, Sparkles, ShieldCheck, Coffee } from 'lucide-react';
+import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, Bell, Sparkles, ShieldCheck, Coffee, ClipboardList, BarChart3, IndianRupee, Lock, X } from 'lucide-react';
+import { STAFF_MODULES, STAFF_ROUTE_PERMISSIONS } from '../../common/utils/staffPermissions';
 import NotificationBell from '../../common/components/NotificationBell';
 import { isCarWashStaff } from '../common/utils/staffMembershipUtils';
 import StaffBreakTimerWidget from '../common/components/StaffBreakTimerWidget';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
-  const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose, breakStatus } = useStaff();
+  const location = useLocation();
+  const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose, breakStatus, canAccess, permissions, todayBreakLogs, showToast } = useStaff();
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+
+  // Sent here by the module guard after opening a URL the admin hasn't assigned.
+  useEffect(() => {
+    const denied = location.state?.deniedModules;
+    if (!denied) return;
+    const names = STAFF_MODULES.filter((m) => denied.includes(m.key)).map((m) => m.label).join(' / ');
+    showToast(`You don't have access to ${names || 'that module'}. Ask your admin to enable it.`, 'error');
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
+  // What the admin assigned in Manage Staff decides which tiles and figures show.
+  const canSeeJobs = canAccess(STAFF_ROUTE_PERMISSIONS.bookings);
+  const canSeeMoney = canAccess(['payments', 'orders']);
+  const canSeeCustomers = canAccess(STAFF_ROUTE_PERMISSIONS.customers);
+  const canBill = canAccess(STAFF_ROUTE_PERMISSIONS.invoicing);
+  const canReport = canAccess('reports');
+  const activeModules = STAFF_MODULES.filter((m) => permissions.includes(m.key));
 
   const isCarWash = isCarWashStaff(currentStaff);
   const staffKey = (currentStaff?.serviceKey || '').toLowerCase();
@@ -35,6 +56,41 @@ export default function StaffDashboardPage() {
   const assignedCount = filteredJobs.length;
   const completedCount = filteredJobs.filter(isJobCompleted).length;
   const pendingCount = assignedCount - completedCount;
+  const jobValue = filteredJobs.reduce((sum, job) => sum + (Number(job.total || job.amount) || 0), 0);
+
+  const finishedBreaks = (todayBreakLogs || []).filter((b) => b.status === 'completed');
+  const breakSeconds = finishedBreaks.reduce((sum, b) => sum + (b.actualSeconds || 0), 0);
+  const breakOvertime = finishedBreaks.reduce((sum, b) => sum + (b.overtimeSeconds || 0), 0);
+  const fmtMins = (sec) => (sec < 60 ? `${sec}s` : `${Math.round(sec / 60)} min`);
+
+  const openCamera = () => { setCameraPurpose('check-in'); setIsCameraOpen(true); };
+
+  // Quick-action tiles, one per assigned module plus the always-on shift tools.
+  const tiles = [
+    { key: 'checkin', label: isCheckedIn ? 'Update Selfie' : 'Selfie Check In', icon: Camera, color: 'bg-amber-500', onClick: openCamera },
+    { key: 'breaks', label: 'Attendance & Breaks', icon: Coffee, color: 'bg-orange-600', onClick: () => navigate('/staff/attendance') },
+    canSeeJobs && (isDriveThrough
+      ? { key: 'jobs', label: 'Drive Queue', icon: ClipboardList, color: 'bg-blue-900', onClick: () => navigate('/staff/bookings') }
+      : { key: 'jobs', label: canAccess('bookings') ? 'Jobs & Queue' : 'Live Orders', icon: ClipboardList, color: 'bg-blue-900', onClick: () => navigate('/staff/bookings') }),
+    canSeeCustomers && { key: 'customers', label: 'Customers', icon: UserPlus, color: 'bg-sky-700', onClick: () => navigate('/staff/customers') },
+    canBill && { key: 'billing', label: canAccess('payments') ? 'Billing & Invoice' : 'POS Invoice', icon: Receipt, color: 'bg-emerald-600', onClick: () => navigate('/staff/invoicing') },
+    // Membership passes are a Car Wash product; the page refuses other departments.
+    canAccess('memberships') && isCarWash && { key: 'passes', label: 'Scan / Verify Pass', icon: ShieldCheck, color: 'bg-purple-600', onClick: () => navigate('/staff/memberships') },
+    canReport && { key: 'reports', label: 'Shift Summary', icon: BarChart3, color: 'bg-gray-800', onClick: () => setIsSummaryOpen(true) }
+  ].filter(Boolean);
+
+  const kpis = [
+    canSeeJobs && { key: 'assigned', label: isDriveThrough ? 'Total Orders' : 'Assigned', value: assignedCount, icon: CalendarCheck, tone: 'amber' },
+    canSeeJobs && { key: 'done', label: 'Completed', value: completedCount, icon: CheckCircle2, tone: 'emerald' },
+    canSeeJobs && { key: 'pending', label: 'Pending', value: pendingCount, icon: Clock, tone: 'blue' },
+    canSeeMoney && canSeeJobs && { key: 'value', label: 'Queue Value', value: `₹${jobValue.toLocaleString('en-IN')}`, icon: IndianRupee, tone: 'purple' }
+  ].filter(Boolean);
+  const KPI_TONES = {
+    amber: ['bg-amber-50 border-amber-200', 'text-amber-600', 'text-amber-900', 'text-amber-700'],
+    emerald: ['bg-emerald-50 border-emerald-200', 'text-emerald-600', 'text-emerald-900', 'text-emerald-700'],
+    blue: ['bg-blue-50 border-blue-200', 'text-blue-800', 'text-blue-950', 'text-blue-800'],
+    purple: ['bg-purple-50 border-purple-200', 'text-purple-600', 'text-purple-900', 'text-purple-700']
+  };
 
   return (
     <div className="space-y-4">
@@ -77,76 +133,61 @@ export default function StaffDashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
-          <CalendarCheck className="w-5 h-5 mx-auto text-amber-600 mb-1" />
-          <span className="text-lg font-black text-amber-900">{assignedCount}</span>
-          <p className="text-[10px] font-bold text-amber-700">{isDriveThrough ? 'Total Orders' : 'Assigned'}</p>
-        </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
-          <CheckCircle2 className="w-5 h-5 mx-auto text-emerald-600 mb-1" />
-          <span className="text-lg font-black text-emerald-900">{completedCount}</span>
-          <p className="text-[10px] font-bold text-emerald-700">Completed</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
-          <Clock className="w-5 h-5 mx-auto text-blue-800 mb-1" />
-          <span className="text-lg font-black text-blue-950">{pendingCount}</span>
-          <p className="text-[10px] font-bold text-blue-800">Pending</p>
-        </div>
+      {/* Modules the admin has enabled for this staff member */}
+      <div className="bg-white border border-gray-200 rounded-2xl px-3 py-2.5 shadow-xs">
+        <p className="text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Your Active Modules</p>
+        {activeModules.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {activeModules.map((m) => (
+              <span key={m.key} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                {m.emoji} {m.label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+            <Lock className="w-3 h-3" /> Only check-in, breaks and schedule are enabled. Ask your admin for module access.
+          </p>
+        )}
       </div>
+
+      {/* KPI Cards Grid */}
+      {kpis.length > 0 && (
+        <div className={`grid ${kpis.length === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
+          {kpis.map(({ key, label, value, icon: Icon, tone }) => {
+            const [box, iconColor, valueColor, labelColor] = KPI_TONES[tone];
+            return (
+              <div key={key} className={`${box} border rounded-2xl p-3 text-center min-w-0`}>
+                <Icon className={`w-5 h-5 mx-auto ${iconColor} mb-1`} />
+                <span className={`text-lg font-black ${valueColor} block truncate`}>{value}</span>
+                <p className={`text-[10px] font-bold ${labelColor}`}>{label}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Quick Action Grid */}
       <div>
         <h3 className="text-xs font-black text-gray-900 mb-2 uppercase tracking-wider">Quick Ground Actions</h3>
-        <div className={`grid ${isCarWash ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
-          <button
-            onClick={() => { setCameraPurpose('check-in'); setIsCameraOpen(true); }}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center">
-              <Camera className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">Selfie Check In</span>
-          </button>
-
-          <button
-            onClick={() => navigate(isDriveThrough ? '/staff/bookings' : '/staff/customers')}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-blue-900 text-white flex items-center justify-center">
-              <UserPlus className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">{isDriveThrough ? 'Drive Queue' : 'New Cust'}</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/staff/invoicing')}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">Create Invoice</span>
-          </button>
-
-          {/* Memberships Quick Box - Isolated strictly to Car Wash staff */}
-          {isCarWash && (
+        <div className="grid grid-cols-4 gap-2">
+          {tiles.map(({ key, label, icon: Icon, color, onClick }) => (
             <button
-              onClick={() => navigate('/staff/memberships')}
+              key={key}
+              onClick={onClick}
               className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-              title="Car Wash Memberships & Passes"
             >
-              <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4" />
+              <div className={`w-8 h-8 rounded-xl ${color} text-white flex items-center justify-center`}>
+                <Icon className="w-4 h-4" />
               </div>
-              <span className="text-[10px] font-bold text-gray-800 leading-tight">Memberships</span>
+              <span className="text-[10px] font-bold text-gray-800 leading-tight">{label}</span>
             </button>
-          )}
+          ))}
         </div>
       </div>
 
       {/* Today's Priority Assigned Jobs */}
+      {canSeeJobs && (
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
@@ -259,6 +300,49 @@ export default function StaffDashboardPage() {
           )}
         </div>
       </div>
+      )}
+
+      {/* Daily shift summary (reports module) */}
+      {isSummaryOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50" onClick={() => setIsSummaryOpen(false)}>
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-amber-600" /> Today's Shift Summary
+              </h3>
+              <button type="button" onClick={() => setIsSummaryOpen(false)} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 bg-gray-50 rounded-xl">
+                <p className="text-[10px] font-bold text-gray-500">Check-in</p>
+                <p className="font-black text-gray-900">{isCheckedIn ? checkInTime : 'Not checked in'}</p>
+              </div>
+              {canSeeJobs && (
+                <div className="p-2.5 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] font-bold text-gray-500">Jobs done</p>
+                  <p className="font-black text-gray-900">{completedCount} of {assignedCount}</p>
+                </div>
+              )}
+              {canSeeJobs && canSeeMoney && (
+                <div className="p-2.5 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] font-bold text-gray-500">Queue value</p>
+                  <p className="font-black text-gray-900">₹{jobValue.toLocaleString('en-IN')}</p>
+                </div>
+              )}
+              <div className="p-2.5 bg-gray-50 rounded-xl">
+                <p className="text-[10px] font-bold text-gray-500">Breaks taken</p>
+                <p className="font-black text-gray-900">{finishedBreaks.length} · {fmtMins(breakSeconds)}</p>
+              </div>
+              <div className={`p-2.5 rounded-xl ${breakOvertime > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                <p className="text-[10px] font-bold text-gray-500">Break overtime</p>
+                <p className={`font-black ${breakOvertime > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{breakOvertime > 0 ? `+${fmtMins(breakOvertime)}` : 'None'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

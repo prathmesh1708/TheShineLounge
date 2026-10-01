@@ -3,6 +3,7 @@ import apiClient from '../../../common/utils/apiClient';
 import userService from '../../../common/services/userService';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
+import { normalizePermissions, permissionsAllow, samePermissions } from '../../../common/utils/staffPermissions';
 
 const StaffContext = createContext();
 
@@ -31,7 +32,7 @@ const formatStaffUser = (u) => {
       mobile: '+91 98210 55555',
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-      permissions: ['bookings', 'orders']
+      permissions: normalizePermissions(undefined)
     };
   }
 
@@ -76,7 +77,9 @@ const formatStaffUser = (u) => {
     mobile: u.mobile || '',
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-    permissions: u.permissions || ['bookings', 'orders']
+    // Exactly what the admin saved; only a record with no array at all gets
+    // the legacy hub default (see utils/staffPermissions).
+    permissions: normalizePermissions(u.permissions)
   };
 };
 
@@ -102,7 +105,11 @@ export function StaffProvider({ children }) {
   });
 
   // Sync staff context whenever localStorage tsl_user changes or authUser changes
-  const { user: authUser } = useAuth();
+  const { user: authUser, updateUser } = useAuth();
+  // The break poll below is set up once per staff member; read the latest auth
+  // user through a ref so a permission change isn't compared against a stale copy.
+  const authUserRef = useRef(authUser);
+  authUserRef.current = authUser;
 
   useEffect(() => {
     const syncStaffUser = () => {
@@ -183,6 +190,18 @@ export function StaffProvider({ children }) {
   });
 
   const prevBreakStatusRef = useRef('idle');
+  const [todayBreakLogs, setTodayBreakLogs] = useState([]);
+
+  // The break poll returns the staff record every few seconds, so module
+  // access the admin changes in Manage Staff reaches this app within moments
+  // without a re-login or a second poll.
+  const syncPermissionsFromServer = (staffDoc) => {
+    const current = authUserRef.current;
+    if (!staffDoc || !Array.isArray(staffDoc.permissions) || !current || current.role !== 'staff') return;
+    if (samePermissions(staffDoc.permissions, current.permissions)) return;
+    updateUser({ ...current, permissions: staffDoc.permissions });
+    showToast('Your module access was updated by the admin.', 'info');
+  };
   // Breaks (keyed by end time) whose "time is over" alert already played here.
   const overtimeAlertedRef = useRef(new Set());
   // Server clock minus device clock, from each poll's serverNow. A phone whose
@@ -351,6 +370,8 @@ export function StaffProvider({ children }) {
       const res = await userService.getStaffBreakStatus(targetId);
       if (res && res.success) {
         applyBreakSnapshot(res);
+        setTodayBreakLogs(Array.isArray(res.todayLogs) ? res.todayLogs : []);
+        syncPermissionsFromServer(res.staff);
       }
     } catch (err) {
       console.warn('Error fetching live break status from MongoDB:', err.message);
@@ -1500,6 +1521,9 @@ export function StaffProvider({ children }) {
         breakScheduledTime: breakStatus.breakScheduledTime,
         breakAlertModal,
         dismissBreakAlertModal,
+        todayBreakLogs,
+        permissions: currentStaff?.permissions || [],
+        canAccess: (required) => permissionsAllow(currentStaff?.permissions, required),
         notifications,
         isCameraOpen,
         setIsCameraOpen,

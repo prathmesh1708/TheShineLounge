@@ -407,3 +407,22 @@ test('staff cannot end, read or assign someone else\'s break', async () => {
   const own = await request('POST', '/api/staff/me/break', { token: tokenFor(bob), body: { action: 'end' } });
   assert.equal(own.status, 200);
 });
+
+// The staff app keeps module access live by reading permissions off this poll,
+// so an admin's change must show up here without a re-login.
+test('break status poll returns the staff member\'s current permissions', async () => {
+  const admin = await makeAdmin();
+  const staff = await makeStaff({ permissions: ['bookings'] });
+
+  const before = await request('GET', '/api/staff/me/break', { token: tokenFor(staff) });
+  assert.deepEqual(before.body.staff.permissions, ['bookings']);
+
+  const saved = await request('PUT', `/api/users/staff/${staff._id}`, {
+    token: tokenFor(admin),
+    body: { permissions: ['bookings', 'customers', 'payments'] }
+  });
+  assert.equal(saved.status, 200, saved.text);
+
+  const after = await request('GET', '/api/staff/me/break', { token: tokenFor(staff) });
+  assert.deepEqual(after.body.staff.permissions, ['bookings', 'customers', 'payments']);
+});

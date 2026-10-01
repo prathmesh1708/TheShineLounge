@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ThemeProvider } from './common/context/ThemeContext';
 import { AuthProvider } from './common/context/AuthContext';
 import { NotificationProvider } from './common/context/NotificationContext';
-import { AdminRoute, StaffRoute } from './common/components/ProtectedRoute';
+import { AdminRoute, StaffRoute, StaffPermissionRoute } from './common/components/ProtectedRoute';
 import { initializePushNotifications, setupForegroundNotificationHandler } from './common/services/pushNotificationService';
 
 // Common Components & Layout
@@ -155,10 +155,10 @@ function MainAppContent() {
               <Route index element={<StaffDashboardPage />} />
               <Route path="dashboard" element={<StaffDashboardPage />} />
               <Route path="attendance" element={<StaffAttendancePage />} />
-              <Route path="bookings" element={<StaffBookingsPage />} />
-              <Route path="customers" element={<StaffCustomersPage />} />
-              <Route path="memberships" element={<StaffMembershipsPage />} />
-              <Route path="invoicing" element={<StaffInvoicingPage />} />
+              <Route path="bookings" element={<StaffPermissionRoute><StaffBookingsPage /></StaffPermissionRoute>} />
+              <Route path="customers" element={<StaffPermissionRoute><StaffCustomersPage /></StaffPermissionRoute>} />
+              <Route path="memberships" element={<StaffPermissionRoute><StaffMembershipsPage /></StaffPermissionRoute>} />
+              <Route path="invoicing" element={<StaffPermissionRoute><StaffInvoicingPage /></StaffPermissionRoute>} />
               <Route path="schedule" element={<StaffSchedulePage />} />
               <Route path="notifications" element={<StaffNotificationsPage />} />
               <Route path="profile" element={<StaffProfilePage />} />
