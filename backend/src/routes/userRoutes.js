@@ -13,6 +13,8 @@ const {
   deleteStaff,
   updateStaffBreak,
   getStaffBreakStatus,
+  updateStaffBreakSchedule,
+  getStaffBreakLogs,
   getCustomers,
   getCustomerById,
   updateCustomerMembership,
@@ -69,6 +71,9 @@ router.patch('/staff/:id/status', authMiddleware, canManageStaff, toggleStaffSta
 router.patch('/staff/:id/reset-password', authMiddleware, canManageStaff, resetStaffPassword);
 router.post('/staff/:id/break', authMiddleware, staffOnly, updateStaffBreak);
 router.get('/staff/:id/break', authMiddleware, staffOnly, getStaffBreakStatus);
+router.put('/staff/:id/break-schedule', authMiddleware, canManageStaff, updateStaffBreakSchedule);
+// Staff may read their own logs; the controller enforces ownership.
+router.get('/staff/:id/break-logs', authMiddleware, staffOnly, getStaffBreakLogs);
 router.delete('/staff/:id', authMiddleware, canManageStaff, deleteStaff);
 
 // ─── Customer Management (Admin & Staff) ───────────────────────

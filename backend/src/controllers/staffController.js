@@ -77,6 +77,41 @@ const isSelf = (staff, user) => {
 // Ending your own break counts as 'staff' even for a manager.
 const endedByFor = (staff, user) => (isSelf(staff, user) ? 'staff' : 'admin');
 
+// Today's break totals for a page of staff, in one aggregate (no per-row
+// query). A break running past its end right now counts its live overtime.
+const todayBreakSummaries = async (staffList, now) => {
+  const result = new Map();
+  for (const stf of staffList) {
+    const live = liveBreakFields(stf, now);
+    result.set(String(stf._id), {
+      overtimeSeconds: live.overtimeSeconds,
+      completedCount: 0,
+      missedCount: 0
+    });
+  }
+  if (!staffList.length) return result;
+
+  const rows = await BreakLog.aggregate([
+    { $match: { staff: { $in: staffList.map((s) => s._id) }, date: dayKey(now) } },
+    {
+      $group: {
+        _id: '$staff',
+        overtimeSeconds: { $sum: { $cond: [{ $in: ['$status', ['completed', 'cancelled']] }, '$overtimeSeconds', 0] } },
+        completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        missedCount: { $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] } }
+      }
+    }
+  ]);
+  for (const row of rows) {
+    const entry = result.get(String(row._id));
+    if (!entry) continue;
+    entry.overtimeSeconds += row.overtimeSeconds;
+    entry.completedCount = row.completedCount;
+    entry.missedCount = row.missedCount;
+  }
+  return result;
+};
+
 // @desc    Get all staff members
 // @route   GET /api/staff
 // @access  Private (Staff/Admin)
@@ -96,7 +131,13 @@ const getStaffList = async (req, res) => {
 
     // Breaks are no longer closed when their time runs out: an overdue break
     // stays active so its overtime can be measured when the staff ends it.
-    const updatedStaff = staffList;
+    const now = new Date();
+    const summaries = await todayBreakSummaries(staffList, now);
+    const updatedStaff = staffList.map((stf) => {
+      const obj = forClient(req, stf);
+      obj.todayBreakSummary = summaries.get(String(stf._id));
+      return obj;
+    });
 
     res.status(200).json({
       success: true,
@@ -107,7 +148,7 @@ const getStaffList = async (req, res) => {
         limit: Number(limit),
         pages
       },
-      staff: updatedStaff.map((stf) => forClient(req, stf))
+      staff: updatedStaff
     });
   } catch (error) {
     res.status(500).json({
@@ -179,6 +220,11 @@ const createStaff = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Monthly salary must be a number in rupees' });
     }
 
+    const { value: breakSchedule, error: scheduleError } = normalizeBreakSchedule(req.body.breakSchedule);
+    if (scheduleError) {
+      return res.status(400).json({ success: false, message: scheduleError });
+    }
+
     const cleanEmail = email.toLowerCase().trim();
 
     const existingStaff = await Staff.findOne({ email: cleanEmail });
@@ -206,7 +252,8 @@ const createStaff = async (req, res) => {
       photo: photo || '',
       profileImage: photo || '',
       permissions: permissions || [],
-      branch: branch || 'Main Branch'
+      branch: branch || 'Main Branch',
+      breakSchedule
     });
 
     // Also sync/create in legacy User collection to keep backward compatibility
@@ -228,7 +275,9 @@ const createStaff = async (req, res) => {
           leaveBalance: leaveBalance !== undefined ? Number(leaveBalance) : 12,
           photo: photo || '',
           permissions: permissions || [],
-          branch: branch || 'Main Branch'
+          branch: branch || 'Main Branch',
+          // Only mirrored if the legacy schema ever grows the field.
+          ...(User.schema.path('breakSchedule') ? { breakSchedule } : {})
         });
       } else {
         existingUser.role = 'staff';
@@ -379,6 +428,16 @@ const updateStaff = async (req, res) => {
     const requestedSalary = readSalaryInput(req.body);
     if (requestedSalary === null) {
       return res.status(400).json({ success: false, message: 'Monthly salary must be a number in rupees' });
+    }
+
+    // Only touched when the form sent it, so older edit forms keep the schedule.
+    if (req.body.breakSchedule !== undefined) {
+      const { value, error: scheduleError } = normalizeBreakSchedule(req.body.breakSchedule);
+      if (scheduleError) {
+        return res.status(400).json({ success: false, message: scheduleError });
+      }
+      staff.breakSchedule = value;
+      if (legacyUser && User.schema.path('breakSchedule')) legacyUser.breakSchedule = value;
     }
 
     await staff.save();
@@ -710,6 +769,85 @@ const getStaffBreakStatus = async (req, res) => {
   }
 };
 
+// @desc    Replace a staff member's daily break schedule
+// @route   PUT /api/staff/:id/break-schedule
+// @access  Private (Admin / staff managers)
+const updateStaffBreakSchedule = async (req, res) => {
+  try {
+    const { value, error } = normalizeBreakSchedule(req.body.breakSchedule);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    const search = buildStaffSearch(req.params.id);
+    const staff = await Staff.findOne({ ...search, isDeleted: { $ne: true } });
+    if (!staff) return res.status(404).json({ success: false, message: 'Staff member not found' });
+
+    // A break already handed out stays as it is even if its slot was just
+    // disabled; the change applies from the next occurrence.
+    staff.breakSchedule = value;
+    await staff.save();
+
+    if (User.schema.path('breakSchedule')) {
+      await User.updateOne({ _id: staff._id }, { $set: { breakSchedule: value } }).catch(() => {});
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Break schedule updated for ${staff.fullName}`,
+      breakSchedule: staff.breakSchedule,
+      staff: forClient(req, staff)
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Server error updating break schedule' });
+  }
+};
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_LOG_RANGE_DAYS = 92;
+const shiftDayKey = (key, days) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+const daysBetweenKeys = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+// @desc    Break history for one staff member, with overtime totals
+// @route   GET /api/staff/:id/break-logs?from=YYYY-MM-DD&to=YYYY-MM-DD
+// @access  Private (Staff: own only; Admin/manager)
+const getStaffBreakLogs = async (req, res) => {
+  try {
+    const today = dayKey(new Date());
+    const to = req.query.to ? String(req.query.to) : today;
+    const from = req.query.from ? String(req.query.from) : shiftDayKey(to, -6);
+    if (!DAY_KEY.test(from) || !DAY_KEY.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
+      return res.status(400).json({ success: false, message: 'from and to must be YYYY-MM-DD' });
+    }
+    const span = daysBetweenKeys(from, to);
+    if (span < 0) return res.status(400).json({ success: false, message: '"from" must be on or before "to"' });
+    if (span + 1 > MAX_LOG_RANGE_DAYS) {
+      return res.status(400).json({ success: false, message: `Range is limited to ${MAX_LOG_RANGE_DAYS} days` });
+    }
+
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
+
+    const logs = await BreakLog.find({ staff: staff._id, date: { $gte: from, $lte: to } })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+
+    const summary = { totalOvertimeSeconds: 0, overtimeCount: 0, completedCount: 0, missedCount: 0, totalBreakSeconds: 0 };
+    for (const log of logs) {
+      summary.totalOvertimeSeconds += log.overtimeSeconds || 0;
+      summary.totalBreakSeconds += log.actualSeconds || 0;
+      if ((log.overtimeSeconds || 0) > 0) summary.overtimeCount += 1;
+      if (log.status === 'completed') summary.completedCount += 1;
+      if (log.status === 'missed') summary.missedCount += 1;
+    }
+
+    return res.status(200).json({ success: true, from, to, logs, summary });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Server error fetching break logs' });
+  }
+};
+
 module.exports = {
   getStaffList,
   getStaffById,
@@ -719,6 +857,8 @@ module.exports = {
   toggleStaffStatus,
   resetStaffPassword,
   updateStaffBreak,
-  getStaffBreakStatus
+  getStaffBreakStatus,
+  updateStaffBreakSchedule,
+  getStaffBreakLogs
 };
 

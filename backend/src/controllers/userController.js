@@ -44,6 +44,8 @@ const resetStaffPassword = staffController.resetStaffPassword;
 const deleteStaff = staffController.deleteStaff;
 const updateStaffBreak = staffController.updateStaffBreak;
 const getStaffBreakStatus = staffController.getStaffBreakStatus;
+const updateStaffBreakSchedule = staffController.updateStaffBreakSchedule;
+const getStaffBreakLogs = staffController.getStaffBreakLogs;
 
 // ─── CUSTOMER CRM & MEMBERSHIP MANAGEMENT ─────────────────────────────────────
 
@@ -1046,6 +1048,8 @@ module.exports = {
   deleteStaff,
   updateStaffBreak,
   getStaffBreakStatus,
+  updateStaffBreakSchedule,
+  getStaffBreakLogs,
   getCustomers,
   getCustomerById,
   updateCustomerMembership,
