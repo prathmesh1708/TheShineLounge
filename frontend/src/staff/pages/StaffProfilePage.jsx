@@ -34,12 +34,12 @@ export default function StaffProfilePage() {
 
         {/* Name & Role Info */}
         <div className="space-y-1">
-          <h2 className="font-extrabold text-base text-gray-900">{currentStaff?.name || 'Rohan Deshmukh'}</h2>
+          <h2 className="font-extrabold text-base text-gray-900">{currentStaff?.fullName || currentStaff?.name || 'Staff Member'}</h2>
           <span className="inline-block px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
-            {currentStaff?.role || 'CAR WASH LEAD'}
+            {currentStaff?.staffRole || currentStaff?.role || 'Staff Specialist'}
           </span>
           <p className="text-[11px] text-gray-500 font-semibold pt-0.5">
-            {currentStaff?.department || 'Car Wash'} • {currentStaff?.employeeId || 'STF-03'}
+            {[currentStaff?.department, currentStaff?.staffId || currentStaff?.employeeId].filter(Boolean).join(' • ') || '—'}
           </p>
         </div>
 
@@ -65,7 +65,7 @@ export default function StaffProfilePage() {
             </div>
             <div>
               <span className="text-[9px] text-gray-400 font-bold block uppercase">Phone Number</span>
-              <span className="font-extrabold text-gray-900">{currentStaff?.phone || '+91 98210 33333'}</span>
+              <span className="font-extrabold text-gray-900">{currentStaff?.mobile || currentStaff?.phone || 'Not provided'}</span>
             </div>
           </div>
 
@@ -75,7 +75,7 @@ export default function StaffProfilePage() {
             </div>
             <div>
               <span className="text-[9px] text-gray-400 font-bold block uppercase">Official Email</span>
-              <span className="font-extrabold text-gray-900">{currentStaff?.email || 'rohan@theshinelounge.com'}</span>
+              <span className="font-extrabold text-gray-900">{currentStaff?.email || '—'}</span>
             </div>
           </div>
         </div>

@@ -107,6 +107,14 @@ const sanitizeUser = (user) => {
     role: user.role,
     department: user.department,
     permissions: user.permissions,
+    // Staff record fields (undefined, and so omitted, for customers/admins).
+    // Without these the staff app guessed the role and department from the
+    // name and email. Salary is deliberately not here: staff read their own
+    // pay only through /api/salary/me.
+    staffId: user.staffId,
+    staffRole: user.staffRole,
+    serviceKey: user.serviceKey,
+    photo: user.photo,
     profileImage: user.profileImage,
     branch: user.branch,
     city: user.city,

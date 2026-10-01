@@ -66,15 +66,25 @@ const formatStaffUser = (u) => {
     }
   }
 
+  const fullName = u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member');
+  const staffRole = u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist';
+  // The Staff collection stores the number as `mobile`; older payloads used `phone`.
+  const mobile = u.mobile || u.phone || '';
+
   return {
     id: u._id || u.id || 'STF-LIVE',
-    employeeId: u.email || u.employeeId || 'STF-01',
-    name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
-    role: u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist',
+    // The STF-xxx code the admin sees in the department hub.
+    staffId: u.staffId || '',
+    employeeId: u.staffId || u.employeeId || u.email || '',
+    name: fullName,
+    fullName,
+    role: staffRole,
+    staffRole,
     department: dept,
     serviceKey: key,
     email: u.email || '',
-    mobile: u.mobile || '',
+    mobile,
+    phone: mobile,
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     // Exactly what the admin saved; only a record with no array at all gets
@@ -192,15 +202,25 @@ export function StaffProvider({ children }) {
   const prevBreakStatusRef = useRef('idle');
   const [todayBreakLogs, setTodayBreakLogs] = useState([]);
 
-  // The break poll returns the staff record every few seconds, so module
-  // access the admin changes in Manage Staff reaches this app within moments
-  // without a re-login or a second poll.
-  const syncPermissionsFromServer = (staffDoc) => {
+  // The break poll returns the staff record every few seconds, so profile
+  // details and module access the admin changes (in Manage Staff or a
+  // department hub) reach this app within moments, without a re-login.
+  const PROFILE_FIELDS = ['fullName', 'email', 'mobile', 'staffId', 'staffRole', 'department', 'serviceKey', 'photo', 'profileImage'];
+  const syncProfileFromServer = (staffDoc) => {
     const current = authUserRef.current;
-    if (!staffDoc || !Array.isArray(staffDoc.permissions) || !current || current.role !== 'staff') return;
-    if (samePermissions(staffDoc.permissions, current.permissions)) return;
-    updateUser({ ...current, permissions: staffDoc.permissions });
-    showToast('Your module access was updated by the admin.', 'info');
+    if (!staffDoc || !current || current.role !== 'staff') return;
+
+    const patch = {};
+    for (const field of PROFILE_FIELDS) {
+      if (staffDoc[field] !== undefined && staffDoc[field] !== current[field]) patch[field] = staffDoc[field];
+    }
+    const permissionsChanged = Array.isArray(staffDoc.permissions)
+      && !samePermissions(staffDoc.permissions, current.permissions);
+    if (permissionsChanged) patch.permissions = staffDoc.permissions;
+    if (Object.keys(patch).length === 0) return;
+
+    updateUser({ ...current, ...patch });
+    if (permissionsChanged) showToast('Your module access was updated by the admin.', 'info');
   };
   // Breaks (keyed by end time) whose "time is over" alert already played here.
   const overtimeAlertedRef = useRef(new Set());
@@ -371,7 +391,7 @@ export function StaffProvider({ children }) {
       if (res && res.success) {
         applyBreakSnapshot(res);
         setTodayBreakLogs(Array.isArray(res.todayLogs) ? res.todayLogs : []);
-        syncPermissionsFromServer(res.staff);
+        syncProfileFromServer(res.staff);
       }
     } catch (err) {
       console.warn('Error fetching live break status from MongoDB:', err.message);
