@@ -13,7 +13,8 @@
     "demo:seed": "node src/utils/seedIntegrationDemo.js",
     "demo:clean": "node src/utils/seedIntegrationDemo.js --clean",
     "backfill:vehicles": "node src/utils/backfillRegisteredVehicles.js",
-    "backfill:sales": "node src/utils/backfillSalesCollections.js"
+    "backfill:sales": "node src/utils/backfillSalesCollections.js",
+    "backfill:salary": "node src/utils/backfillMonthlySalary.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -27,7 +27,13 @@ import {
   X,
   Search,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Coffee,
+  Timer,
+  Hourglass,
+  Play,
+  Pause,
+  AlertCircle
 } from 'lucide-react';
 import {
   buildMembershipSchedule,
@@ -46,6 +52,8 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
+import AdminLeaveRequestsPanel from '../../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
@@ -56,6 +64,7 @@ import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceM
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
 import { cacheService } from '../../../common/utils/serviceCache';
+import { formatVehicleName } from '../../../common/services/vehicleService';
 
 export default function CarWashAdminHubPage() {
   const serviceKey = 'car-wash';
@@ -76,6 +85,7 @@ export default function CarWashAdminHubPage() {
     deleteBooking,
     addStaff,
     updateStaff,
+    updateStaffBreak,
     deleteStaff,
     toggleStaffStatus,
     addBanner,
@@ -236,7 +246,7 @@ export default function CarWashAdminHubPage() {
     if (!cleanPlate || deregisteredPlates.includes(cleanPlate)) return;
 
     const matchedCust = findCustomerProfile(plate, v.ownerEmail, v.ownerPhone);
-    const modelName = [v.brand, v.model].filter(Boolean).join(' ') || 'Vehicle';
+    const modelName = formatVehicleName(v.brand, v.model, 'Vehicle');
 
     registeredVehiclesMap[cleanPlate] = {
       _id: v._id,
@@ -721,7 +731,7 @@ export default function CarWashAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Car Wash Specialist',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings', 'orders']
@@ -736,13 +746,73 @@ export default function CarWashAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Car Wash Specialist',
-    salary: '₹35,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: []
   });
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
-  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'attendance'
+  const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'break' | 'attendance'
+  const [breakDuration, setBreakDuration] = useState(30);
+  const [breakReason, setBreakReason] = useState('Rest / Lunch Break');
+  const [breakLoading, setBreakLoading] = useState(false);
+  const [staffLiveBreakState, setStaffLiveBreakState] = useState(null);
+  const [adminBreakCountdown, setAdminBreakCountdown] = useState(0);
+
+  useEffect(() => {
+    if (!editStaffModal || (!staffLiveBreakState?.isOnBreak && staffLiveBreakState?.breakStatus !== 'active') || !staffLiveBreakState?.breakEndTime) {
+      return;
+    }
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((new Date(staffLiveBreakState.breakEndTime).getTime() - Date.now()) / 1000));
+      setAdminBreakCountdown(diff);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [editStaffModal, staffLiveBreakState]);
+
+  // 'idle' | 'pending' (assigned, waiting for staff to tap Start) | 'active' (countdown running)
+  const staffBreakPhase = (staffLiveBreakState?.isOnBreak || staffLiveBreakState?.breakStatus === 'active')
+    ? 'active'
+    : staffLiveBreakState?.breakStatus === 'pending' ? 'pending' : 'idle';
+
+  // Live listener + fast poll MongoDB while the staff modal is open so the panel flips to the live countdown as soon as staff taps Start
+  useEffect(() => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!editStaffModal || !sId || sId.toString().startsWith('STF-')) return;
+
+    const poll = async () => {
+      try {
+        const res = await userService.getStaffBreakStatus(sId);
+        if (res && res.success) {
+          setStaffLiveBreakState(prev => ({
+            ...(res.staff || prev || {}),
+            breakStatus: res.breakStatus,
+            isOnBreak: res.isOnBreak || res.breakStatus === 'active',
+            breakStartTime: res.breakStartTime,
+            breakEndTime: res.breakEndTime,
+            breakDuration: res.breakDuration,
+            breakReason: res.breakReason,
+            remainingSeconds: res.remainingSeconds
+          }));
+        }
+      } catch (e) {}
+    };
+
+    poll();
+    const poller = setInterval(poll, 1500);
+    const handleSync = () => poll();
+    window.addEventListener('tsl_staff_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [editStaffModal, selectedStaff?._id, selectedStaff?.id]);
+
 
   // Marketing Banner CRUD States
   const [addBannerModal, setAddBannerModal] = useState(false);
@@ -899,7 +969,7 @@ export default function CarWashAdminHubPage() {
       password: '',
       mobile: '',
       staffRole: 'Car Wash Specialist',
-      salary: '₹35,000 / month',
+      salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings', 'orders']
@@ -908,13 +978,16 @@ export default function CarWashAdminHubPage() {
 
   const handleOpenEditStaff = async (stf) => {
     setSelectedStaff(stf);
+    setStaffLiveBreakState(stf);
+    setBreakDuration(stf.breakDuration || 30);
+    setBreakReason(stf.breakReason || 'Rest / Lunch Break');
     setEditStaffForm({
       fullName: stf.fullName || stf.name || '',
       email: stf.email || '',
       password: '',
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Car Wash Specialist',
-      salary: stf.salary || '₹35,000 / month',
+      salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
@@ -926,6 +999,13 @@ export default function CarWashAdminHubPage() {
     const sId = stf._id || stf.id;
     if (sId && !sId.toString().startsWith('STF-')) {
       try {
+        const breakRes = await userService.getStaffBreakStatus(sId);
+        if (breakRes && breakRes.success) {
+          setStaffLiveBreakState({ ...breakRes.staff, breakStatus: breakRes.breakStatus, isOnBreak: breakRes.isOnBreak });
+        }
+      } catch (e) {}
+
+      try {
         const res = await apiClient.get(`/attendance/staff/${sId}`);
         if (res.data && res.data.attendance) {
           setStaffAttendanceLogs(res.data.attendance);
@@ -935,6 +1015,29 @@ export default function CarWashAdminHubPage() {
       }
     }
   };
+
+  const runBreakAction = async (action, ...args) => {
+    const sId = selectedStaff?._id || selectedStaff?.id;
+    if (!sId) return;
+    setBreakLoading(true);
+    try {
+      const res = await updateStaffBreak(sId, action, ...args);
+      if (res && res.staff) {
+        setSelectedStaff(res.staff);
+        setStaffLiveBreakState(res.staff);
+      }
+      fetchLiveStaff();
+    } catch (err) {
+      console.warn(`Error running break action "${action}":`, err);
+    } finally {
+      setBreakLoading(false);
+    }
+  };
+
+  const handleAssignBreak = () => runBreakAction('assign', breakDuration, breakReason);
+  const handleCancelBreak = () => runBreakAction('cancel');
+  const handleEndBreak = () => runBreakAction('end');
+
 
   const handleUpdateStaff = async (e) => {
     e.preventDefault();
@@ -1328,7 +1431,7 @@ export default function CarWashAdminHubPage() {
         benefits: Array.isArray(m.benefits) ? m.benefits.filter(b => b) : [String(m.benefits || '').trim()],
         badge: String(m.badge || '').trim(),
         duration: Number(m.duration) || 30,
-        visitLimit: Number(m.visitLimit) || 4,
+        visitLimit: Number(m.visitLimit) || ((m.name || '').toLowerCase().includes('year') ? 365 : 30),
         isPopular: !!m.isPopular,
         renewable: m.renewable !== false,
         upgradeAvailable: m.upgradeAvailable !== false,
@@ -1632,7 +1735,7 @@ export default function CarWashAdminHubPage() {
                     <div className="flex items-center gap-2 text-[11px] text-gray-500 font-semibold">
                       <span>⏱️ {m.duration || ((m.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days</span>
                       <span>•</span>
-                      <span>🚿 {Number(m.visitLimit) === 999 ? 'Unlimited Washes' : `${m.visitLimit !== undefined ? m.visitLimit : 4} Washes`}</span>
+                      <span>🚿 {Number(m.visitLimit) === 999 ? 'Unlimited Washes' : `${m.visitLimit !== undefined ? m.visitLimit : ((m.name || '').toLowerCase().includes('year') ? 365 : 30)} Washes`}</span>
                     </div>
                     <p className="text-xs text-gray-500 leading-relaxed">{Array.isArray(m.benefits) ? m.benefits.join(', ') : m.benefits}</p>
                   </div>
@@ -1664,6 +1767,9 @@ export default function CarWashAdminHubPage() {
       {/* DEPARTMENT STAFF TAB */}
       {activeTab === 'staff' && (
         <div className="space-y-6">
+          <AdminLeaveRequestsPanel serviceKey={serviceKey} />
+          <AdminPayrollPanel serviceKey={serviceKey} />
+
           <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
             <div>
               <h3 className="text-base font-black text-gray-900">Car Wash Department Staff ({displayedStaffList.length})</h3>
@@ -1700,9 +1806,19 @@ export default function CarWashAdminHubPage() {
                     <div className="space-y-1 overflow-hidden">
                       <div className="flex items-center gap-1.5">
                         <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                          {stf.isActive !== false ? 'Active' : 'Inactive'}
-                        </span>
+                        {stf.isOnBreak ? (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
+                            <Coffee className="w-2.5 h-2.5" /> On Break ({stf.breakDuration || 30}m)
+                          </span>
+                        ) : stf.breakStatus === 'pending' ? (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
+                            <Hourglass className="w-2.5 h-2.5" /> Break Assigned ({stf.breakDuration || 30}m)
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {stf.isActive !== false ? 'On Duty' : 'Inactive'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
@@ -1720,7 +1836,7 @@ export default function CarWashAdminHubPage() {
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '—'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || 'Not set'}</span>
                     </div>
                   </div>
 
@@ -2648,7 +2764,7 @@ export default function CarWashAdminHubPage() {
                     {selectedMembershipForSubscribers.badge || 'MEMBERSHIP PASS'}
                   </span>
                   <span className="text-[11px] font-bold text-amber-100">
-                    ⏱️ {selectedMembershipForSubscribers.duration || ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days • 🚿 {Number(selectedMembershipForSubscribers.visitLimit) === 999 ? 'Unlimited Washes' : `${selectedMembershipForSubscribers.visitLimit !== undefined ? selectedMembershipForSubscribers.visitLimit : 4} Washes`}
+                    ⏱️ {selectedMembershipForSubscribers.duration || ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Days • 🚿 {Number(selectedMembershipForSubscribers.visitLimit) === 999 ? 'Unlimited Washes' : `${selectedMembershipForSubscribers.visitLimit !== undefined ? selectedMembershipForSubscribers.visitLimit : ((selectedMembershipForSubscribers.name || '').toLowerCase().includes('yearly') ? 365 : 30)} Washes`}
                   </span>
                 </div>
                 <h4 className="text-lg font-black">{selectedMembershipForSubscribers.name}</h4>
@@ -2925,12 +3041,14 @@ export default function CarWashAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                step="1"
                 value={staffForm.salary}
                 onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
-                placeholder="₹35,000 / month"
+                placeholder="e.g. 35000"
                 className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -3021,11 +3139,11 @@ export default function CarWashAdminHubPage() {
       >
         <div className="space-y-4 text-xs p-1">
           {/* Modal Sub-Tabs */}
-          <div className="flex border-b border-gray-200 gap-4 pb-2 mb-2">
+          <div className="flex border-b border-gray-200 gap-3 pb-2 mb-2 overflow-x-auto">
             <button
               type="button"
               onClick={() => setActiveStaffModalTab('details')}
-              className={`pb-1.5 font-bold border-b-2 transition-all ${
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all ${
                 activeStaffModalTab === 'details' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -3033,14 +3151,176 @@ export default function CarWashAdminHubPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveStaffModalTab('break')}
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                activeStaffModalTab === 'break' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Coffee className="w-3.5 h-3.5 text-amber-500" />
+              <span>Break System & Timer</span>
+              {staffBreakPhase !== 'idle' && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveStaffModalTab('attendance')}
-              className={`pb-1.5 font-bold border-b-2 transition-all ${
+              className={`pb-1.5 font-bold border-b-2 whitespace-nowrap transition-all ${
                 activeStaffModalTab === 'attendance' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               Shift Attendance Logs ({staffAttendanceLogs.length})
             </button>
           </div>
+
+          {activeStaffModalTab === 'break' && (
+            <div className="space-y-4 py-1">
+              {staffBreakPhase === 'active' ? (
+                <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                        <Coffee className="w-4 h-4 text-amber-100 animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
+                          Staff Break In Progress
+                        </span>
+                        <h4 className="text-sm font-black mt-0.5">{staffLiveBreakState.breakReason || 'Rest / Lunch Break'}</h4>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] font-extrabold bg-white/20 px-2.5 py-1 rounded-xl">
+                      {staffLiveBreakState.breakDuration || 30}m Break
+                    </span>
+                  </div>
+
+                  {/* Reverse Countdown Display */}
+                  <div className="bg-black/25 backdrop-blur-md rounded-xl p-3 border border-white/15 text-center">
+                    <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1 mb-0.5">
+                      <Timer className="w-3 h-3 text-amber-300" />
+                      Time Remaining (Live Reverse Clock)
+                    </p>
+                    <div className="text-3xl font-black font-mono tracking-tight text-white py-0.5">
+                      {`${String(Math.floor(adminBreakCountdown / 60)).padStart(2, '0')}:${String(adminBreakCountdown % 60).padStart(2, '0')}`}
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-amber-100 font-semibold px-2 mt-1">
+                      <span>Started: {staffLiveBreakState.breakStartTime ? new Date(staffLiveBreakState.breakStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                      <span>Return By: {staffLiveBreakState.breakEndTime ? new Date(staffLiveBreakState.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleEndBreak}
+                    className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>{breakLoading ? 'Updating MongoDB...' : '⏹️ End Break Early & Resume Duty'}</span>
+                  </button>
+                </div>
+              ) : staffBreakPhase === 'pending' ? (
+                <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+                        <Hourglass className="w-4 h-4 text-amber-600 animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                          ⏳ Break Assigned — Waiting for Staff to Start
+                        </span>
+                        <h4 className="text-sm font-black text-amber-950 mt-0.5">{staffLiveBreakState.breakReason || 'Rest / Lunch Break'}</h4>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-extrabold text-amber-900 bg-amber-200/70 px-2.5 py-1 rounded-xl">
+                      {staffLiveBreakState.breakDuration || 30}m Break
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                    {staffLiveBreakState.breakDuration || 30}m Break assigned for {editStaffForm.fullName || 'Staff'}. The countdown timer will start simultaneously once the staff member taps Start on their device.
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleCancelBreak}
+                    className="w-full py-2.5 bg-white hover:bg-red-50 active:scale-98 text-red-700 border border-red-200 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <span>{breakLoading ? 'Updating MongoDB...' : '❌ Cancel / Revoke Break Request'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <Coffee className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-black text-xs">Assign Break Time</h4>
+                      <p className="text-[11px] text-amber-700">The staff app will show a break request. The countdown starts once they tap Start.</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1.5">Select Break Duration</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[15, 30, 45, 60].map((d) => (
+                        <button
+                          key={`dur-${d}`}
+                          type="button"
+                          onClick={() => setBreakDuration(d)}
+                          className={`py-2 rounded-xl font-bold text-xs border transition-all ${
+                            breakDuration === d
+                              ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          {d} Min {d === 30 && '(Default)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">Custom Duration (Minutes)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        value={breakDuration}
+                        onChange={(e) => setBreakDuration(Math.max(1, Number(e.target.value) || 30))}
+                        className="w-full p-2.5 border rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">Break Reason / Note</label>
+                      <input
+                        type="text"
+                        value={breakReason}
+                        onChange={(e) => setBreakReason(e.target.value)}
+                        placeholder="e.g. Lunch Break, Tea Break"
+                        className="w-full p-2.5 border rounded-xl font-semibold text-gray-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={breakLoading}
+                    onClick={handleAssignBreak}
+                    className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    <Coffee className="w-4 h-4 text-white" />
+                    <span>{breakLoading ? 'Saving to MongoDB...' : `☕ Assign ${breakDuration}-Min Break for ${editStaffForm.fullName || 'Staff'}`}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
 
           {activeStaffModalTab === 'details' && (
             <form onSubmit={handleUpdateStaff} className="space-y-3">
@@ -3118,9 +3398,11 @@ export default function CarWashAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
+                    step="1"
                     value={editStaffForm.salary}
                     onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
                     className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
@@ -3238,9 +3520,6 @@ export default function CarWashAdminHubPage() {
                         </div>
                         <p className="text-[10px] text-gray-500">
                           ⏱️ check-in: <strong className="text-gray-700">{log.checkInTime}</strong> | checkout: <strong className="text-gray-700">{log.checkOutTime}</strong>
-                        </p>
-                        <p className="text-[10px] text-gray-400 italic">
-                          📍 {log.location || 'Main Branch'}
                         </p>
                       </div>
                       {log.photoUrl && (

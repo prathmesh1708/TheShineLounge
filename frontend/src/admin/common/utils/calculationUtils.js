@@ -135,23 +135,42 @@ export const computeTransactionTax = (item, settings = defaultCalculationSetting
 };
 
 /**
- * Filters transactions based on time range
+ * Parses and returns a valid Date object from transaction fields
+ */
+export const parseItemDate = (item) => {
+  if (!item) return null;
+  const raw = item.date || item.createdAt || item.bookedAt || item.saleDate || item.bookingDate;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Checks if a transaction is cancelled or failed
+ */
+export const isCancelledTransaction = (item) => {
+  if (!item) return false;
+  const s = String(item.status || item.bookingStatus || '').toLowerCase();
+  const p = String(item.paymentStatus || '').toLowerCase();
+  return s === 'cancelled' || s === 'canceled' || p === 'failed';
+};
+
+/**
+ * Filters transactions based on time range (Excludes cancelled/failed orders)
  */
 export const filterTransactionsByRange = (items = [], timeRange = 'This Month', customStart = null, customEnd = null) => {
   const now = new Date();
 
   return items.filter(item => {
-    let itemDate = null;
-    if (item.createdAt) itemDate = new Date(item.createdAt);
-    else if (item.date) itemDate = new Date(item.date);
-    else if (item.bookingDate) itemDate = new Date(item.bookingDate);
-
-    if (!itemDate || isNaN(itemDate.getTime())) {
-      // If no valid date, include in general list
-      return true;
+    // Exclude cancelled or failed transactions from revenue
+    if (isCancelledTransaction(item)) {
+      return false;
     }
 
+    const itemDate = parseItemDate(item);
+
     if (timeRange === 'Today') {
+      if (!itemDate) return false;
       return (
         itemDate.getDate() === now.getDate() &&
         itemDate.getMonth() === now.getMonth() &&
@@ -160,11 +179,13 @@ export const filterTransactionsByRange = (items = [], timeRange = 'This Month', 
     }
 
     if (timeRange === 'This Week') {
+      if (!itemDate) return false;
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       return itemDate >= oneWeekAgo && itemDate <= now;
     }
 
     if (timeRange === 'This Month') {
+      if (!itemDate) return false;
       return (
         itemDate.getMonth() === now.getMonth() &&
         itemDate.getFullYear() === now.getFullYear()
@@ -172,54 +193,47 @@ export const filterTransactionsByRange = (items = [], timeRange = 'This Month', 
     }
 
     if (timeRange === 'FY 2025-26') {
-      const startFY = new Date(2025, 3, 1); // 1 Apr 2025
-      const endFY = new Date(2026, 2, 31, 23, 59, 59); // 31 Mar 2026
+      if (!itemDate) return false;
+      const startFY = new Date(2025, 3, 1, 0, 0, 0); // 1 Apr 2025
+      const endFY = new Date(2026, 2, 31, 23, 59, 59, 999); // 31 Mar 2026
       return itemDate >= startFY && itemDate <= endFY;
     }
 
     if (timeRange === 'Custom' && customStart && customEnd) {
+      if (!itemDate) return false;
       const start = new Date(customStart);
       const end = new Date(customEnd);
       end.setHours(23, 59, 59, 999);
       return itemDate >= start && itemDate <= end;
     }
 
+    // Default 'All Time'
     return true;
   });
 };
 
 /**
- * Computes complete financial summary, P&L, and CA audit metrics
+ * Computes complete financial summary, P&L, and CA audit metrics strictly from live transaction data
  */
 export const computeFinancialSummary = (allTransactions = [], settings = defaultCalculationSettings, timeRange = 'This Month') => {
   const safeSettings = { ...defaultCalculationSettings, ...(settings || {}) };
-  
-  // Baseline seed to ensure realistic and full lounge audit numbers if dataset is fresh
-  const baselineGrossMap = {
-    'Today': 185000,
-    'This Week': 460000,
-    'This Month': 1420000,
-    'FY 2025-26': 12000000,
-    'All Time': 14850000
-  };
-
   const filtered = filterTransactionsByRange(allTransactions, timeRange);
-  
-  // Dynamic sum from filtered transactions
-  let dynamicGross = 0;
-  let dynamicTaxable = 0;
-  let dynamicCgst = 0;
-  let dynamicSgst = 0;
-  let dynamicIgst = 0;
-  let dynamicTax = 0;
 
+  let totalGross = 0;
+  let totalTaxable = 0;
+  let totalCgst = 0;
+  let totalSgst = 0;
+  let totalIgst = 0;
+  let totalTax = 0;
+
+  const deptKeys = ['car-wash', 'car-detailing', 'cafe', 'drive-through-cafe', 'dog-wash', 'salon'];
   const deptAgg = {
-    'car-wash': { count: 0, gross: 0, taxable: 0, tax: 0 },
-    'car-detailing': { count: 0, gross: 0, taxable: 0, tax: 0 },
-    'cafe': { count: 0, gross: 0, taxable: 0, tax: 0 },
-    'drive-through-cafe': { count: 0, gross: 0, taxable: 0, tax: 0 },
-    'dog-wash': { count: 0, gross: 0, taxable: 0, tax: 0 },
-    'salon': { count: 0, gross: 0, taxable: 0, tax: 0 }
+    'car-wash': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 },
+    'car-detailing': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 },
+    'cafe': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 },
+    'drive-through-cafe': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 },
+    'dog-wash': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 },
+    'salon': { count: 0, gross: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 }
   };
 
   const paymentAgg = {
@@ -229,24 +243,31 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
     'Bank Transfer': { count: 0, gross: 0 }
   };
 
-  const enrichedTransactions = (filtered.length > 0 ? filtered : allTransactions).map((item, idx) => {
+  const enrichedTransactions = filtered.map((item, idx) => {
     const taxData = computeTransactionTax(item, safeSettings);
-    dynamicGross += taxData.gross;
-    dynamicTaxable += taxData.taxableBase;
-    dynamicCgst += taxData.cgst;
-    dynamicSgst += taxData.sgst;
-    dynamicIgst += taxData.igst;
-    dynamicTax += taxData.taxAmount;
+    totalGross += taxData.gross;
+    totalTaxable += taxData.taxableBase;
+    totalCgst += taxData.cgst;
+    totalSgst += taxData.sgst;
+    totalIgst += taxData.igst;
+    totalTax += taxData.taxAmount;
 
     if (deptAgg[taxData.serviceKey]) {
       deptAgg[taxData.serviceKey].count += 1;
       deptAgg[taxData.serviceKey].gross += taxData.gross;
       deptAgg[taxData.serviceKey].taxable += taxData.taxableBase;
+      deptAgg[taxData.serviceKey].cgst += taxData.cgst;
+      deptAgg[taxData.serviceKey].sgst += taxData.sgst;
+      deptAgg[taxData.serviceKey].igst += taxData.igst;
       deptAgg[taxData.serviceKey].tax += taxData.taxAmount;
     }
 
-    const payMode = (item.paymentMode || item.paymentMethod || 'UPI / QR').trim();
-    const matchedMode = Object.keys(paymentAgg).find(m => m.toLowerCase().includes(payMode.toLowerCase())) || 'UPI / QR';
+    const payMode = (item.paymentMode || item.paymentMethod || item.paymentType || 'Cash').trim();
+    const matchedMode = Object.keys(paymentAgg).find(m => m.toLowerCase().includes(payMode.toLowerCase())) || 
+      (payMode.toLowerCase().includes('upi') || payMode.toLowerCase().includes('online') || payMode.toLowerCase().includes('qr') ? 'UPI / QR' :
+       payMode.toLowerCase().includes('card') ? 'Credit/Debit Card' :
+       payMode.toLowerCase().includes('bank') ? 'Bank Transfer' : 'Cash');
+    
     paymentAgg[matchedMode].count += 1;
     paymentAgg[matchedMode].gross += taxData.gross;
 
@@ -265,92 +286,67 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
     };
   });
 
-  // Calculate final numbers. If dynamicGross is smaller than scale baseline, blend proportionally
-  // so the admin sees responsive real numbers combined with their lounge scale.
-  const baselineTarget = baselineGrossMap[timeRange] || 1420000;
-  const effectiveGross = dynamicGross > 0 
-    ? (dynamicGross < baselineTarget ? baselineTarget + (dynamicGross % 10000) : dynamicGross)
-    : baselineTarget;
-
-  // Recalculate blended taxable base and taxes based on effective gross
   const effectiveTaxRate = Number(safeSettings.defaultGstRate || 18);
-  const effectiveTaxable = safeSettings.gstPricingMode === 'exclusive'
-    ? effectiveGross
-    : effectiveGross / (1 + effectiveTaxRate / 100);
-
-  const effectiveTotalTax = safeSettings.gstPricingMode === 'exclusive'
-    ? (effectiveGross * effectiveTaxRate) / 100
-    : effectiveGross - effectiveTaxable;
-
-  const effectiveCgst = safeSettings.taxType === 'igst' ? 0 : effectiveTotalTax / 2;
-  const effectiveSgst = safeSettings.taxType === 'igst' ? 0 : effectiveTotalTax / 2;
-  const effectiveIgst = safeSettings.taxType === 'igst' ? effectiveTotalTax : 0;
 
   // Operating Deductions according to Admin Calculation Settings
   const overheadRate = Number(safeSettings.operatingOverheadRate || 18.5);
   const gatewayRate = Number(safeSettings.gatewaySurchargeRate || 1.8);
 
-  const operatingOverheads = (effectiveTaxable * overheadRate) / 100;
+  const operatingOverheads = (totalTaxable * overheadRate) / 100;
   const staffIncentives = 0;
-  const gatewayFees = (effectiveGross * gatewayRate) / 100;
+  const gatewayFees = (totalGross * gatewayRate) / 100;
   const depreciationReserve = 0;
   const totalDeductions = operatingOverheads + gatewayFees;
 
   // Net Operating Profit (EBITDA before direct corporate income tax)
-  const netProfit = Math.max(0, effectiveTaxable - totalDeductions);
-  const netProfitMargin = effectiveTaxable > 0 ? (netProfit / effectiveTaxable) * 100 : 0;
+  const netProfit = Math.max(0, totalTaxable - totalDeductions);
+  const netProfitMargin = totalTaxable > 0 ? (netProfit / totalTaxable) * 100 : 0;
 
-  const txCount = Math.max(1, enrichedTransactions.length > 0 ? enrichedTransactions.length : Math.round(effectiveGross / 1840));
-  const aov = effectiveGross / txCount;
+  const txCount = enrichedTransactions.length;
+  const aov = txCount > 0 ? totalGross / txCount : 0;
 
-  // Build department income schedule with SAC codes & shares
-  const serviceWeights = {
-    'car-wash': 0.35,
-    'car-detailing': 0.30,
-    'cafe': 0.15,
-    'drive-through-cafe': 0.09,
-    'dog-wash': 0.06,
-    'salon': 0.05
-  };
-
-  const departmentBreakdown = Object.keys(serviceWeights).map(key => {
-    const weight = serviceWeights[key];
-    const deptGross = deptAgg[key]?.gross > 0 ? deptAgg[key].gross : effectiveGross * weight;
+  // Build department schedule strictly from real transaction data
+  const departmentBreakdown = deptKeys.map(key => {
+    const deptData = deptAgg[key] || { gross: 0, taxable: 0, cgst: 0, sgst: 0, tax: 0, count: 0 };
     const rate = Number(safeSettings.categoryGstRates?.[key] ?? safeSettings.defaultGstRate ?? 18);
     const sacCode = safeSettings.categorySacCodes?.[key] || '998714';
-    const deptTaxable = safeSettings.gstPricingMode === 'exclusive' ? deptGross : deptGross / (1 + rate / 100);
-    const deptTax = safeSettings.gstPricingMode === 'exclusive' ? (deptGross * rate) / 100 : deptGross - deptTaxable;
 
     return {
       key,
       name: getServiceDisplayName(key),
       sacCode,
       rate,
-      gross: Math.round(deptGross),
-      taxable: Math.round(deptTaxable),
-      cgst: Math.round(deptTax / 2),
-      sgst: Math.round(deptTax / 2),
-      tax: Math.round(deptTax),
-      share: Math.round((deptGross / effectiveGross) * 1000) / 10
+      count: deptData.count,
+      gross: Math.round(deptData.gross),
+      taxable: Math.round(deptData.taxable),
+      cgst: Math.round(deptData.cgst),
+      sgst: Math.round(deptData.sgst),
+      tax: Math.round(deptData.tax),
+      share: totalGross > 0 ? Math.round((deptData.gross / totalGross) * 1000) / 10 : 0
     };
   });
 
-  // Build Payment Mode Breakdown
-  const paymentModeBreakdown = [
-    { mode: 'UPI / QR', share: 52, gross: Math.round(effectiveGross * 0.52) },
-    { mode: 'Credit/Debit Card', share: 28, gross: Math.round(effectiveGross * 0.28) },
-    { mode: 'Cash', share: 14, gross: Math.round(effectiveGross * 0.14) },
-    { mode: 'Bank Transfer', share: 6, gross: Math.round(effectiveGross * 0.06) }
-  ];
+  // Build Payment Mode Breakdown strictly from real transaction data
+  const paymentModeBreakdown = Object.keys(paymentAgg).map(mode => {
+    const count = paymentAgg[mode].count;
+    const gross = paymentAgg[mode].gross;
+    const share = totalGross > 0 ? Math.round((gross / totalGross) * 100) : 0;
+    return {
+      mode,
+      count,
+      gross: Math.round(gross),
+      share
+    };
+  });
 
   return {
     timeRange,
-    grossSales: Math.round(effectiveGross),
-    netSales: Math.round(effectiveTaxable),
-    cgst: Math.round(effectiveCgst * 100) / 100,
-    sgst: Math.round(effectiveSgst * 100) / 100,
-    igst: Math.round(effectiveIgst * 100) / 100,
-    totalGst: Math.round(effectiveTotalTax * 100) / 100,
+    grossSales: Math.round(totalGross),
+    netSales: Math.round(totalTaxable),
+    cgst: Math.round(totalCgst * 100) / 100,
+    sgst: Math.round(totalSgst * 100) / 100,
+    igst: Math.round(totalIgst * 100) / 100,
+    totalGst: Math.round(totalTax * 100) / 100,
     effectiveTaxRate,
     operatingOverheads: Math.round(operatingOverheads),
     staffIncentives: Math.round(staffIncentives),

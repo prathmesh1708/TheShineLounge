@@ -390,7 +390,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                     verticalAlign: 'middle'
                   }}
                 >
-                  VEHICLE NUMBER
+                  {Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? 'VEHICLE NUMBERS' : 'VEHICLE NUMBER'}
                 </td>
                 <td
                   style={{
@@ -402,7 +402,9 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                     verticalAlign: 'middle'
                   }}
                 >
-                  {sale.vehicleNo || '—'}
+                  {Array.isArray(sale.vehicles) && sale.vehicles.length > 0
+                    ? sale.vehicles.map(v => v.plateNumber).filter(Boolean).join(', ')
+                    : (sale.vehicleNo || '—')}
                 </td>
               </tr>
 
@@ -418,7 +420,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                     verticalAlign: 'middle'
                   }}
                 >
-                  VEHICLE MODEL
+                  {Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? 'VEHICLE MODELS' : 'VEHICLE MODEL'}
                 </td>
                 <td
                   style={{
@@ -429,7 +431,9 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                     verticalAlign: 'middle'
                   }}
                 >
-                  {sale.vehicleModel || sale.vehicleType || '—'}
+                  {Array.isArray(sale.vehicles) && sale.vehicles.length > 0
+                    ? sale.vehicles.map(v => v.model).filter(Boolean).join(', ') || '—'
+                    : (sale.vehicleModel || sale.vehicleType || '—')}
                 </td>
               </tr>
 

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const Customer = require('../models/Customer');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
 const DeregisteredVehicle = require('../models/DeregisteredVehicle');
@@ -11,6 +12,7 @@ const {
   sanitizeVehicles,
   sanitizeMembership
 } = require('../utils/sanitizeUser');
+const { formatVehicleName } = require('../utils/vehicleFormatter');
 
 
 // Helper to strip out auto-generated dummy customer emails
@@ -31,501 +33,17 @@ const getStaffFindQuery = (idParam) => {
   return { email: String(idParam || '').toLowerCase().trim() };
 };
 
-// ─── STAFF MANAGEMENT (Admin Only) ──────────────────────────
+const staffController = require('./staffController');
 
-// @desc    Create a new staff member or promote existing account
-// @route   POST /api/users/staff
-// @access  Admin
-const createStaff = async (req, res) => {
-  try {
-    const {
-      fullName,
-      email,
-      password,
-      mobile,
-      department,
-      serviceKey,
-      staffRole,
-      salary,
-      leaveBalance,
-      photo,
-      permissions,
-      branch
-    } = req.body;
-
-    if (!fullName || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide fullName, email, and password'
-      });
-    }
-
-    // Deduce proper department & serviceKey if not explicitly provided
-    let finalServiceKey = serviceKey || '';
-    let finalDept = department || '';
-    const roleLower = (staffRole || '').toLowerCase();
-
-    if (!finalServiceKey || !finalDept) {
-      if (roleLower.includes('cafe supervisor') || roleLower.includes('barista') || roleLower.includes('chef') || roleLower.includes('pastry')) {
-        finalServiceKey = finalServiceKey || 'cafe';
-        finalDept = finalDept || 'Café';
-      } else if (roleLower.includes('drive-thru') || roleLower.includes('drive-through')) {
-        finalServiceKey = finalServiceKey || 'drive-through-cafe';
-        finalDept = finalDept || 'Drive-Through Café';
-      } else if (roleLower.includes('detail') || roleLower.includes('paint correction')) {
-        finalServiceKey = finalServiceKey || 'car-detailing';
-        finalDept = finalDept || 'Car Detailing';
-      } else if (roleLower.includes('groomer') || roleLower.includes('pet')) {
-        finalServiceKey = finalServiceKey || 'dog-wash';
-        finalDept = finalDept || 'Dog Wash';
-      } else if (roleLower.includes('salon') || roleLower.includes('barber') || roleLower.includes('stylist')) {
-        finalServiceKey = finalServiceKey || 'salon';
-        finalDept = finalDept || "Men's Salon";
-      } else {
-        finalServiceKey = finalServiceKey || 'car-wash';
-        finalDept = finalDept || 'Car Wash';
-      }
-    }
-
-    // Check duplicate email — if user already exists, promote or reactivate to staff!
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      if (existingUser.role === 'admin' || existingUser.role === 'superadmin') {
-        return res.status(400).json({
-          success: false,
-          message: 'An admin account with this email already exists'
-        });
-      }
-
-      existingUser.fullName = fullName || existingUser.fullName;
-      if (password) {
-        existingUser.password = password; // Triggers pre-save hash
-      }
-      if (mobile) existingUser.mobile = mobile;
-      existingUser.role = 'staff';
-      existingUser.department = finalDept;
-      existingUser.serviceKey = finalServiceKey;
-      existingUser.staffRole = staffRole || existingUser.staffRole || 'Staff Specialist';
-      if (salary !== undefined) existingUser.salary = salary;
-      if (leaveBalance !== undefined) existingUser.leaveBalance = Number(leaveBalance);
-      if (photo) {
-        existingUser.photo = photo;
-        existingUser.profileImage = photo;
-      }
-      if (permissions) existingUser.permissions = permissions;
-      if (branch) existingUser.branch = branch;
-      existingUser.isActive = true;
-      existingUser.isDeleted = false;
-
-      await existingUser.save();
-
-      return res.status(200).json({
-        success: true,
-        message: 'Staff member account onboarded successfully',
-        staff: {
-          _id: existingUser._id,
-          fullName: existingUser.fullName,
-          email: existingUser.email,
-          mobile: existingUser.mobile,
-          role: existingUser.role,
-          department: existingUser.department,
-          serviceKey: existingUser.serviceKey,
-          staffRole: existingUser.staffRole,
-          salary: existingUser.salary,
-          leaveBalance: existingUser.leaveBalance,
-          photo: existingUser.photo,
-          permissions: existingUser.permissions,
-          isActive: existingUser.isActive,
-          branch: existingUser.branch,
-          createdAt: existingUser.createdAt
-        }
-      });
-    }
-
-    const staff = await User.create({
-      fullName,
-      email,
-      password,
-      mobile: mobile || '',
-      role: 'staff',
-      department: finalDept,
-      serviceKey: finalServiceKey,
-      staffRole: staffRole || 'Staff Specialist',
-      salary: salary || '',
-      leaveBalance: leaveBalance ? Number(leaveBalance) : 12,
-      photo: photo || '',
-      profileImage: photo || '',
-      permissions: permissions || ['bookings', 'orders'],
-      branch: branch || 'Main Branch',
-      createdBy: req.user?._id || null
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Staff member created successfully',
-      staff: {
-        _id: staff._id,
-        fullName: staff.fullName,
-        email: staff.email,
-        mobile: staff.mobile,
-        role: staff.role,
-        department: staff.department,
-        serviceKey: staff.serviceKey,
-        staffRole: staff.staffRole,
-        salary: staff.salary,
-        leaveBalance: staff.leaveBalance,
-        photo: staff.photo,
-        permissions: staff.permissions,
-        isActive: staff.isActive,
-        branch: staff.branch,
-        createdAt: staff.createdAt
-      }
-    });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'An account with this email already exists'
-      });
-    }
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error creating staff'
-    });
-  }
-};
-
-// @desc    Get all staff members
-// @route   GET /api/users/staff
-// @access  Admin
-const getStaffList = async (req, res) => {
-  try {
-    const {
-      page = 1,
-      limit = 50,
-      search = '',
-      department = '',
-      serviceKey = '',
-      status = ''
-    } = req.query;
-
-    const query = { role: 'staff', isDeleted: { $ne: true } };
-    const andConditions = [];
-
-    if (serviceKey) {
-      const matchConditions = [{ serviceKey: serviceKey }];
-      if (serviceKey === 'car-wash') {
-        matchConditions.push({ department: 'Car Wash' });
-        andConditions.push({
-          staffRole: { $not: /cafe|barista|pastry|chef|groomer|pet|salon|barber/i }
-        });
-      } else if (serviceKey === 'car-detailing') {
-        matchConditions.push({ department: { $in: ['Car Detailing', 'Detailing'] } });
-      } else if (serviceKey === 'cafe') {
-        matchConditions.push({ department: { $in: ['Cafe', 'Café'] } });
-      } else if (serviceKey === 'dog-wash') {
-        matchConditions.push({ department: 'Dog Wash' });
-      } else if (serviceKey === 'salon') {
-        matchConditions.push({ department: { $in: ['Salon', "Men's Salon"] } });
-      } else if (serviceKey === 'drive-through-cafe') {
-        matchConditions.push({ department: { $in: ['Drive-Through Cafe', 'Drive-Through Café'] } });
-      }
-
-      andConditions.push({
-        $or: matchConditions
-      });
-    } else if (department && department !== 'All') {
-      query.department = department;
-    }
-
-    // Search by name, email, or mobile
-    if (search) {
-      andConditions.push({
-        $or: [
-          { fullName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { mobile: { $regex: search, $options: 'i' } }
-        ]
-      });
-    }
-
-    // Filter by status
-    if (status === 'Active') {
-      query.isActive = true;
-    } else if (status === 'Inactive') {
-      query.isActive = false;
-    }
-
-    if (andConditions.length > 0) {
-      query.$and = andConditions;
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const [staffList, total] = await Promise.all([
-      User.find(query)
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit)),
-      User.countDocuments(query)
-    ]);
-
-    res.status(200).json({
-      success: true,
-      staff: staffList,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error fetching staff'
-    });
-  }
-};
-
-// @desc    Get staff member by ID or Email
-// @route   GET /api/users/staff/:id
-// @access  Admin
-const getStaffById = async (req, res) => {
-  try {
-    const findQuery = getStaffFindQuery(req.params.id);
-    const staff = await User.findOne({
-      ...findQuery,
-      role: 'staff',
-      isDeleted: { $ne: true }
-    });
-
-    if (!staff) {
-      return res.status(404).json({
-        success: false,
-        message: 'Staff member not found'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      staff
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error'
-    });
-  }
-};
-
-// @desc    Update staff member
-// @route   PUT /api/users/staff/:id
-// @access  Admin
-const updateStaff = async (req, res) => {
-  try {
-    const {
-      fullName,
-      email,
-      mobile,
-      department,
-      serviceKey,
-      staffRole,
-      salary,
-      leaveBalance,
-      photo,
-      permissions,
-      branch,
-      password
-    } = req.body;
-
-    const findQuery = getStaffFindQuery(req.params.id);
-    const staff = await User.findOne({
-      ...findQuery,
-      role: 'staff',
-      isDeleted: { $ne: true }
-    });
-
-    if (!staff) {
-      return res.status(404).json({
-        success: false,
-        message: 'Staff member not found'
-      });
-    }
-
-    // Check duplicate email if changed
-    if (email && email.toLowerCase() !== staff.email) {
-      const emailExists = await User.findOne({ email: email.toLowerCase() });
-      if (emailExists && emailExists._id.toString() !== staff._id.toString()) {
-        return res.status(400).json({
-          success: false,
-          message: 'This email is already in use by another account'
-        });
-      }
-      staff.email = email.toLowerCase();
-    }
-
-    if (fullName) staff.fullName = fullName;
-    if (mobile !== undefined) staff.mobile = mobile;
-    if (department !== undefined) staff.department = department;
-    if (serviceKey !== undefined) staff.serviceKey = serviceKey;
-    if (staffRole !== undefined) staff.staffRole = staffRole;
-    if (salary !== undefined) staff.salary = salary;
-    if (leaveBalance !== undefined) staff.leaveBalance = Number(leaveBalance);
-    if (photo !== undefined) {
-      staff.photo = photo;
-      staff.profileImage = photo;
-    }
-    if (permissions !== undefined) staff.permissions = permissions;
-    if (branch !== undefined) staff.branch = branch;
-    if (password) {
-      staff.password = password; // Triggers the schema pre-save hook for hashing!
-    }
-
-    await staff.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Staff member updated successfully',
-      staff: {
-        _id: staff._id,
-        fullName: staff.fullName,
-        email: staff.email,
-        mobile: staff.mobile,
-        role: staff.role,
-        department: staff.department,
-        serviceKey: staff.serviceKey,
-        staffRole: staff.staffRole,
-        salary: staff.salary,
-        leaveBalance: staff.leaveBalance,
-        photo: staff.photo,
-        permissions: staff.permissions,
-        isActive: staff.isActive,
-        branch: staff.branch,
-        createdAt: staff.createdAt
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error updating staff'
-    });
-  }
-};
-
-// @desc    Toggle staff active status
-// @route   PATCH /api/users/staff/:id/status
-// @access  Admin
-const toggleStaffStatus = async (req, res) => {
-  try {
-    const findQuery = getStaffFindQuery(req.params.id);
-    const staff = await User.findOne({
-      ...findQuery,
-      role: 'staff',
-      isDeleted: { $ne: true }
-    });
-
-    if (!staff) {
-      return res.status(404).json({
-        success: false,
-        message: 'Staff member not found'
-      });
-    }
-
-    staff.isActive = !staff.isActive;
-    await staff.save({ validateBeforeSave: false });
-
-    res.status(200).json({
-      success: true,
-      message: `Staff member ${staff.isActive ? 'activated' : 'deactivated'} successfully`,
-      staff
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error toggling status'
-    });
-  }
-};
-
-// @desc    Reset staff password
-// @route   PATCH /api/users/staff/:id/reset-password
-// @access  Admin
-const resetStaffPassword = async (req, res) => {
-  try {
-    const { newPassword } = req.body;
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters'
-      });
-    }
-
-    const findQuery = getStaffFindQuery(req.params.id);
-    const staff = await User.findOne({
-      ...findQuery,
-      role: 'staff',
-      isDeleted: { $ne: true }
-    }).select('+password');
-
-    if (!staff) {
-      return res.status(404).json({
-        success: false,
-        message: 'Staff member not found'
-      });
-    }
-
-    staff.password = newPassword;
-    await staff.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Staff password reset successfully'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error resetting password'
-    });
-  }
-};
-
-// @desc    Soft delete staff member
-// @route   DELETE /api/users/staff/:id
-// @access  Admin
-const deleteStaff = async (req, res) => {
-  try {
-    const findQuery = getStaffFindQuery(req.params.id);
-    const staff = await User.findOne({
-      ...findQuery,
-      role: 'staff',
-      isDeleted: { $ne: true }
-    });
-
-    if (!staff) {
-      return res.status(404).json({
-        success: false,
-        message: 'Staff member not found'
-      });
-    }
-
-    staff.isDeleted = true;
-    staff.isActive = false;
-    await staff.save({ validateBeforeSave: false });
-
-    res.status(200).json({
-      success: true,
-      message: 'Staff member deleted successfully'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Server error deleting staff'
-    });
-  }
-};
+const createStaff = staffController.createStaff;
+const getStaffList = staffController.getStaffList;
+const getStaffById = staffController.getStaffById;
+const updateStaff = staffController.updateStaff;
+const toggleStaffStatus = staffController.toggleStaffStatus;
+const resetStaffPassword = staffController.resetStaffPassword;
+const deleteStaff = staffController.deleteStaff;
+const updateStaffBreak = staffController.updateStaffBreak;
+const getStaffBreakStatus = staffController.getStaffBreakStatus;
 
 // ─── CUSTOMER CRM & MEMBERSHIP MANAGEMENT ─────────────────────────────────────
 
@@ -552,20 +70,21 @@ const getCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [rawCustomers, total, allBookings] = await Promise.all([
+    const [rawCustomers, total, allBookings, customerModelRecords] = await Promise.all([
       User.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
       User.countDocuments(query),
-      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
+      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean(),
+      Customer.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
     ]);
 
     const customers = rawCustomers.map(u => {
       const computedSegment = computeMembershipStatus(u);
       const ownedVehicles = sanitizeVehicles(u.vehicles);
       const vehicleList = ownedVehicles.map(v => {
-        const label = [v.brand, v.model].filter(Boolean).join(' ');
+        const label = formatVehicleName(v.brand, v.model, '');
         return `${v.plateNumber}${label ? ` (${label})` : ''}`;
       });
 
@@ -617,7 +136,42 @@ const getCustomers = async (req, res) => {
     const existingEmails = new Set(customers.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean));
     const existingPhones = new Set(customers.map(c => String(c.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
 
-    const extraCustomersMap = new Map();
+    // Also include any customer from Customer collection
+    for (const cm of (customerModelRecords || [])) {
+      const cmEmail = (cm.email || '').toLowerCase().trim();
+      const cmPhone = String(cm.mobile || cm.phone || '').replace(/\D/g, '').slice(-10);
+      const cmName = (cm.fullName || cm.name || '').trim();
+
+      const alreadyInUsers = (cmEmail && existingEmails.has(cmEmail)) ||
+                             (cmPhone && existingPhones.has(cmPhone));
+      if (alreadyInUsers) continue;
+
+      const groupKey = cmEmail || cmPhone || (cm.customerId || cmName.toLowerCase());
+      if (!groupKey) continue;
+
+      extraCustomersMap.set(groupKey, {
+        _id: cm._id,
+        id: cm.customerId || cmEmail || cmPhone || cm._id,
+        customerId: cm.customerId,
+        name: cmName || 'Customer',
+        fullName: cmName || 'Customer',
+        email: cm.email || '',
+        phone: cm.mobile || '',
+        mobile: cm.mobile || '',
+        city: cm.city || 'Gurgaon',
+        segment: cm.segment || 'Regular Customer',
+        totalSpent: Number(cm.totalSpent) || 0,
+        loyaltyPoints: cm.loyaltyPoints !== undefined ? cm.loyaltyPoints : Math.floor((Number(cm.totalSpent) || 0) / 100),
+        vehicles: [],
+        rawVehicles: [],
+        membership: null,
+        lastVisit: cm.updatedAt ? new Date(cm.updatedAt).toISOString().split('T')[0] : null,
+        createdAt: cm.createdAt || new Date()
+      });
+      if (cmEmail) existingEmails.add(cmEmail);
+      if (cmPhone) existingPhones.add(cmPhone);
+    }
+
     for (const b of allBookings) {
       const bEmail = sanitizeCustomerEmail(b.customerEmail);
       const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
@@ -852,7 +406,7 @@ const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrim
   // Keep the membership's plate binding in step, otherwise a customer adds a
   // car in the app and is then turned away at the gate for using it.
   if (user.membership && Array.isArray(user.membership.boundVehicles)) {
-    const label = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
+    const label = formatVehicleName(vehicle.brand, vehicle.model, '');
     const formatted = `${vehicle.plateNumber}${label ? ` (${label})` : ''}`;
     if (!user.membership.boundVehicles.includes(formatted)) {
       user.membership.boundVehicles.push(formatted);
@@ -1490,6 +1044,8 @@ module.exports = {
   toggleStaffStatus,
   resetStaffPassword,
   deleteStaff,
+  updateStaffBreak,
+  getStaffBreakStatus,
   getCustomers,
   getCustomerById,
   updateCustomerMembership,

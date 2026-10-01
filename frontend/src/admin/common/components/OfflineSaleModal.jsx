@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt } from 'lucide-react';
+import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt, Plus, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
+import { toIsoDate } from '../../../common/utils/dateFormat';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -70,6 +71,7 @@ const initialFormState = {
   phone: '',
   vehicleNo: '',
   vehicleModel: '',
+  vehicles: [{ plateNumber: '', model: '', brand: '' }],
   saleType: 'service',
   packageName: '',
   membershipName: '',
@@ -146,7 +148,7 @@ const extractMemberships = (service, serviceKey) => {
   return list;
 };
 
-export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: propsServices = [] }) {
+export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale = null, services: propsServices = [] }) {
   const adminContext = useAdmin();
   const contextServices = adminContext?.services || [];
   const allServices = propsServices.length > 0 ? propsServices : contextServices;
@@ -161,16 +163,97 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
 
-  // Reset submit lock and country code when modal opens
+  // Helper to parse phone number into code and 10 digits
+  const parsePhoneInfo = (rawPhone) => {
+    if (!rawPhone) return { code: '+91', isCustom: false, customCode: '', phone: '' };
+    const str = String(rawPhone).trim();
+    if (str.startsWith('+')) {
+      const parts = str.split(' ');
+      const codePart = parts[0];
+      const phonePart = parts.slice(1).join('').replace(/\D/g, '');
+      const matched = COUNTRY_CODES.find(c => c.code === codePart);
+      if (matched) {
+        return { code: codePart, isCustom: false, customCode: '', phone: phonePart.slice(-10) };
+      }
+      return { code: codePart, isCustom: true, customCode: codePart, phone: phonePart.slice(-10) };
+    }
+    const digits = str.replace(/\D/g, '');
+    return { code: '+91', isCustom: false, customCode: '', phone: digits.slice(-10) };
+  };
+
+  // Helper to parse date to YYYY-MM-DD for the date input, defaulting to today
+  // only when the record carries no usable date at all.
+  const parseDateInput = (val) => toIsoDate(val) || new Date().toISOString().split('T')[0];
+
+  // Reset or prefill form when modal opens or editSale changes
   useEffect(() => {
     if (isOpen) {
       isSubmittingRef.current = false;
       setSubmitting(false);
-      setCountryCode('+91');
-      setIsCustomCountryCode(false);
-      setCustomCountryCode('');
+
+      if (editSale) {
+        const phoneInfo = parsePhoneInfo(editSale.phone);
+        setCountryCode(phoneInfo.code);
+        setIsCustomCountryCode(phoneInfo.isCustom);
+        setCustomCountryCode(phoneInfo.customCode);
+
+        const sKey = editSale.serviceKey || 'car-wash';
+        const sMatch = SERVICE_OPTIONS.find(s => s.key === sKey);
+        const sName = editSale.serviceName || (sMatch ? sMatch.serviceName : 'Car Wash');
+        const sType = editSale.saleType || (editSale.membershipName ? 'membership' : 'service');
+        const pName = editSale.packageName || (sType === 'service' ? editSale.membershipName : '') || '';
+        const mName = editSale.membershipName || (sType === 'membership' ? editSale.packageName : '') || '';
+
+        const numericPrice = Number(editSale.price !== undefined ? editSale.price : editSale.total) || 0;
+        const subtotal = editSale.subtotal !== undefined ? Number(editSale.subtotal) : numericPrice;
+        const incGst = editSale.includeGst !== undefined ? Boolean(editSale.includeGst) : (Number(editSale.gstAmount || editSale.gst) > 0);
+
+        const rawVehicles = Array.isArray(editSale.vehicles) && editSale.vehicles.length > 0
+          ? editSale.vehicles.map(v => ({
+              plateNumber: v.plateNumber || v.plate || '',
+              model: v.model || v.vehicleModel || v.vehicleType || '',
+              brand: v.brand || ''
+            }))
+          : [{
+              plateNumber: editSale.vehicleNo || editSale.plate || '',
+              model: editSale.vehicleModel || editSale.vehicleType || editSale.model || '',
+              brand: ''
+            }];
+
+        setForm({
+          serviceKey: sKey,
+          serviceName: sName,
+          customerName: editSale.customerName || editSale.ownerName || '',
+          customerEmail: editSale.customerEmail || editSale.ownerEmail || '',
+          phone: phoneInfo.phone,
+          vehicleNo: editSale.vehicleNo || editSale.plate || (rawVehicles[0]?.plateNumber || ''),
+          vehicleModel: editSale.vehicleModel || editSale.vehicleType || editSale.model || (rawVehicles[0]?.model || ''),
+          vehicles: rawVehicles,
+          saleType: sType,
+          packageName: pName,
+          membershipName: mName,
+          validityDays: editSale.validityDays ? String(editSale.validityDays) : (editSale.membershipValidity ? String(parseInt(editSale.membershipValidity) || 30) : '30'),
+          customExpiryDate: editSale.customExpiryDate || '',
+          basePrice: subtotal ? String(subtotal) : String(numericPrice),
+          price: String(numericPrice),
+          includeGst: incGst,
+          paymentMode: editSale.paymentMode || 'Cash',
+          saleDate: parseDateInput(editSale.saleDate || editSale.date || editSale.createdAt),
+          notes: editSale.notes || ''
+        });
+
+        setIsCustomPackage(Boolean(pName && !DEFAULT_CAR_WASH_PACKAGES.some(p => p.name === pName)));
+        setIsCustomMembership(Boolean(mName && !DEFAULT_CAR_WASH_MEMBERSHIPS.some(m => m.name === mName)));
+      } else {
+        setForm({ ...initialFormState, vehicles: [{ plateNumber: '', model: '', brand: '' }], saleDate: new Date().toISOString().split('T')[0] });
+        setCountryCode('+91');
+        setIsCustomCountryCode(false);
+        setCustomCountryCode('');
+        setIsCustomPackage(false);
+        setIsCustomMembership(false);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editSale]);
 
   // Re-sync whenever a service is edited/added in admin hub
   useEffect(() => {
@@ -305,11 +388,61 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
     handleChange('phone', clean.slice(0, 10));
   };
 
+  const handleVehicleChange = (index, field, value) => {
+    setForm(prev => {
+      const updatedVehicles = [...(prev.vehicles || [])];
+      if (!updatedVehicles[index]) {
+        updatedVehicles[index] = { plateNumber: '', model: '', brand: '' };
+      }
+      updatedVehicles[index] = {
+        ...updatedVehicles[index],
+        [field]: value
+      };
+      return {
+        ...prev,
+        vehicles: updatedVehicles,
+        vehicleNo: updatedVehicles[0]?.plateNumber || '',
+        vehicleModel: updatedVehicles[0]?.model || ''
+      };
+    });
+  };
+
+  const handleAddVehicle = () => {
+    setForm(prev => ({
+      ...prev,
+      vehicles: [...(prev.vehicles || []), { plateNumber: '', model: '', brand: '' }]
+    }));
+  };
+
+  const handleRemoveVehicle = (indexToRemove) => {
+    setForm(prev => {
+      const filtered = (prev.vehicles || []).filter((_, i) => i !== indexToRemove);
+      const finalVehicles = filtered.length > 0 ? filtered : [{ plateNumber: '', model: '', brand: '' }];
+      return {
+        ...prev,
+        vehicles: finalVehicles,
+        vehicleNo: finalVehicles[0]?.plateNumber || '',
+        vehicleModel: finalVehicles[0]?.model || ''
+      };
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmittingRef.current || submitting) return;
     const trimmedPhone = (form.phone || '').trim();
-    if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || !form.vehicleNo || !form.price) return;
+
+    const rawVehicles = form.vehicles || [];
+    const cleanVehicles = rawVehicles
+      .map(v => ({
+        plateNumber: (v.plateNumber || '').toUpperCase().trim(),
+        model: (v.model || '').trim(),
+        brand: (v.brand || '').trim()
+      }))
+      .filter(v => Boolean(v.plateNumber));
+
+    const primaryPlate = cleanVehicles[0]?.plateNumber || (form.vehicleNo || '').toUpperCase().trim();
+    if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || !primaryPlate || !form.price) return;
 
     isSubmittingRef.current = true;
     setSubmitting(true);
@@ -325,6 +458,10 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
 
     const payload = {
       ...form,
+      ...(editSale ? { id: editSale.id || editSale.bookingId || editSale._id, saleId: editSale.id || editSale.bookingId || editSale._id } : {}),
+      vehicleNo: primaryPlate,
+      vehicleModel: cleanVehicles[0]?.model || form.vehicleModel || '',
+      vehicles: cleanVehicles.length > 0 ? cleanVehicles : [{ plateNumber: primaryPlate, model: form.vehicleModel || '', brand: '' }],
       phone: finalPhone,
       includeGst: form.includeGst,
       gstRate: form.includeGst ? activeGstRate : 0,
@@ -372,11 +509,15 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
               <ShoppingBag className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">Create Offline Sale</h3>
-              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">Record a walk-in / counter sale manually</p>
+              <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">
+                {editSale ? `Edit Offline Sale (${editSale.id || editSale.bookingId || 'POS'})` : 'Create Offline Sale'}
+              </h3>
+              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">
+                {editSale ? 'Update walk-in details directly in MongoDB' : 'Record a walk-in / counter sale manually'}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -515,32 +656,70 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
 
           {/* Vehicle Info */}
           <div>
-            <div className={sectionHeadingClass}>
-              <Car className="w-4 h-4 text-amber-500" />
-              Vehicle Details
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-3">
+              <div className="flex items-center gap-2 text-xs font-black text-gray-900">
+                <Car className="w-4 h-4 text-amber-500" />
+                Vehicle Details
+                {form.vehicles && form.vehicles.length > 1 && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                    {form.vehicles.length} Vehicles
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleAddVehicle}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-50 px-2.5 py-1 rounded-lg border border-dashed border-amber-300 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Another Vehicle
+              </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>Car Number / Plate *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.vehicleNo}
-                  onChange={e => handleChange('vehicleNo', e.target.value.toUpperCase())}
-                  placeholder="MH-01-AB-1234"
-                  className={`${inputClass} font-mono tracking-wider`}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Car Model</label>
-                <input
-                  type="text"
-                  value={form.vehicleModel}
-                  onChange={e => handleChange('vehicleModel', e.target.value)}
-                  placeholder="e.g. BMW 3 Series"
-                  className={inputClass}
-                />
-              </div>
+
+            <div className="space-y-3">
+              {(form.vehicles || [{ plateNumber: '', model: '', brand: '' }]).map((v, index) => (
+                <div key={index} className="p-3 bg-gray-50/80 border border-gray-200/90 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-700 flex items-center gap-1.5">
+                      <Car className="w-3 h-3 text-amber-500" />
+                      {index === 0 ? 'Primary Vehicle' : `Vehicle #${index + 1}`}
+                    </span>
+                    {(form.vehicles || []).length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVehicle(index)}
+                        className="text-gray-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Remove vehicle"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className={labelClass}>Car Number / Plate {index === 0 && '*'}</label>
+                      <input
+                        type="text"
+                        required={index === 0}
+                        value={v.plateNumber || ''}
+                        onChange={e => handleVehicleChange(index, 'plateNumber', e.target.value.toUpperCase())}
+                        placeholder="MH-01-AB-1234"
+                        className={`${inputClass} font-mono tracking-wider`}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Car Model</label>
+                      <input
+                        type="text"
+                        value={v.model || ''}
+                        onChange={e => handleVehicleChange(index, 'model', e.target.value)}
+                        placeholder="e.g. BMW 3 Series"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -816,18 +995,18 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, services: 
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               style={{ backgroundColor: '#e07b2a' }}
             >
               <CheckCircle2 className="w-4 h-4" />
-              {submitting ? 'Saving...' : 'Submit Offline Sale'}
+              {submitting ? 'Saving...' : (editSale ? 'Update Offline Sale' : 'Submit Offline Sale')}
             </button>
           </div>
         </form>

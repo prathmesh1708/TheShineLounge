@@ -34,11 +34,22 @@ const upsertRegisteredVehicle = async ({
     isDeleted: { $ne: true }
   });
 
+  let cleanBrand = (brand || '').trim();
+  let cleanModel = (model || '').trim();
+
+  // If brand and model are identical, avoid duplicate storage
+  if (cleanBrand && cleanModel && cleanBrand.toLowerCase() === cleanModel.toLowerCase()) {
+    cleanBrand = '';
+  }
+
   if (existing) {
     // Only fill gaps. A booking carrying a blank vehicleType must not wipe the
     // brand someone typed in on the customer record.
-    if (brand) existing.brand = brand;
-    if (model) existing.model = model;
+    if (cleanBrand) existing.brand = cleanBrand;
+    if (cleanModel) existing.model = cleanModel;
+    if (existing.brand && existing.model && existing.brand.toLowerCase() === existing.model.toLowerCase()) {
+      existing.brand = '';
+    }
     if (category) existing.category = category;
     if (year) existing.year = year;
     if (ownerName && existing.ownerName === 'Customer') existing.ownerName = ownerName;
@@ -53,8 +64,8 @@ const upsertRegisteredVehicle = async ({
     vehicleId: `VEH-${cleanPlate.replace(/[^A-Z0-9]/g, '')}`,
     plateNumber: cleanPlate,
     plateNormalized: plateNorm,
-    brand: brand || '',
-    model: model || '',
+    brand: cleanBrand,
+    model: cleanModel,
     category: category || 'Car',
     year: year || '',
     ownerName: ownerName || 'Customer',

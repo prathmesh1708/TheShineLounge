@@ -29,7 +29,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     location: {
       type: String,
-      default: '19.0760° N, 72.8777° E (Main Branch)'
+      default: ''
     }
   },
   {

@@ -9,13 +9,27 @@ import apiClient from '../utils/apiClient';
  * show sample vehicles.
  */
 
+export function formatVehicleName(brand = '', model = '', defaultName = 'Vehicle') {
+  const b = (brand || '').trim();
+  const m = (model || '').trim();
+
+  if (!b && !m) return defaultName;
+  if (!b) return m;
+  if (!m) return b;
+  if (b.toLowerCase() === m.toLowerCase()) return m;
+  if (m.toLowerCase().startsWith(b.toLowerCase())) return m;
+  if (b.toLowerCase().endsWith(m.toLowerCase())) return b;
+
+  return `${b} ${m}`;
+}
+
 // The API stores a plate plus brand/model/year; the booking screens work in
 // terms of a single display name and a local id. Both directions of that
 // mapping live here so the two shapes cannot drift apart per page.
 export function toUiVehicle(v) {
   const brand = v.brand || '';
   const model = v.model || '';
-  const name = [brand, model].filter(Boolean).join(' ').trim() || 'My Vehicle';
+  const name = formatVehicleName(brand, model, 'My Vehicle');
 
   return {
     id: v._id || v.plateNumber,

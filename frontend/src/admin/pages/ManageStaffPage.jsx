@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight, Coffee, Timer, CheckCircle2, Hourglass } from 'lucide-react';
 import AdminModal from '../common/components/AdminModal';
+import AdminLeaveRequestsPanel from '../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../common/components/AdminPayrollPanel';
 import userService from '../../common/services/userService';
 
 const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Drive-Through Café', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
@@ -32,6 +34,11 @@ export default function ManageStaffPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isResetPwOpen, setIsResetPwOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isBreakOpen, setIsBreakOpen] = useState(false);
+  const [breakDuration, setBreakDuration] = useState(30);
+  const [breakReason, setBreakReason] = useState('Rest / Lunch Break');
+  const [breakStaff, setBreakStaff] = useState(null);
+  const [breakCountdown, setBreakCountdown] = useState(0);
 
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({});
@@ -51,8 +58,8 @@ export default function ManageStaffPage() {
 
       const data = await userService.getStaffList(params);
       if (data.success) {
-        setStaffList(data.staff);
-        setPagination(data.pagination);
+        setStaffList(data.staff || []);
+        setPagination(data.pagination || { total: data.count || (data.staff ? data.staff.length : 0), page: 1, limit: 20, pages: 1 });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load staff');
@@ -109,7 +116,7 @@ export default function ManageStaffPage() {
     try {
       await userService.updateStaff(selectedStaff._id, editForm);
       setIsEditOpen(false);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setModalError(err.response?.data?.message || 'Failed to update staff');
     } finally {
@@ -121,7 +128,7 @@ export default function ManageStaffPage() {
   const handleToggleStatus = async (staff) => {
     try {
       await userService.toggleStaffStatus(staff._id);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to toggle status');
     }
@@ -165,13 +172,106 @@ export default function ManageStaffPage() {
     try {
       await userService.deleteStaff(selectedStaff._id);
       setIsDeleteOpen(false);
-      fetchStaff(pagination.page);
+      fetchStaff(pagination?.page || 1);
     } catch (err) {
       setModalError(err.response?.data?.message || 'Failed to delete staff');
     } finally {
       setModalLoading(false);
     }
   };
+
+  // Break Management Handlers
+  const openBreakModal = async (staff) => {
+    setSelectedStaff(staff);
+    setBreakStaff(staff);
+    setBreakDuration(staff.breakDuration || 30);
+    setBreakReason(staff.breakReason || 'Rest / Lunch Break');
+    setModalError('');
+    setIsBreakOpen(true);
+    try {
+      const res = await userService.getStaffBreakStatus(staff._id);
+      if (res && res.success) {
+        setBreakStaff({ ...res.staff, breakStatus: res.breakStatus, isOnBreak: res.isOnBreak });
+      }
+    } catch (e) {}
+  };
+
+  // 'idle' | 'pending' (assigned, waiting for staff to tap Start) | 'active' (countdown running)
+  const breakPhase = (breakStaff?.isOnBreak || breakStaff?.breakStatus === 'active')
+    ? 'active'
+    : breakStaff?.breakStatus === 'pending' ? 'pending' : 'idle';
+
+  useEffect(() => {
+    if (!isBreakOpen || (!breakStaff?.isOnBreak && breakStaff?.breakStatus !== 'active') || !breakStaff?.breakEndTime) return;
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((new Date(breakStaff.breakEndTime).getTime() - Date.now()) / 1000));
+      setBreakCountdown(diff);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [isBreakOpen, breakStaff]);
+
+  // Live listener + fast poll MongoDB while the modal is open so it flips to the live countdown as soon as staff taps Start
+  useEffect(() => {
+    if (!isBreakOpen || !selectedStaff?._id) return;
+    const poll = async () => {
+      try {
+        const res = await userService.getStaffBreakStatus(selectedStaff._id);
+        if (res && res.success) {
+          setBreakStaff(prev => ({
+            ...(res.staff || prev || {}),
+            breakStatus: res.breakStatus,
+            isOnBreak: res.isOnBreak || res.breakStatus === 'active',
+            breakStartTime: res.breakStartTime,
+            breakEndTime: res.breakEndTime,
+            breakDuration: res.breakDuration,
+            breakReason: res.breakReason,
+            remainingSeconds: res.remainingSeconds
+          }));
+        }
+      } catch (e) {}
+    };
+
+    poll();
+    const poller = setInterval(poll, 1500);
+    const handleSync = () => poll();
+    window.addEventListener('tsl_staff_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [isBreakOpen, selectedStaff?._id]);
+
+  const runBreakAction = async (payload, fallbackError) => {
+    if (!selectedStaff?._id) return;
+    setModalLoading(true);
+    setModalError('');
+    try {
+      const res = await userService.updateStaffBreak(selectedStaff._id, payload);
+      if (res.success && res.staff) {
+        setBreakStaff(res.staff);
+        fetchStaff(pagination?.page || 1);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+    } catch (err) {
+      setModalError(err.response?.data?.message || fallbackError);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleAssignBreak = () =>
+    runBreakAction({ action: 'assign', duration: breakDuration, reason: breakReason }, 'Failed to assign break');
+  const handleCancelBreak = () => runBreakAction({ action: 'cancel' }, 'Failed to cancel break request');
+  const handleEndBreak = () => runBreakAction({ action: 'end' }, 'Failed to end break');
+
 
   // Permission toggle helper
   const togglePermission = (perm, formObj, setFormObj) => {
@@ -201,6 +301,10 @@ export default function ManageStaffPage() {
           <Plus className="w-4 h-4" /> Onboard New Staff Member
         </button>
       </div>
+
+      {/* Leave requests and payroll across every department */}
+      <AdminLeaveRequestsPanel />
+      <AdminPayrollPanel />
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -304,18 +408,37 @@ export default function ManageStaffPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => handleToggleStatus(staff)}
-                        className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
-                          staff.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {staff.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
-                        <span>{staff.isActive ? 'Active' : 'Inactive'}</span>
-                      </button>
+                      <div className="flex flex-col gap-1 items-start">
+                        {staff.isOnBreak ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
+                            <Coffee className="w-3 h-3" /> On Break ({staff.breakDuration || 30}m)
+                          </span>
+                        ) : staff.breakStatus === 'pending' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
+                            <Hourglass className="w-3 h-3" /> Break Assigned ({staff.breakDuration || 30}m)
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleStatus(staff)}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
+                              staff.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'
+                            }`}
+                          >
+                            {staff.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                            <span>{staff.isActive ? 'Active' : 'Inactive'}</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
+                        <button 
+                          onClick={() => openBreakModal(staff)} 
+                          className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-700 bg-amber-50 transition-colors" 
+                          title="Manage Break & Live Timer"
+                        >
+                          <Coffee className="w-3.5 h-3.5" />
+                        </button>
                         <button onClick={() => openEdit(staff)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Edit">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -335,25 +458,25 @@ export default function ManageStaffPage() {
         </div>
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination?.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
             <p className="text-[10px] text-gray-500 font-semibold">
-              Showing {staffList.length} of {pagination.total} staff members
+              Showing {staffList.length} of {pagination?.total || staffList.length} staff members
             </p>
             <div className="flex items-center gap-1">
               <button
-                disabled={pagination.page <= 1}
-                onClick={() => fetchStaff(pagination.page - 1)}
+                disabled={(pagination?.page || 1) <= 1}
+                onClick={() => fetchStaff((pagination?.page || 1) - 1)}
                 className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-40"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <span className="text-xs font-bold text-gray-700 px-2">
-                {pagination.page} / {pagination.pages}
+                {pagination?.page || 1} / {pagination?.pages || 1}
               </span>
               <button
-                disabled={pagination.page >= pagination.pages}
-                onClick={() => fetchStaff(pagination.page + 1)}
+                disabled={(pagination?.page || 1) >= (pagination?.pages || 1)}
+                onClick={() => fetchStaff((pagination?.page || 1) + 1)}
                 className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-40"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -542,6 +665,161 @@ export default function ManageStaffPage() {
               {modalLoading ? 'Removing...' : 'Remove Staff'}
             </button>
           </div>
+        </div>
+      </AdminModal>
+
+      {/* ── BREAK MANAGEMENT MODAL ───────────────────────── */}
+      <AdminModal isOpen={isBreakOpen} onClose={() => setIsBreakOpen(false)} title="Staff Break Management & Live Timer" subtitle={`Managing: ${selectedStaff?.fullName || 'Staff Member'}`}>
+        <div className="space-y-4 text-xs">
+          {modalError && (
+            <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-600">
+              <AlertCircle className="w-3.5 h-3.5" /><span>{modalError}</span>
+            </div>
+          )}
+
+          {breakPhase === 'active' ? (
+            <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Coffee className="w-4 h-4 text-amber-100 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
+                      Staff Break In Progress
+                    </span>
+                    <h4 className="text-sm font-black mt-0.5">{breakStaff.breakReason || 'Rest / Lunch Break'}</h4>
+                  </div>
+                </div>
+
+                <span className="text-[11px] font-extrabold bg-white/20 px-2.5 py-1 rounded-xl">
+                  {breakStaff.breakDuration || 30}m Break
+                </span>
+              </div>
+
+              {/* Reverse Countdown Display */}
+              <div className="bg-black/25 backdrop-blur-md rounded-xl p-3 border border-white/15 text-center">
+                <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1 mb-0.5">
+                  <Timer className="w-3 h-3 text-amber-300" />
+                  Live Reverse Clock
+                </p>
+                <div className="text-3xl font-black font-mono tracking-tight text-white py-0.5">
+                  {`${String(Math.floor(breakCountdown / 60)).padStart(2, '0')}:${String(breakCountdown % 60).padStart(2, '0')}`}
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-amber-100 font-semibold px-2 mt-1">
+                  <span>Started: {breakStaff.breakStartTime ? new Date(breakStaff.breakStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                  <span>Return By: {breakStaff.breakEndTime ? new Date(breakStaff.breakEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={handleEndBreak}
+                className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>{modalLoading ? 'Updating...' : '⏹️ End Break Early & Resume Duty'}</span>
+              </button>
+            </div>
+          ) : breakPhase === 'pending' ? (
+            <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+                    <Hourglass className="w-4 h-4 text-amber-600 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                      ⏳ Break Assigned — Waiting for Staff to Start
+                    </span>
+                    <h4 className="text-sm font-black text-amber-950 mt-0.5">{breakStaff.breakReason || 'Rest / Lunch Break'}</h4>
+                  </div>
+                </div>
+                <span className="text-[11px] font-extrabold text-amber-900 bg-amber-200/70 px-2.5 py-1 rounded-xl">
+                  {breakStaff.breakDuration || 30}m Break
+                </span>
+              </div>
+
+              <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                {breakStaff.breakDuration || 30}m Break assigned for {selectedStaff?.fullName || 'Staff'}. The countdown timer will start simultaneously once the staff member taps Start on their device.
+              </p>
+
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={handleCancelBreak}
+                className="w-full py-2.5 bg-white hover:bg-red-50 active:scale-98 text-red-700 border border-red-200 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <span>{modalLoading ? 'Updating...' : '❌ Cancel / Revoke Break Request'}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5">
+              <div className="flex items-center gap-2 text-amber-900">
+                <Coffee className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <div>
+                  <h4 className="font-black text-xs">Assign Break Duration</h4>
+                  <p className="text-[11px] text-amber-700">The staff app will show a break request. The countdown starts once they tap Start.</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1.5">Preset Duration</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[15, 30, 45, 60].map((d) => (
+                    <button
+                      key={`m-dur-${d}`}
+                      type="button"
+                      onClick={() => setBreakDuration(d)}
+                      className={`py-2 rounded-xl font-bold text-xs border transition-all ${
+                        breakDuration === d
+                          ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {d} Min {d === 30 && '(Default)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Custom Duration (Minutes)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={breakDuration}
+                    onChange={(e) => setBreakDuration(Math.max(1, Number(e.target.value) || 30))}
+                    className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Break Reason / Note</label>
+                  <input
+                    type="text"
+                    value={breakReason}
+                    onChange={(e) => setBreakReason(e.target.value)}
+                    placeholder="e.g. Lunch Break"
+                    className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-semibold text-gray-800 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={handleAssignBreak}
+                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+              >
+                <Coffee className="w-4 h-4 text-white" />
+                <span>{modalLoading ? 'Assigning...' : `☕ Assign ${breakDuration}-Min Break for ${selectedStaff?.fullName || 'Staff'}`}</span>
+              </button>
+            </div>
+          )}
         </div>
       </AdminModal>
     </div>

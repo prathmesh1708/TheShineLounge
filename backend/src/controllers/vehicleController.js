@@ -28,11 +28,18 @@ const getRegisteredVehicles = async (req, res) => {
     );
 
     const linked = vehicles.filter((v) => activePlates.has(v.plateNormalized));
+    const cleanedVehicles = linked.map(v => {
+      const obj = v.toObject ? v.toObject() : { ...v };
+      if (obj.brand && obj.model && obj.brand.trim().toLowerCase() === obj.model.trim().toLowerCase()) {
+        obj.brand = '';
+      }
+      return obj;
+    });
 
     res.status(200).json({
       success: true,
-      count: linked.length,
-      vehicles: linked
+      count: cleanedVehicles.length,
+      vehicles: cleanedVehicles
     });
   } catch (error) {
     res.status(500).json({

@@ -1001,7 +1001,7 @@ export default function ProfilePage() {
   const renderMembershipCard = (record) => {
     const limit = washesLimitFor(record);
     const used = record.isQueued ? 0 : washesUsedFor(record);
-    const numericLimit = Number(limit) || 4;
+    const numericLimit = Number(limit) || ((record.packageName || '').toLowerCase().includes('year') ? 365 : 30);
     const cappedUsed = Math.min(used, numericLimit);
     const hasQueuedUpgrade = queuedMemberships.some(q => q.chainKey === record.chainKey);
 

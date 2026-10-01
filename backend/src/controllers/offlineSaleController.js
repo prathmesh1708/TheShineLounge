@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const OfflineSale = require('../models/OfflineSale');
 const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
+const { toDisplayDate } = require('../utils/dateFormat');
 
 // @desc    Get all offline POS sales
 // @route   GET /api/offline-sales
@@ -30,7 +32,7 @@ const getOfflineSales = async (req, res) => {
 // @access  Private (Staff/Admin)
 const createOfflineSale = async (req, res) => {
   try {
-    const { customerName, customerEmail, phone, vehicleNo, vehicleType, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes } = req.body;
+    const { customerName, customerEmail, phone, vehicleNo, vehicleType, vehicles, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes } = req.body;
 
     if (!customerName || !packageName || price === undefined) {
       return res.status(400).json({
@@ -38,6 +40,22 @@ const createOfflineSale = async (req, res) => {
         message: 'Customer name, package name, and price are required'
       });
     }
+
+    const parsedVehicles = Array.isArray(vehicles) && vehicles.length > 0
+      ? vehicles.map(v => ({
+          plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+          model: v.model || v.vehicleModel || '',
+          brand: v.brand || '',
+          category: v.category || 'Car'
+        })).filter(v => Boolean(v.plateNumber))
+      : [];
+
+    const primaryVehicleNo = (vehicleNo || parsedVehicles[0]?.plateNumber || '').toUpperCase().trim();
+    const primaryVehicleType = vehicleType || parsedVehicles[0]?.model || '';
+
+    const finalVehicles = parsedVehicles.length > 0
+      ? parsedVehicles
+      : (primaryVehicleNo ? [{ plateNumber: primaryVehicleNo, model: primaryVehicleType, brand: '', category: 'Car' }] : []);
 
     // Highest existing id + 1, never the row count -- see utils/sequentialId.
     const saleId = req.body.saleId || (await nextSequentialId(OfflineSale, { field: 'saleId', prefix: 'OFS-TSH-' }));
@@ -47,8 +65,9 @@ const createOfflineSale = async (req, res) => {
       customerName,
       customerEmail: (customerEmail || '').toLowerCase().trim(),
       phone: phone || '',
-      vehicleNo: vehicleNo || '',
-      vehicleType: vehicleType || '',
+      vehicleNo: primaryVehicleNo,
+      vehicleType: primaryVehicleType,
+      vehicles: finalVehicles,
       serviceKey: serviceKey || 'car-wash',
       serviceName: serviceName || 'Car Wash',
       packageName: packageName || 'Single Wash',
@@ -64,16 +83,20 @@ const createOfflineSale = async (req, res) => {
       notes: notes || ''
     });
 
-    // A plate sold to at the counter is a registered vehicle from now on.
-    await tryUpsertRegisteredVehicle({
-      plateNumber: vehicleNo,
-      brand: vehicleType,
-      model: vehicleType,
-      ownerName: customerName,
-      ownerEmail: customerEmail,
-      ownerPhone: phone,
-      addedVia: 'pos'
-    });
+    // All plates sold to at the counter are registered vehicles from now on.
+    for (const v of finalVehicles) {
+      if (v.plateNumber) {
+        await tryUpsertRegisteredVehicle({
+          plateNumber: v.plateNumber,
+          brand: v.brand || '',
+          model: v.model || primaryVehicleType || 'Vehicle',
+          ownerName: customerName,
+          ownerEmail: customerEmail,
+          ownerPhone: phone,
+          addedVia: 'pos'
+        });
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -88,13 +111,210 @@ const createOfflineSale = async (req, res) => {
   }
 };
 
+// @desc    Update offline POS sale
+// @route   PUT /api/offline-sales/:id
+// @access  Private (Staff/Admin)
+const updateOfflineSale = async (req, res) => {
+  try {
+    const saleIdParam = req.params.id;
+    const isObjId = mongoose.isValidObjectId(saleIdParam);
+
+    let sale = await OfflineSale.findOne({
+      $or: [
+        ...(isObjId ? [{ _id: saleIdParam }] : []),
+        { saleId: saleIdParam }
+      ]
+    });
+
+    const Booking = require('../models/Booking');
+    let booking = await Booking.findOne({
+      $or: [
+        ...(isObjId ? [{ _id: saleIdParam }] : []),
+        { bookingId: saleIdParam }
+      ]
+    });
+
+    if (!sale && !booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offline sale not found'
+      });
+    }
+
+    const {
+      customerName,
+      customerEmail,
+      phone,
+      vehicleNo,
+      vehicleType,
+      vehicleModel,
+      vehicles,
+      serviceKey,
+      serviceName,
+      packageName,
+      membershipName,
+      price,
+      subtotal,
+      gstAmount,
+      includeGst,
+      paymentMode,
+      saleDate,
+      saleType,
+      membershipValidity,
+      membershipExpiry,
+      staffId,
+      staffName,
+      notes
+    } = req.body;
+
+    const resolvedPackageName = packageName || membershipName;
+    const resolvedVehicleType = vehicleType || vehicleModel || '';
+
+    const parsedVehicles = Array.isArray(vehicles) && vehicles.length > 0
+      ? vehicles.map(v => ({
+          plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
+          model: v.model || v.vehicleModel || '',
+          brand: v.brand || '',
+          category: v.category || 'Car'
+        })).filter(v => Boolean(v.plateNumber))
+      : (vehicleNo ? [{
+          plateNumber: String(vehicleNo).toUpperCase().trim(),
+          model: resolvedVehicleType || '',
+          brand: '',
+          category: 'Car'
+        }] : undefined);
+
+    // If sale doesn't exist yet in offlinesales collection but was in bookings, instantiate it
+    if (!sale) {
+      sale = new OfflineSale({
+        saleId: saleIdParam,
+        customerName: customerName || booking.customerName || 'Customer',
+        serviceKey: serviceKey || booking.serviceKey || 'car-wash',
+        serviceName: serviceName || booking.serviceName || 'Car Wash',
+        packageName: resolvedPackageName || booking.packageName || 'Single Wash',
+        price: Number(price !== undefined ? price : booking.price) || 0
+      });
+    }
+
+    if (customerName !== undefined) sale.customerName = customerName;
+    if (customerEmail !== undefined) sale.customerEmail = (customerEmail || '').toLowerCase().trim();
+    if (phone !== undefined) sale.phone = phone;
+    if (vehicleNo !== undefined) sale.vehicleNo = (vehicleNo || '').toUpperCase().trim();
+    if (resolvedVehicleType) sale.vehicleType = resolvedVehicleType;
+    if (parsedVehicles !== undefined) sale.vehicles = parsedVehicles;
+    if (serviceKey !== undefined) sale.serviceKey = serviceKey;
+    if (serviceName !== undefined) sale.serviceName = serviceName;
+    if (resolvedPackageName !== undefined) sale.packageName = resolvedPackageName;
+    if (price !== undefined) sale.price = Number(price) || 0;
+    if (subtotal !== undefined) sale.subtotal = Number(subtotal) || Number(price) || 0;
+    if (gstAmount !== undefined) sale.gstAmount = Number(gstAmount) || 0;
+    if (includeGst !== undefined) sale.includeGst = Boolean(includeGst);
+    if (paymentMode !== undefined) sale.paymentMode = paymentMode;
+    if (saleDate !== undefined) sale.saleDate = saleDate;
+    if (saleType !== undefined) sale.saleType = saleType;
+    if (staffId !== undefined) sale.staffId = staffId;
+    if (staffName !== undefined) sale.staffName = staffName;
+    if (notes !== undefined) sale.notes = notes;
+
+    await sale.save();
+
+    // Also update Booking in MongoDB if present
+    if (booking) {
+      if (customerName !== undefined) booking.customerName = customerName;
+      if (customerEmail !== undefined) booking.customerEmail = (customerEmail || '').toLowerCase().trim();
+      if (phone !== undefined) booking.phone = phone;
+      if (vehicleNo !== undefined) booking.vehicleNo = (vehicleNo || '').toUpperCase().trim();
+      if (resolvedVehicleType) {
+        booking.vehicleType = resolvedVehicleType;
+        booking.vehicleModel = resolvedVehicleType;
+      }
+      if (parsedVehicles !== undefined) booking.vehicles = parsedVehicles;
+      if (serviceKey !== undefined) booking.serviceKey = serviceKey;
+      if (serviceName !== undefined) booking.serviceName = serviceName;
+      if (resolvedPackageName !== undefined) {
+        booking.packageName = resolvedPackageName;
+        if (saleType === 'membership' || membershipName) {
+          booking.membershipName = resolvedPackageName;
+        }
+      }
+      if (price !== undefined) {
+        booking.price = Number(price) || 0;
+        booking.total = Number(price) || 0;
+      }
+      if (subtotal !== undefined) booking.subtotal = Number(subtotal) || 0;
+      if (gstAmount !== undefined) {
+        booking.gstAmount = Number(gstAmount) || 0;
+        booking.gst = Number(gstAmount) || 0;
+      }
+      if (includeGst !== undefined) booking.includeGst = Boolean(includeGst);
+      if (paymentMode !== undefined) booking.paymentMode = paymentMode;
+      if (saleDate !== undefined) {
+        booking.saleDate = saleDate;
+        // `date` is the display string, never the raw ISO value -- see utils/dateFormat.
+        booking.date = toDisplayDate(req.body.date || saleDate);
+      }
+      if (saleType !== undefined) booking.saleType = saleType;
+      if (membershipValidity !== undefined) booking.membershipValidity = membershipValidity;
+      if (membershipExpiry !== undefined) booking.membershipExpiry = membershipExpiry;
+      if (notes !== undefined) booking.notes = notes;
+
+      await booking.save();
+    }
+
+    // Keep vehicle registry up to date
+    const vehiclesToRegister = (parsedVehicles && parsedVehicles.length > 0)
+      ? parsedVehicles
+      : (sale.vehicleNo ? [{ plateNumber: sale.vehicleNo, model: sale.vehicleType || 'Vehicle' }] : []);
+
+    for (const v of vehiclesToRegister) {
+      if (v.plateNumber) {
+        await tryUpsertRegisteredVehicle({
+          plateNumber: v.plateNumber,
+          brand: v.brand || '',
+          model: v.model || sale.vehicleType || 'Vehicle',
+          ownerName: sale.customerName,
+          ownerEmail: sale.customerEmail,
+          ownerPhone: sale.phone,
+          addedVia: 'pos'
+        });
+      }
+    }
+
+    // Mirror to MembershipPass if it's a membership
+    if (sale.saleType === 'membership' || (booking && booking.saleType === 'membership')) {
+      const { mirrorMembershipPass } = require('../services/salesRegistry');
+      await mirrorMembershipPass(booking || sale);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Offline sale updated successfully',
+      sale: {
+        ...sale.toObject(),
+        id: sale.saleId || String(sale._id),
+        bookingId: sale.saleId || (booking ? booking.bookingId : String(sale._id))
+      }
+    });
+  } catch (error) {
+    console.error('Update offline sale error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error updating offline sale'
+    });
+  }
+};
+
 // @desc    Delete offline sale
 // @route   DELETE /api/offline-sales/:id
 // @access  Private (Admin)
 const deleteOfflineSale = async (req, res) => {
   try {
+    const isObjId = mongoose.isValidObjectId(req.params.id);
     const sale = await OfflineSale.findOne({
-      $or: [{ _id: req.params.id }, { saleId: req.params.id }]
+      $or: [
+        ...(isObjId ? [{ _id: req.params.id }] : []),
+        { saleId: req.params.id }
+      ]
     });
 
     if (sale) {
@@ -117,5 +337,6 @@ const deleteOfflineSale = async (req, res) => {
 module.exports = {
   getOfflineSales,
   createOfflineSale,
+  updateOfflineSale,
   deleteOfflineSale
 };

@@ -25,7 +25,7 @@ const checkIn = async (req, res) => {
       date: dateStr,
       checkInTime: timeNow,
       photoUrl: photoUrl || '',
-      location: location || '19.0760° N, 72.8777° E (Main Branch)',
+      location: location || '',
       status: 'Present'
     });
 

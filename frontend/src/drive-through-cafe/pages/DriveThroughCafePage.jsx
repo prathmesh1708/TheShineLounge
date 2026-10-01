@@ -14,6 +14,7 @@ import apiClient from '../../common/utils/apiClient';
 import { useAuth } from '../../common/context/AuthContext';
 import CustomerAuthModal from '../../common/components/CustomerAuthModal';
 import { cacheService } from '../../common/utils/serviceCache';
+import { formatVehicleName } from '../../common/services/vehicleService';
 
 // Minutes ahead of now that each pickup option represents.
 const PICKUP_OPTIONS = [
@@ -53,7 +54,7 @@ export default function DriveThroughCafePage() {
     const seen = new Set();
     return (user?.vehicles || [])
       .map(v => ({
-        model: [v.brand, v.model].filter(Boolean).join(' ') || 'My Vehicle',
+        model: formatVehicleName(v.brand, v.model, 'My Vehicle'),
         plate: v.plateNumber || v.registrationNumber || v.plate || ''
       }))
       .filter(v => {

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 export default function DataTable({
   columns = [],
@@ -9,11 +9,15 @@ export default function DataTable({
   filterOptions = [],
   filterKey = '',
   actionButton,
-  pageSize = 7
+  pageSize = 7,
+  defaultSortKey = '',
+  defaultSortDirection = 'desc'
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortKey, setSortKey] = useState(defaultSortKey);
+  const [sortDirection, setSortDirection] = useState(defaultSortDirection);
 
   const safeData = Array.isArray(data) ? data : [];
 
@@ -43,10 +47,53 @@ export default function DataTable({
     );
   });
 
+  const getSortValue = (item, key) => {
+    if (!item || !key) return '';
+    const val = item[key];
+    if (val === undefined || val === null) return '';
+    // Date string check
+    if (typeof val === 'string' && (key.toLowerCase().includes('date') || key.toLowerCase().includes('time') || key.toLowerCase().includes('at') || !isNaN(Date.parse(val)))) {
+      const parsed = Date.parse(val);
+      if (!isNaN(parsed)) return parsed;
+    }
+    if (typeof val === 'number') return val;
+    if (!isNaN(Number(val)) && typeof val === 'string' && val.trim() !== '') {
+      return Number(val);
+    }
+    return String(val).toLowerCase();
+  };
+
+  const sortedData = useMemo(() => {
+    if (!sortKey) return filteredData;
+    return [...filteredData].sort((a, b) => {
+      const valA = getSortValue(a, sortKey);
+      const valB = getSortValue(b, sortKey);
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredData, sortKey, sortDirection]);
+
   // Pagination Logic
-  const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
-  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+  const paginatedData = sortedData.slice(startIndex, startIndex + pageSize);
+
+  const handleHeaderClick = (col) => {
+    const key = col.sortKey || col.accessorKey;
+    if (!key) return;
+    if (sortKey === key) {
+      if (sortDirection === 'desc') setSortDirection('asc');
+      else if (sortDirection === 'asc') {
+        setSortKey('');
+        setSortDirection('desc');
+      }
+    } else {
+      setSortKey(key);
+      setSortDirection('desc');
+    }
+    setCurrentPage(1);
+  };
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -97,11 +144,30 @@ export default function DataTable({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="bg-gray-100/70 border-b border-gray-200 text-gray-500 uppercase font-bold tracking-wider">
-              {columns.map((col, idx) => (
-                <th key={idx} className={`px-4 py-3.5 font-bold ${col.className || ''}`}>
-                  {col.header}
-                </th>
-              ))}
+              {columns.map((col, idx) => {
+                const isSortable = Boolean(col.sortKey || col.accessorKey);
+                const isCurrentSort = (col.sortKey || col.accessorKey) === sortKey;
+                return (
+                  <th
+                    key={idx}
+                    onClick={() => isSortable && handleHeaderClick(col)}
+                    className={`px-4 py-3.5 font-bold select-none ${col.className || ''} ${isSortable ? 'cursor-pointer hover:bg-gray-200/60 transition-colors' : ''}`}
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>{col.header}</span>
+                      {isSortable && (
+                        <span className="text-gray-400">
+                          {isCurrentSort ? (
+                            sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-amber-600" /> : <ArrowDown className="w-3 h-3 text-amber-600" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">

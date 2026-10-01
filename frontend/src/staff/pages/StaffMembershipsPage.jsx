@@ -427,30 +427,14 @@ export default function StaffMembershipsPage() {
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center bg-gray-200/80 p-0.5 rounded-xl text-[10px] font-bold">
-          <button
-            onClick={() => setActiveTab('passes')}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              activeTab === 'passes' ? 'bg-white text-gray-900 shadow-2xs font-black' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Passes ({allMemberships.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('issue')}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              activeTab === 'issue' ? 'bg-white text-gray-900 shadow-2xs font-black' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Issue New
-          </button>
-        </div>
+        {/* Pass Count Badge */}
+        <span className="px-2.5 py-1 bg-purple-50 text-purple-700 font-extrabold text-xs rounded-xl border border-purple-200">
+          {allMemberships.length} Passes
+        </span>
       </div>
 
-      {/* TAB 1: PASSES & MEMBERSHIPS DIRECTORY */}
-      {activeTab === 'passes' && (
-        <div className="space-y-2.5">
+      {/* PASSES & MEMBERSHIPS DIRECTORY */}
+      <div className="space-y-2.5">
           {/* Top Quick Counters */}
           <div className="grid grid-cols-4 gap-1.5">
             <div className="bg-white border border-gray-200 rounded-xl p-2 text-center shadow-2xs">
@@ -651,184 +635,7 @@ export default function StaffMembershipsPage() {
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB 2: ISSUE NEW MEMBERSHIP PASS / OFFLINE SALE */}
-      {activeTab === 'issue' && (
-        <div className="space-y-3">
-          <form onSubmit={handleIssuePass} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="border-b border-gray-100 pb-2">
-              <h4 className="text-xs font-black text-gray-900 uppercase">Sell Wash Pass / Membership</h4>
-              <p className="text-[10px] text-gray-500">Issue pass directly at counter or wash bay</p>
-            </div>
-
-            {/* Plan Cards */}
-            <div className="space-y-2">
-              {plans.map(p => (
-                <div
-                  key={p.id}
-                  onClick={() => handleSelectPlan(p.id)}
-                  className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                    selectedPlan === p.id
-                      ? 'border-purple-500 bg-purple-50/50 shadow-xs'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div>
-                    <h5 className="font-extrabold text-xs text-gray-900">{p.name}</h5>
-                    <p className="text-[10px] text-gray-500">{p.duration} • {p.washes}</p>
-                  </div>
-                  <span className="font-black text-xs text-purple-700 flex items-center">
-                    ₹{p.price.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Editable Amount Received Field */}
-            <div className="bg-purple-50/50 border border-purple-200 rounded-xl p-3 space-y-1.5">
-              <label className="text-xs font-bold text-gray-800 block">
-                Amount Received / Price (₹)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">₹</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                  placeholder="0"
-                  className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-purple-300 text-xs font-black text-purple-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
-                />
-              </div>
-              <p className="text-[9px] text-gray-500">
-                Staff can enter any price agreed with the customer. There is no minimum amount.
-              </p>
-            </div>
-
-            {/* Customer Selection with Car Numbers */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-gray-700">Select Customer</label>
-                {currentCust.carPlate && (
-                  <span className="text-[10px] font-extrabold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
-                    Car: {currentCust.carPlate}
-                  </span>
-                )}
-              </div>
-              <select
-                value={selectedCustomer}
-                onChange={e => handleCustomerSelect(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 shadow-2xs"
-              >
-                {resolvedCustomers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.carPlate || 'No plate'}) — {c.mobile || c.phone}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Vehicle Details */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">Vehicle Plate No</label>
-                <input
-                  type="text"
-                  value={customPlate}
-                  onChange={e => setCustomPlate(e.target.value.toUpperCase())}
-                  placeholder={currentCust.carPlate || 'e.g. MP09GG8790'}
-                  className="w-full px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold uppercase focus:outline-none focus:ring-1 focus:ring-purple-500"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">Car Model</label>
-                <input
-                  type="text"
-                  value={customModel}
-                  onChange={e => setCustomModel(e.target.value)}
-                  placeholder={currentCust.carModel || 'e.g. Hyundai i20'}
-                  className="w-full px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Payment Method</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['UPI', 'Card', 'Cash'].map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setPaymentMode(m)}
-                    className={`py-1.5 rounded-xl text-xs font-bold border capitalize transition-all ${
-                      paymentMode === m
-                        ? 'border-purple-500 bg-purple-50 text-purple-900 font-black shadow-2xs'
-                        : 'border-gray-200 bg-gray-50 text-gray-600'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md bg-purple-600 hover:bg-purple-700 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-            >
-              <span>Issue Pass & Collect ₹{(customPrice !== '' && !isNaN(Number(customPrice)) ? Math.max(0, Number(customPrice)) : Number(currentPlan.price)).toLocaleString('en-IN')}</span>
-            </button>
-          </form>
-
-          {/* Issued Pass Receipt Preview */}
-          {issuedPass && (
-            <div className="bg-gradient-to-br from-slate-900 to-purple-950 text-white rounded-3xl p-4 shadow-xl border border-purple-500/40 relative space-y-3">
-              <div className="flex items-center justify-between border-b border-purple-800/60 pb-2">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span className="font-black text-xs tracking-wider uppercase text-amber-400">DIGITAL PASS ACTIVATED</span>
-                </div>
-                <span className="text-[10px] font-mono font-bold text-purple-200">{issuedPass.passId}</span>
-              </div>
-
-              <div>
-                <h4 className="font-black text-sm text-white">{issuedPass.customerName}</h4>
-                <p className="text-xs text-amber-300 font-bold">{issuedPass.packageName}</p>
-              </div>
-
-              <div className="bg-black/40 rounded-xl p-2.5 border border-purple-800/50 grid grid-cols-2 gap-2 text-xs font-mono">
-                <div>
-                  <span className="text-[9px] text-gray-400 block uppercase">Vehicle Reg</span>
-                  <span className="font-black text-white">{issuedPass.vehicleNo}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-gray-400 block uppercase">Valid Until</span>
-                  <span className="font-black text-emerald-400">{issuedPass.validUntil}</span>
-                </div>
-                <div>
-                  <span className="text-[9px] text-gray-400 block uppercase">Amount Received</span>
-                  <span className="font-black text-amber-300">₹{Number(issuedPass.amount).toLocaleString('en-IN')}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-gray-400 block uppercase">Payment Mode</span>
-                  <span className="font-bold text-purple-200">{issuedPass.paymentMode}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => window.print()}
-                className="w-full py-2 rounded-xl bg-purple-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print Receipt</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      </div>
 
       {/* ------------------------------------------------------------- */}
       {/* INTERACTIVE MEMBERSHIP DETAILS MODAL */}

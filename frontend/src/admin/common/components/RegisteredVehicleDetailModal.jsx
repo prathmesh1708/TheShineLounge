@@ -162,7 +162,7 @@ export default function RegisteredVehicleDetailModal({
                       {v.washesUsed !== undefined ? (
                         (v.maxWashes === 999 || v.maxWashes === 'Unlimited')
                           ? `${v.washesUsed} / ∞ Washes (Unlimited)`
-                          : `${v.washesUsed} / ${v.maxWashes || 4} Washes`
+                          : `${v.washesUsed} / ${v.maxWashes || 30} Washes`
                       ) : `${v.totalWashes || 1} Washes`}
                     </span>
                   </div>

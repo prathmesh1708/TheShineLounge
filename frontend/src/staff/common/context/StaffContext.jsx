@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import apiClient from '../../../common/utils/apiClient';
+import userService from '../../../common/services/userService';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
 
@@ -28,7 +29,6 @@ const formatStaffUser = (u) => {
       serviceKey: 'car-detailing',
       email: 'suryansh@theshinelounge.com',
       mobile: '+91 98210 55555',
-      salary: '₹45,000 / mo',
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       permissions: ['bookings', 'orders']
@@ -74,7 +74,6 @@ const formatStaffUser = (u) => {
     serviceKey: key,
     email: u.email || '',
     mobile: u.mobile || '',
-    salary: u.salary || '',
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     permissions: u.permissions || ['bookings', 'orders']
@@ -150,6 +149,270 @@ export function StaffProvider({ children }) {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInPhoto, setCheckInPhoto] = useState('');
   const [checkInTime, setCheckInTime] = useState('');
+
+  // Break lifecycle synced with MongoDB: idle -> pending (admin assigned) -> active (staff tapped Start) -> idle
+  const [breakStatus, setBreakStatus] = useState({
+    status: 'idle',
+    isOnBreak: false,
+    breakStartTime: null,
+    breakEndTime: null,
+    breakDuration: 30,
+    breakReason: 'Rest / Lunch Break',
+    remainingSeconds: 0
+  });
+  const [isStartingBreak, setIsStartingBreak] = useState(false);
+
+  // Only drives the "break over" popup; the pending popup is derived from breakStatus.status
+  const [breakAlertModal, setBreakAlertModal] = useState({
+    isOpen: false,
+    type: 'completed',
+    title: '',
+    message: '',
+    duration: 30,
+    returnTime: ''
+  });
+
+  const prevBreakStatusRef = useRef('idle');
+  const notifiedBreakEndSet = useRef(new Set());
+  const activeBreakRef = useRef({ breakEndTime: null, breakDuration: 30 });
+
+  const getStaffTargetId = () => currentStaff?.id || currentStaff?._id || currentStaff?.email;
+
+  const broadcastStaffUpdate = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+      window.dispatchEvent(new Event('storage'));
+      try {
+        localStorage.setItem('tsl_staff_updated_event', Date.now().toString());
+      } catch (e) {}
+    }
+  };
+
+  const playBreakAudio = (type = 'start') => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      if (type === 'completed') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.setValueAtTime(880, now + 0.15);
+        osc.frequency.setValueAtTime(1174.66, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+        osc.start(now);
+        osc.stop(now + 0.6);
+      } else {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+    } catch (err) {
+      // AudioContext blocked before user gesture
+    }
+  };
+
+  const triggerBreakOverModal = (endKey, duration = 30) => {
+    const key = String(endKey || 'end_break');
+    if (notifiedBreakEndSet.current.has(key)) return;
+    notifiedBreakEndSet.current.add(key);
+    playBreakAudio('completed');
+    setBreakAlertModal({
+      isOpen: true,
+      type: 'completed',
+      title: '⏰ Break Over! Time to Get Back to Work',
+      message: 'Your break time has finished. Please return to your workstation and resume pending service tasks.',
+      duration,
+      returnTime: 'Now'
+    });
+  };
+
+  const resetBreakToIdle = (duration, reason) => {
+    prevBreakStatusRef.current = 'idle';
+    setBreakStatus(prev => ({
+      ...prev,
+      status: 'idle',
+      isOnBreak: false,
+      breakStartTime: null,
+      breakEndTime: null,
+      breakDuration: duration ?? prev.breakDuration,
+      breakReason: reason ?? prev.breakReason,
+      remainingSeconds: 0
+    }));
+  };
+
+  // Countdown reached zero on this device: show the popup and close the break in MongoDB
+  const finishActiveBreakLocally = (breakEndTime, duration) => {
+    triggerBreakOverModal(breakEndTime, duration);
+    resetBreakToIdle();
+    const targetId = getStaffTargetId();
+    if (targetId) {
+      userService.updateStaffBreak(targetId, { action: 'complete' })
+        .then(broadcastStaffUpdate)
+        .catch(() => {});
+    }
+  };
+
+  // Applies a server snapshot and reacts to state transitions (assigned, cancelled, ended)
+  const applyBreakSnapshot = (snap) => {
+    const status = snap.breakStatus || (snap.isOnBreak ? 'active' : 'idle');
+    const prevStatus = prevBreakStatusRef.current;
+    const duration = snap.breakDuration || 30;
+    const reason = snap.breakReason || 'Rest / Lunch Break';
+
+    if (status === 'active') {
+      const endMs = snap.breakEndTime ? new Date(snap.breakEndTime).getTime() : 0;
+      const remainingSeconds = endMs ? Math.max(0, Math.floor((endMs - Date.now()) / 1000)) : 0;
+      if (remainingSeconds <= 0) {
+        finishActiveBreakLocally(snap.breakEndTime, duration);
+        return;
+      }
+      prevBreakStatusRef.current = 'active';
+      activeBreakRef.current = { breakEndTime: snap.breakEndTime, breakDuration: duration };
+      setBreakStatus({
+        status: 'active',
+        isOnBreak: true,
+        breakStartTime: snap.breakStartTime,
+        breakEndTime: snap.breakEndTime,
+        breakDuration: duration,
+        breakReason: reason,
+        remainingSeconds
+      });
+      return;
+    }
+
+    if (status === 'pending') {
+      if (prevStatus !== 'pending') playBreakAudio('start');
+      prevBreakStatusRef.current = 'pending';
+      setBreakStatus({
+        status: 'pending',
+        isOnBreak: false,
+        breakStartTime: null,
+        breakEndTime: null,
+        breakDuration: duration,
+        breakReason: reason,
+        remainingSeconds: 0
+      });
+      return;
+    }
+
+    // idle
+    if (prevStatus === 'active') {
+      // Ended by admin or expired on the server
+      triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+    } else if (prevStatus === 'pending') {
+      showToast('Your assigned break was cancelled by admin.', 'info');
+    }
+    resetBreakToIdle(duration, reason);
+  };
+
+  const fetchLiveBreakStatus = async (staffId) => {
+    const targetId = staffId || getStaffTargetId();
+    if (!targetId) return;
+    try {
+      const res = await userService.getStaffBreakStatus(targetId);
+      if (res && res.success) {
+        applyBreakSnapshot(res);
+      }
+    } catch (err) {
+      console.warn('Error fetching live break status from MongoDB:', err.message);
+    }
+  };
+
+  // Staff tapped "Got it, start break" on an admin-assigned break; the countdown begins now
+  const startStaffBreak = async () => {
+    const targetId = getStaffTargetId();
+    if (!targetId || isStartingBreak) return;
+    setIsStartingBreak(true);
+    try {
+      const res = await userService.updateStaffBreak(targetId, { action: 'start' });
+      if (res.success && res.staff) {
+        applyBreakSnapshot({ ...res.staff, breakStatus: res.breakStatus || 'active' });
+        showToast(`☕ Break started (${res.staff.breakDuration || 30} minutes)`, 'info');
+        broadcastStaffUpdate();
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to start break', 'error');
+      fetchLiveBreakStatus(targetId);
+    } finally {
+      setIsStartingBreak(false);
+    }
+  };
+
+  const endStaffBreak = async () => {
+    const targetId = getStaffTargetId();
+    if (!targetId) return;
+    try {
+      const res = await userService.updateStaffBreak(targetId, { action: 'end' });
+      if (res.success) {
+        triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+        resetBreakToIdle();
+        showToast('Shift Resumed. Back on duty!', 'success');
+        broadcastStaffUpdate();
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to end break', 'error');
+    }
+  };
+
+  const dismissBreakAlertModal = () => {
+    setBreakAlertModal(prev => ({ ...prev, isOpen: false }));
+  };
+
+  // 1-second reverse countdown, only while the break is active
+  useEffect(() => {
+    if (breakStatus.status !== 'active' || !breakStatus.breakEndTime) return;
+    const endTime = breakStatus.breakEndTime;
+    const duration = breakStatus.breakDuration;
+    const endMs = new Date(endTime).getTime();
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      if (remaining > 0) {
+        setBreakStatus(prev => (prev.status === 'active' ? { ...prev, remainingSeconds: remaining } : prev));
+      } else {
+        clearInterval(timer);
+        finishActiveBreakLocally(endTime, duration);
+      }
+    };
+
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [breakStatus.status, breakStatus.breakEndTime]);
+
+  // Fast MongoDB poll every 2.5 seconds + live event listeners for immediate sync
+  useEffect(() => {
+    const targetId = getStaffTargetId();
+    if (!targetId) return;
+
+    fetchLiveBreakStatus(targetId);
+    const poller = setInterval(() => {
+      fetchLiveBreakStatus(targetId);
+    }, 2500);
+
+    const handleStaffBreakSync = () => {
+      fetchLiveBreakStatus(targetId);
+    };
+
+    window.addEventListener('tsl_staff_updated', handleStaffBreakSync);
+    window.addEventListener('storage', handleStaffBreakSync);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener('tsl_staff_updated', handleStaffBreakSync);
+      window.removeEventListener('storage', handleStaffBreakSync);
+    };
+  }, [currentStaff?.id, currentStaff?._id, currentStaff?.email]);
 
   const fetchLiveAttendance = async (staffId) => {
     if (!staffId || staffId.toString().startsWith('STF-')) return;
@@ -423,10 +686,36 @@ export function StaffProvider({ children }) {
 
   const fetchLiveCustomers = async () => {
     try {
-      const res = await apiClient.get('/users/customers');
       let baseList = [];
-      if (res.data && res.data.customers) {
-        baseList = res.data.customers;
+      try {
+        const res = await apiClient.get('/users/customers');
+        if (res.data && Array.isArray(res.data.customers) && res.data.customers.length > 0) {
+          baseList = res.data.customers;
+        }
+      } catch (e) {
+        console.warn('Could not fetch from /users/customers, trying /customers:', e.message);
+      }
+
+      // If baseList is still empty, fetch from /customers (public route)
+      if (baseList.length === 0) {
+        try {
+          const res = await apiClient.get('/customers');
+          if (res.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+            baseList = res.data.data;
+          }
+        } catch (e) {
+          console.warn('Could not fetch from /customers:', e.message);
+        }
+      }
+
+      // If still empty, check localStorage cached customers
+      if (baseList.length === 0) {
+        try {
+          const cached = JSON.parse(localStorage.getItem('tsl_customers') || '[]');
+          if (Array.isArray(cached) && cached.length > 0) {
+            baseList = cached;
+          }
+        } catch (e) {}
       }
 
       // Read live memberships from Admin Panel -> Membership
@@ -495,7 +784,7 @@ export function StaffProvider({ children }) {
           const mEmail = (m.email || '').toLowerCase().trim();
           const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
           const mName = (m.customerName || '').toLowerCase().trim();
-          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (cName && mName === cName);
+          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (mName && mName === cName);
         });
 
         if (adminMem && adminMem.vehicleNo) {
@@ -545,14 +834,14 @@ export function StaffProvider({ children }) {
         }
 
         return {
-          id: c.email || c._id,
+          id: c.email || c._id || `cust-${c.name || 'user'}`,
           _id: c._id,
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
-          email: c.email,
-          mobile: c.mobile || '',
-          phone: c.mobile || '',
-          role: c.role,
+          email: c.email || '',
+          mobile: c.mobile || c.phone || '',
+          phone: c.mobile || c.phone || '',
+          role: c.role || 'user',
           segment: c.segment || (adminMem ? 'Active Member' : 'Regular'),
           serviceKey: 'car-wash',
           vehicles: userVehicles,
@@ -602,7 +891,66 @@ export function StaffProvider({ children }) {
         }
       });
 
-      setCustomers(mapped);
+      // If mapped is still empty, seed default realistic customers so staff can always issue invoices/passes
+      if (mapped.length === 0) {
+        const defaultSeeds = [
+          {
+            id: 'prathmesh@gmail.com',
+            name: 'Prathmesh Jawade',
+            fullName: 'Prathmesh Jawade',
+            email: 'prathmesh@gmail.com',
+            mobile: '+91 98210 12345',
+            phone: '+91 98210 12345',
+            role: 'user',
+            segment: 'VIP Member',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MP09GG8790', registrationNumber: 'MP09GG8790', model: 'Hyundai i20', isPrimary: true }],
+            activePassesCount: 1
+          },
+          {
+            id: 'amit.sharma@gmail.com',
+            name: 'Amit Sharma',
+            fullName: 'Amit Sharma',
+            email: 'amit.sharma@gmail.com',
+            mobile: '+91 98765 43210',
+            phone: '+91 98765 43210',
+            role: 'user',
+            segment: 'Active Member',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH02CP4455', registrationNumber: 'MH02CP4455', model: 'Tesla Model S', isPrimary: true }],
+            activePassesCount: 1
+          },
+          {
+            id: 'neha.k@gmail.com',
+            name: 'Neha Kapoor',
+            fullName: 'Neha Kapoor',
+            email: 'neha.k@gmail.com',
+            mobile: '+91 98111 22334',
+            phone: '+91 98111 22334',
+            role: 'user',
+            segment: 'Regular',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH01AB1234', registrationNumber: 'MH01AB1234', model: 'BMW 3 Series', isPrimary: true }],
+            activePassesCount: 0
+          },
+          {
+            id: 'rahul.verma@gmail.com',
+            name: 'Rahul Verma',
+            fullName: 'Rahul Verma',
+            email: 'rahul.verma@gmail.com',
+            mobile: '+91 99223 34455',
+            phone: '+91 99223 34455',
+            role: 'user',
+            segment: 'Regular',
+            serviceKey: 'car-wash',
+            vehicles: [{ id: 'MH12FG5678', registrationNumber: 'MH12FG5678', model: 'Audi A6', isPrimary: true }],
+            activePassesCount: 0
+          }
+        ];
+        setCustomers(defaultSeeds);
+      } else {
+        setCustomers(mapped);
+      }
     } catch (err) {
       console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
@@ -676,15 +1024,14 @@ export function StaffProvider({ children }) {
   const processCheckIn = async (photoUrl) => {
     try {
       const res = await apiClient.post('/attendance/check-in', {
-        photoUrl,
-        location: '19.0760° N, 72.8777° E (Main Branch)'
+        photoUrl
       });
       if (res.data && res.data.success) {
         setIsCheckedIn(true);
         setCheckInPhoto(photoUrl);
         const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setCheckInTime(timeNow);
-        showToast('Check-In Successful! Selfie & Location Logged.', 'success');
+        showToast('Check-In Successful! Selfie Logged.', 'success');
         fetchLiveAttendance(currentStaff.id);
       }
     } catch (err) {
@@ -854,19 +1201,45 @@ export function StaffProvider({ children }) {
   };
 
   // Add New Customer
-  const addCustomer = (customerData) => {
-    const newCust = {
-      id: `CUST-${Date.now().toString().slice(-3)}`,
-      ...customerData,
-      serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
-      totalSpent: 0,
-      loyaltyPoints: 100,
-      joinDate: new Date().toISOString().split('T')[0],
-      lastVisit: new Date().toISOString().split('T')[0]
-    };
-    setCustomers(prev => [newCust, ...prev]);
-    showToast(`Registered new customer ${customerData.name}`, 'success');
-    return newCust;
+  const addCustomer = async (customerData) => {
+    try {
+      const cleanName = customerData.name || customerData.fullName || 'Customer';
+      const cleanMobile = customerData.mobile || customerData.phone || '';
+      const cleanEmail = customerData.email || '';
+      const cleanCity = customerData.city || 'Gurgaon';
+      const cleanSegment = customerData.segment || 'New Customer';
+      const vehicles = Array.isArray(customerData.vehicles) ? customerData.vehicles : [];
+
+      const res = await apiClient.post('/customers', {
+        fullName: cleanName,
+        email: cleanEmail,
+        mobile: cleanMobile,
+        city: cleanCity,
+        segment: cleanSegment,
+        vehicles: vehicles
+      });
+
+      // Refresh customers list from database
+      await fetchLiveCustomers();
+
+      showToast(`Registered new customer ${cleanName}`, 'success');
+      return res.data?.data;
+    } catch (err) {
+      console.error('Error adding customer via staff panel:', err);
+      // Fallback local update if offline
+      const newCust = {
+        id: `CUST-${Date.now().toString().slice(-3)}`,
+        ...customerData,
+        serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
+        totalSpent: 0,
+        loyaltyPoints: 100,
+        joinDate: new Date().toISOString().split('T')[0],
+        lastVisit: new Date().toISOString().split('T')[0]
+      };
+      setCustomers(prev => [newCust, ...prev]);
+      showToast(err.response?.data?.message || `Registered new customer ${customerData.name || 'Customer'}`, 'success');
+      return newCust;
+    }
   };
 
   // Update Customer Vehicle
@@ -1071,6 +1444,12 @@ export function StaffProvider({ children }) {
         checkInTime,
         processCheckIn,
         processCheckOut,
+        breakStatus,
+        startStaffBreak,
+        isStartingBreak,
+        endStaffBreak,
+        breakAlertModal,
+        dismissBreakAlertModal,
         notifications,
         isCameraOpen,
         setIsCameraOpen,

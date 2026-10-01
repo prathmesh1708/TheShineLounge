@@ -36,6 +36,8 @@ import {
   Tooltip
 } from 'recharts';
 import { useAdmin } from '../../common/context/AdminContext';
+import AdminLeaveRequestsPanel from '../../common/components/AdminLeaveRequestsPanel';
+import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
@@ -45,6 +47,7 @@ import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
 import apiClient from '../../../common/utils/apiClient';
 import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
+import { formatVehicleName } from '../../../common/services/vehicleService';
 import {
   getServicesSync,
   saveService,
@@ -225,7 +228,7 @@ export default function CarDetailingAdminHubPage() {
         const vehList = (Array.isArray(matchedCust.rawVehicles) && matchedCust.rawVehicles.length > 0) ? matchedCust.rawVehicles : (Array.isArray(matchedCust.vehicles) ? matchedCust.vehicles : []);
         const matchedVeh = vehList.find(v => normalizePlate(typeof v === 'string' ? v.split(' ')[0] : (v.plateNumber || v.plate || v.vehicleNo)) === cleanPlate);
         if (matchedVeh && typeof matchedVeh === 'object') {
-          model = matchedVeh.model || matchedVeh.brand || '';
+          model = formatVehicleName(matchedVeh.brand, matchedVeh.model, '');
         }
       }
       model = model || 'Vehicle';
@@ -444,7 +447,7 @@ export default function CarDetailingAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Detailing Specialist',
-    salary: '₹42,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings', 'orders']
@@ -459,7 +462,7 @@ export default function CarDetailingAdminHubPage() {
     password: '',
     mobile: '',
     staffRole: 'Detailing Specialist',
-    salary: '₹42,000 / month',
+    salary: '',
     leaveBalance: 12,
     photo: '',
     permissions: []
@@ -556,7 +559,7 @@ export default function CarDetailingAdminHubPage() {
       password: '',
       mobile: '',
       staffRole: 'Detailing Specialist',
-      salary: '₹42,000 / month',
+      salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings', 'orders']
@@ -571,7 +574,7 @@ export default function CarDetailingAdminHubPage() {
       password: '',
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Detailing Specialist',
-      salary: stf.salary || '₹42,000 / month',
+      salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
@@ -613,7 +616,7 @@ export default function CarDetailingAdminHubPage() {
         payload.password = editStaffForm.password;
       }
 
-      const res = await apiClient.put(`/users/staff/${sId}`, payload);
+      const res = await apiClient.put(`/staff/${sId}`, payload);
       if (res.data && res.data.success) {
         alert('✅ Staff member updated successfully!');
         fetchLiveStaff();
@@ -1433,6 +1436,9 @@ export default function CarDetailingAdminHubPage() {
 
       {activeTab === 'staff' && (
         <div className="space-y-6">
+          <AdminLeaveRequestsPanel serviceKey={serviceKey} />
+          <AdminPayrollPanel serviceKey={serviceKey} />
+
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm gap-3">
             <div>
               <h3 className="text-base font-black text-gray-900">
@@ -1493,7 +1499,7 @@ export default function CarDetailingAdminHubPage() {
                     </div>
                     <div className="p-2 bg-gray-50 rounded-lg">
                       <span className="text-gray-400 font-semibold block text-[9px]">MONTHLY SALARY</span>
-                      <span className="font-bold text-emerald-700">{stf.salary || '₹42,000 / month'}</span>
+                      <span className="font-bold text-emerald-700">{stf.salary || 'Not set'}</span>
                     </div>
                   </div>
 
@@ -2083,12 +2089,14 @@ export default function CarDetailingAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                step="1"
                 value={staffForm.salary}
                 onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })}
-                placeholder="₹42,000 / month"
+                placeholder="e.g. 35000"
                 className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
             </div>
@@ -2262,9 +2270,11 @@ export default function CarDetailingAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Salary (₹)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
+                    step="1"
                     value={editStaffForm.salary}
                     onChange={e => setEditStaffForm({ ...editStaffForm, salary: e.target.value })}
                     className="w-full p-2.5 border rounded-xl font-semibold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-none"
@@ -2362,11 +2372,6 @@ export default function CarDetailingAdminHubPage() {
                             <span>
                               check-in: <strong className="text-gray-900">{checkIn}</strong> | checkout: <strong className="text-gray-900">{checkOut}</strong>
                             </span>
-                          </div>
-
-                          <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 italic">
-                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                            <span>{log.location || '19.0760° N, 72.8777° E (Main Branch)'}</span>
                           </div>
                         </div>
 

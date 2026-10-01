@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, X, RefreshCw, Check, MapPin, Sparkles } from 'lucide-react';
+import { Camera, X, RefreshCw, Check, Sparkles } from 'lucide-react';
 import { useStaff } from '../context/StaffContext';
 
 export default function CameraCapture() {
@@ -118,11 +118,7 @@ export default function CameraCapture() {
             )}
             
             {/* Viewfinder Target Ring */}
-            <div className="absolute inset-12 border-2 border-dashed border-amber-400/60 rounded-3xl pointer-events-none flex items-center justify-center">
-              <div className="text-[10px] font-extrabold text-amber-400 bg-black/60 px-3 py-1 rounded-full flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-amber-400" /> Thane Branch GPS Logged
-              </div>
-            </div>
+            <div className="absolute inset-12 border-2 border-dashed border-amber-400/40 rounded-3xl pointer-events-none" />
           </>
         ) : (
           <img

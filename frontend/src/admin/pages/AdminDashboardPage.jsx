@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { useAdmin } from '../common/context/AdminContext';
 import StatsCard from '../common/components/StatsCard';
+import AdminPayrollPanel from '../common/components/AdminPayrollPanel';
 
 export default function AdminDashboardPage() {
   const {
@@ -145,6 +146,9 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Staff salary & deductions across every department */}
+      <AdminPayrollPanel />
 
       {/* 3. Recharts Visual Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

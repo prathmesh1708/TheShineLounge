@@ -13,14 +13,14 @@ const Staff = require('../models/Staff');
 //
 // Order matters only for the rare address that exists in more than one
 // collection; User first preserves the previous behaviour.
-const MODELS = [User, Admin, Staff];
+const MODELS = [Admin, Staff, User];
 
 const findAccountByEmail = async (email, { withPassword = false } = {}) => {
   const cleanEmail = String(email || '').toLowerCase().trim();
   if (!cleanEmail) return null;
 
   for (const Model of MODELS) {
-    const query = Model.findOne({ email: cleanEmail, isDeleted: false });
+    const query = Model.findOne({ email: cleanEmail, isDeleted: { $ne: true } });
     if (withPassword) query.select('+password');
     const found = await query;
     if (found) return found;
@@ -32,7 +32,7 @@ const findAccountById = async (id) => {
   if (!id) return null;
 
   for (const Model of MODELS) {
-    const found = await Model.findById(id);
+    const found = await Model.findOne({ _id: id, isDeleted: { $ne: true } });
     if (found) return found;
   }
   return null;

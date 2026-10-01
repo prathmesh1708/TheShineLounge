@@ -235,31 +235,34 @@ export function buildMembershipSchedule(bookings, options = {}) {
     const packageName = readPackageName(booking) || 'Monthly Membership';
     const meta = findMembershipMeta(packageName, catalog);
 
+    const bookingExpiry = parseFlexibleDate(booking.membershipExpiry || booking.expiryDate);
+    const bookingStart = parseFlexibleDate(booking.membershipStartDate || booking.startDate || booking.date);
+
     const purchaseDate = startOfDay(
-      parseFlexibleDate(booking.date) || (purchasedAt ? new Date(purchasedAt) : new Date())
+      bookingStart || (purchasedAt ? new Date(purchasedAt) : new Date())
     );
 
     const chainKey = membershipChainKey(booking);
     const previousEnd = chainEnds.get(chainKey);
 
     // Explicit active status or immediate passes must not be pushed into future years
-    const isExplicitlyActive = booking.status === 'Active' || booking.isActive === true;
-    const isExplicitlyQueued = booking.status === 'Queued' || booking.isQueued === true;
+    const isExplicitlyActive = booking.status === 'Active' || booking.isActive === true || booking.membershipStatus === 'Active';
+    const isExplicitlyQueued = booking.status === 'Queued' || booking.isQueued === true || booking.membershipStatus === 'Queued';
 
     const stacked = !isExplicitlyActive && (isExplicitlyQueued || (Boolean(previousEnd) && previousEnd > purchaseDate));
     const startDate = stacked ? new Date(previousEnd) : purchaseDate;
-    const expiryDate = addPassDuration(startDate, packageName, meta);
+    const expiryDate = (bookingExpiry && bookingExpiry > startDate) ? bookingExpiry : addPassDuration(startDate, packageName, meta);
     chainEnds.set(chainKey, expiryDate);
 
     let status = 'Active';
-    if (booking.status === 'Cancelled') {
+    if (booking.status === 'Cancelled' || booking.membershipStatus === 'Cancelled') {
       status = 'Cancelled';
     } else if (expiryDate <= now) {
       status = 'Expired';
-    } else if (isExplicitlyActive) {
-      status = 'Active';
-    } else if (startDate > now) {
+    } else if (startDate > now && !isExplicitlyActive) {
       status = 'Queued';
+    } else {
+      status = 'Active';
     }
 
     const visitLimit = meta?.visitLimit !== undefined && meta.visitLimit !== null
