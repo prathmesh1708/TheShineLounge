@@ -3,6 +3,7 @@ const User = require('../models/User');
 const BreakLog = require('../models/BreakLog');
 const payroll = require('../services/payroll');
 const staffBreaks = require('../services/staffBreaks');
+const { processStaffBreaks } = require('../services/breakScheduler');
 const { parseSalaryText, formatSalaryText } = require('../utils/salaryAmount');
 const { normalizeBreakSchedule } = require('../utils/breakSchedule');
 const { dayKey } = require('../utils/siteTime');
@@ -669,6 +670,14 @@ const getStaffBreakStatus = async (req, res) => {
     if (!staff) return;
 
     const now = new Date();
+    // The staff app polls this every few seconds, so running the scheduler's
+    // per-staff step here makes the break popup appear on time even when no
+    // background timer is running (serverless). Never fail the read over it.
+    try {
+      await processStaffBreaks(staff, now);
+    } catch (err) {
+      console.warn('[breakScheduler] lazy check failed:', err.message);
+    }
     const live = liveBreakFields(staff, now);
 
     const [currentLog, todayLogs] = await Promise.all([

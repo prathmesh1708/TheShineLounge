@@ -37,6 +37,11 @@ const required = (name, devFallback) => {
   return devFallback;
 };
 
+const positiveInt = (value, fallback) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
+
 module.exports = {
   PORT: process.env.PORT || 5005,
   MONGO_URI: process.env.MONGO_URI || '',
@@ -53,5 +58,19 @@ module.exports = {
   // running it on every boot means every nodemon restart silently discards
   // catalog and staff edits made through the admin UI. Run `npm run seed` by
   // hand when the hardcoded catalog actually changes.
-  SEED_ON_BOOT: process.env.SEED_ON_BOOT === 'true'
+  SEED_ON_BOOT: process.env.SEED_ON_BOOT === 'true',
+
+  // ── Scheduled staff breaks (services/breakScheduler.js) ──
+  // Set to 'false' to stop the in-process 30s scheduler (it never runs on Vercel).
+  BREAK_SCHEDULER_ENABLED: process.env.BREAK_SCHEDULER_ENABLED !== 'false',
+  // A slot still fires this many minutes late (e.g. after a restart).
+  BREAK_CATCHUP_MIN: positiveInt(process.env.BREAK_CATCHUP_MIN, 10),
+  // A scheduled break nobody started is logged as missed after this long.
+  BREAK_PENDING_EXPIRY_MIN: positiveInt(process.env.BREAK_PENDING_EXPIRY_MIN, 60),
+  // A forgotten break is closed this long after its end; overtime is kept.
+  BREAK_MAX_OVERTIME_MIN: positiveInt(process.env.BREAK_MAX_OVERTIME_MIN, 240),
+  // Only fire scheduled breaks for staff who are checked in today.
+  BREAK_REQUIRE_CHECKIN: process.env.BREAK_REQUIRE_CHECKIN === 'true',
+  // Shared secret for POST /api/internal/break-scheduler/tick. Unset = endpoint off.
+  BREAK_CRON_SECRET: process.env.BREAK_CRON_SECRET || ''
 };

@@ -37,8 +37,19 @@ const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
-// Connect to Database
-connectDB();
+// Connect to Database, then start the staff break scheduler. Serverless
+// instances freeze between requests, so on Vercel the scheduler is driven by
+// POST /api/internal/break-scheduler/tick instead; test runs never start it.
+const { BREAK_SCHEDULER_ENABLED } = require('./common/config/env');
+const { startBreakScheduler } = require('./services/breakScheduler');
+const shouldRunBreakScheduler = BREAK_SCHEDULER_ENABLED
+  && !process.env.VERCEL
+  && process.env.NODE_ENV !== 'test'
+  && !process.env.NODE_TEST_CONTEXT;
+
+connectDB().then(() => {
+  if (shouldRunBreakScheduler) startBreakScheduler();
+});
 
 // CORS Configuration — allow Vercel frontend + localhost dev
 const allowedOrigins = [
@@ -71,7 +82,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-cron-secret']
 }));
 
 // Handle preflight OPTIONS for all routes
@@ -117,6 +128,7 @@ app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
+app.use('/api/internal', require('./routes/internalRoutes'));
 
 // Mount Isolated Collections Routes
 app.use('/api/staff', require('./routes/staffRoutes'));
