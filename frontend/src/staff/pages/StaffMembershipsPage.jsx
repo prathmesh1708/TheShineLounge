@@ -36,10 +36,11 @@ import apiClient from '../../common/utils/apiClient';
 
 export default function StaffMembershipsPage() {
   const navigate = useNavigate();
-  const { currentStaff, customers, allJobs, jobs, showToast, updateCustomerVehicle } = useStaff();
+  const { currentStaff, customers, allJobs, jobs, showToast, updateCustomerVehicle, canAccess } = useStaff();
 
-  // 1. Strict Department Access Guard: Isolated to Car Wash Staff only
+  // 1. Department / Admin Assigned Access Guard: Car Wash Staff or staff with admin-granted permissions
   const isCarWash = isCarWashStaff(currentStaff);
+  const hasAccess = isCarWash || (canAccess && canAccess('memberships'));
 
   // Active Tab: 'passes' (Searchable Pass List) vs 'issue' (Sell New Pass)
   const [activeTab, setActiveTab] = useState('passes'); // 'passes' | 'issue'
@@ -382,18 +383,18 @@ export default function StaffMembershipsPage() {
   };
 
   // -------------------------------------------------------------
-  // Department Access Guard: Deny access if NOT Car Wash Staff
+  // Department / Permission Access Guard: Deny access if unauthorized
   // -------------------------------------------------------------
-  if (!isCarWash) {
+  if (!hasAccess) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center shadow-sm my-6 space-y-4">
         <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
           <ShieldAlert className="w-6 h-6" />
         </div>
         <div>
-          <h3 className="text-base font-black text-gray-900">Restricted Department Access</h3>
+          <h3 className="text-base font-black text-gray-900">Restricted Access</h3>
           <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto mt-1">
-            The Car Wash Memberships & Passes Hub is strictly reserved for ground staff in the <b>Car Wash Department</b>.
+            The Memberships & Passes Hub requires <b>Memberships</b> module permission from your administrator.
           </p>
         </div>
         <button

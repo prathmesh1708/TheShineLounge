@@ -454,7 +454,7 @@ export default function CarDetailingAdminHubPage() {
     salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    permissions: ['bookings', 'orders'],
+    permissions: ['bookings'],
     breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
@@ -535,7 +535,7 @@ export default function CarDetailingAdminHubPage() {
       salary: staffForm.salary,
       leaveBalance: Number(staffForm.leaveBalance || 12),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      permissions: staffForm.permissions || ['bookings', 'orders'],
+      permissions: staffForm.permissions || ['bookings'],
       breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
@@ -569,7 +569,7 @@ export default function CarDetailingAdminHubPage() {
       salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      permissions: ['bookings', 'orders'],
+      permissions: ['bookings'],
       breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
@@ -2168,7 +2168,6 @@ export default function CarDetailingAdminHubPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
               {[
                 { id: 'bookings', label: 'Service Bookings' },
-                { id: 'orders', label: 'Live Orders' },
                 { id: 'inventory', label: 'Inventory Stock' },
                 { id: 'customers', label: 'Customer CRM' }
               ].map(perm => (

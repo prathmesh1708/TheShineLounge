@@ -12,23 +12,25 @@ export const ALWAYS_ON_PERMISSIONS = ['dashboard'];
 export const LEGACY_DEFAULT_PERMISSIONS = ['bookings', 'orders'];
 
 export const STAFF_MODULES = [
-  { key: 'bookings', label: 'Bookings', emoji: '📋' },
-  { key: 'orders', label: 'Orders', emoji: '🧾' },
-  { key: 'customers', label: 'Customers', emoji: '👥' },
-  { key: 'memberships', label: 'Memberships', emoji: '🏷️' },
-  { key: 'payments', label: 'Payments', emoji: '💳' },
-  { key: 'inventory', label: 'Inventory', emoji: '📦' },
-  { key: 'reports', label: 'Reports', emoji: '📊' }
+  { key: 'bookings', label: 'Bookings', emoji: '📋', path: '/staff/bookings' },
+  { key: 'orders', label: 'Orders', emoji: '🧾', path: '/staff/orders' },
+  { key: 'customers', label: 'Customers', emoji: '👥', path: '/staff/customers' },
+  { key: 'memberships', label: 'Memberships', emoji: '🏷️', path: '/staff/memberships' },
+  { key: 'inventory', label: 'Inventory', emoji: '📦', path: '/staff/inventory' }
 ];
 
 // Staff routes that need a module, as "any of these permissions". Routes not
 // listed here (dashboard, attendance, schedule, notifications, profile) are
 // always open.
 export const STAFF_ROUTE_PERMISSIONS = {
-  bookings: ['bookings', 'orders'],
+  bookings: ['bookings'],
+  orders: ['orders', 'bookings'],
   customers: ['customers'],
   memberships: ['memberships'],
-  invoicing: ['payments', 'orders']
+  invoicing: ['payments', 'orders'],
+  payments: ['payments', 'orders'],
+  inventory: ['inventory'],
+  reports: ['reports']
 };
 
 export const normalizePermissions = (raw) => {

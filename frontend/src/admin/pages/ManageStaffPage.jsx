@@ -11,7 +11,7 @@ import { scheduleFromStaff } from '../common/utils/breakSchedule';
 import { formatClock, formatOvertime, formatHHmm12 } from '../common/utils/formatDuration';
 
 const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Drive-Through Café', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
-const ALL_PERMISSIONS = ['dashboard', 'bookings', 'memberships', 'customers', 'orders', 'inventory', 'reports', 'payments'];
+const ALL_PERMISSIONS = ['bookings', 'memberships', 'customers', 'orders', 'inventory'];
 
 const emptyForm = {
   fullName: '',
@@ -19,7 +19,7 @@ const emptyForm = {
   password: '',
   mobile: '',
   department: 'Car Wash',
-  permissions: ['dashboard'],
+  permissions: ['bookings'],
   branch: 'Main Branch',
   breakSchedule: DEFAULT_BREAK_SCHEDULE
 };

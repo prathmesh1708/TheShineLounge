@@ -41,9 +41,12 @@ import {
   StaffDashboardPage,
   StaffAttendancePage,
   StaffBookingsPage,
+  StaffOrdersPage,
   StaffCustomersPage,
   StaffMembershipsPage,
   StaffInvoicingPage,
+  StaffInventoryPage,
+  StaffReportsPage,
   StaffSchedulePage,
   StaffNotificationsPage,
   StaffProfilePage
@@ -156,9 +159,13 @@ function MainAppContent() {
               <Route path="dashboard" element={<StaffDashboardPage />} />
               <Route path="attendance" element={<StaffAttendancePage />} />
               <Route path="bookings" element={<StaffPermissionRoute><StaffBookingsPage /></StaffPermissionRoute>} />
+              <Route path="orders" element={<StaffPermissionRoute><StaffOrdersPage /></StaffPermissionRoute>} />
               <Route path="customers" element={<StaffPermissionRoute><StaffCustomersPage /></StaffPermissionRoute>} />
               <Route path="memberships" element={<StaffPermissionRoute><StaffMembershipsPage /></StaffPermissionRoute>} />
               <Route path="invoicing" element={<StaffPermissionRoute><StaffInvoicingPage /></StaffPermissionRoute>} />
+              <Route path="payments" element={<StaffPermissionRoute><StaffInvoicingPage /></StaffPermissionRoute>} />
+              <Route path="inventory" element={<StaffPermissionRoute><StaffInventoryPage /></StaffPermissionRoute>} />
+              <Route path="reports" element={<StaffReportsPage />} />
               <Route path="schedule" element={<StaffSchedulePage />} />
               <Route path="notifications" element={<StaffNotificationsPage />} />
               <Route path="profile" element={<StaffProfilePage />} />
