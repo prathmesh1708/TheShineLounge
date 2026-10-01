@@ -150,7 +150,10 @@ export function StaffProvider({ children }) {
   const [checkInPhoto, setCheckInPhoto] = useState('');
   const [checkInTime, setCheckInTime] = useState('');
 
-  // Break lifecycle synced with MongoDB: idle -> pending (admin assigned) -> active (staff tapped Start) -> idle
+  // Break lifecycle synced with MongoDB: idle -> pending (scheduled or admin
+  // assigned) -> active (staff tapped Start) -> idle (staff/admin ended it).
+  // Past its end time a break stays active and counts overtime; it never ends
+  // on its own.
   const [breakStatus, setBreakStatus] = useState({
     status: 'idle',
     isOnBreak: false,
@@ -158,23 +161,35 @@ export function StaffProvider({ children }) {
     breakEndTime: null,
     breakDuration: 30,
     breakReason: 'Rest / Lunch Break',
-    remainingSeconds: 0
+    breakLabel: '',
+    breakScheduledTime: '',
+    remainingSeconds: 0,
+    isOvertime: false,
+    overtimeSeconds: 0
   });
   const [isStartingBreak, setIsStartingBreak] = useState(false);
+  const [isEndingBreak, setIsEndingBreak] = useState(false);
 
-  // Only drives the "break over" popup; the pending popup is derived from breakStatus.status
+  // Only drives the "break ended" summary popup; the pending popup is derived from breakStatus.status
   const [breakAlertModal, setBreakAlertModal] = useState({
     isOpen: false,
     type: 'completed',
     title: '',
     message: '',
     duration: 30,
-    returnTime: ''
+    returnTime: '',
+    overtimeSeconds: 0,
+    actualSeconds: 0
   });
 
   const prevBreakStatusRef = useRef('idle');
-  const notifiedBreakEndSet = useRef(new Set());
-  const activeBreakRef = useRef({ breakEndTime: null, breakDuration: 30 });
+  // Breaks (keyed by end time) whose "time is over" alert already played here.
+  const overtimeAlertedRef = useRef(new Set());
+  // Server clock minus device clock, from each poll's serverNow. A phone whose
+  // clock is a few minutes off would otherwise show the wrong countdown.
+  const clockOffsetRef = useRef(0);
+
+  const serverNowMs = () => Date.now() + clockOffsetRef.current;
 
   const getStaffTargetId = () => currentStaff?.id || currentStaff?._id || currentStaff?.email;
 
@@ -222,19 +237,32 @@ export function StaffProvider({ children }) {
     }
   };
 
-  const triggerBreakOverModal = (endKey, duration = 30) => {
-    const key = String(endKey || 'end_break');
-    if (notifiedBreakEndSet.current.has(key)) return;
-    notifiedBreakEndSet.current.add(key);
+  // { remainingSeconds, isOvertime, overtimeSeconds } for a break ending at endTime.
+  const breakClock = (endTime) => {
+    const endMs = endTime ? new Date(endTime).getTime() : NaN;
+    if (Number.isNaN(endMs)) return { remainingSeconds: 0, isOvertime: false, overtimeSeconds: 0 };
+    const signed = endMs - serverNowMs();
+    return signed > 0
+      ? { remainingSeconds: Math.ceil(signed / 1000), isOvertime: false, overtimeSeconds: 0 }
+      : { remainingSeconds: 0, isOvertime: true, overtimeSeconds: Math.floor(-signed / 1000) };
+  };
+
+  // First time this device sees a break run over: one chime and a toast. The
+  // break keeps running until the staff (or admin) ends it.
+  const noteOvertime = (endTime) => {
+    const key = String(endTime || '');
+    if (!key || overtimeAlertedRef.current.has(key)) return;
+    overtimeAlertedRef.current.add(key);
     playBreakAudio('completed');
-    setBreakAlertModal({
-      isOpen: true,
-      type: 'completed',
-      title: '⏰ Break Over! Time to Get Back to Work',
-      message: 'Your break time has finished. Please return to your workstation and resume pending service tasks.',
-      duration,
-      returnTime: 'Now'
-    });
+    showToast('⏰ Break time is over — tap End Break when you are back.', 'error');
+  };
+
+  const formatMmSs = (totalSeconds) => {
+    const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${String(m).padStart(2, '0')}:${sec}`;
   };
 
   const resetBreakToIdle = (duration, reason) => {
@@ -247,47 +275,43 @@ export function StaffProvider({ children }) {
       breakEndTime: null,
       breakDuration: duration ?? prev.breakDuration,
       breakReason: reason ?? prev.breakReason,
-      remainingSeconds: 0
+      breakLabel: '',
+      breakScheduledTime: '',
+      remainingSeconds: 0,
+      isOvertime: false,
+      overtimeSeconds: 0
     }));
-  };
-
-  // Countdown reached zero on this device: show the popup and close the break in MongoDB
-  const finishActiveBreakLocally = (breakEndTime, duration) => {
-    triggerBreakOverModal(breakEndTime, duration);
-    resetBreakToIdle();
-    const targetId = getStaffTargetId();
-    if (targetId) {
-      userService.updateStaffBreak(targetId, { action: 'complete' })
-        .then(broadcastStaffUpdate)
-        .catch(() => {});
-    }
   };
 
   // Applies a server snapshot and reacts to state transitions (assigned, cancelled, ended)
   const applyBreakSnapshot = (snap) => {
+    if (snap.serverNow) {
+      const serverMs = Date.parse(snap.serverNow);
+      if (!Number.isNaN(serverMs)) clockOffsetRef.current = serverMs - Date.now();
+    }
+
     const status = snap.breakStatus || (snap.isOnBreak ? 'active' : 'idle');
     const prevStatus = prevBreakStatusRef.current;
     const duration = snap.breakDuration || 30;
     const reason = snap.breakReason || 'Rest / Lunch Break';
+    const label = snap.label || reason;
 
     if (status === 'active') {
-      const endMs = snap.breakEndTime ? new Date(snap.breakEndTime).getTime() : 0;
-      const remainingSeconds = endMs ? Math.max(0, Math.floor((endMs - Date.now()) / 1000)) : 0;
-      if (remainingSeconds <= 0) {
-        finishActiveBreakLocally(snap.breakEndTime, duration);
-        return;
-      }
+      // Past the end time is still active: the clock flips to overtime.
+      const clock = breakClock(snap.breakEndTime);
+      if (clock.isOvertime) noteOvertime(snap.breakEndTime);
       prevBreakStatusRef.current = 'active';
-      activeBreakRef.current = { breakEndTime: snap.breakEndTime, breakDuration: duration };
-      setBreakStatus({
+      setBreakStatus(prev => ({
         status: 'active',
         isOnBreak: true,
         breakStartTime: snap.breakStartTime,
         breakEndTime: snap.breakEndTime,
         breakDuration: duration,
         breakReason: reason,
-        remainingSeconds
-      });
+        breakLabel: snap.label || prev.breakLabel || reason,
+        breakScheduledTime: snap.scheduledTime ?? prev.breakScheduledTime ?? '',
+        ...clock
+      }));
       return;
     }
 
@@ -301,17 +325,21 @@ export function StaffProvider({ children }) {
         breakEndTime: null,
         breakDuration: duration,
         breakReason: reason,
-        remainingSeconds: 0
+        breakLabel: label,
+        breakScheduledTime: snap.scheduledTime || '',
+        remainingSeconds: 0,
+        isOvertime: false,
+        overtimeSeconds: 0
       });
       return;
     }
 
     // idle
     if (prevStatus === 'active') {
-      // Ended by admin or expired on the server
-      triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+      // Ended somewhere else (admin, another device, or the server's safety cap)
+      showToast('Your break was ended. Welcome back!', 'info');
     } else if (prevStatus === 'pending') {
-      showToast('Your assigned break was cancelled by admin.', 'info');
+      showToast('Your break was cancelled or has expired.', 'info');
     }
     resetBreakToIdle(duration, reason);
   };
@@ -329,7 +357,7 @@ export function StaffProvider({ children }) {
     }
   };
 
-  // Staff tapped "Got it, start break" on an admin-assigned break; the countdown begins now
+  // Staff tapped "Start" on a scheduled or admin-assigned break; the countdown begins now
   const startStaffBreak = async () => {
     const targetId = getStaffTargetId();
     if (!targetId || isStartingBreak) return;
@@ -349,19 +377,40 @@ export function StaffProvider({ children }) {
     }
   };
 
+  // The only way a break ends from this app. The server measures the time
+  // taken and the overtime; the summary popup reports what it recorded.
   const endStaffBreak = async () => {
     const targetId = getStaffTargetId();
-    if (!targetId) return;
+    if (!targetId || isEndingBreak) return;
+    setIsEndingBreak(true);
+    const allowedMinutes = breakStatus.breakDuration || 30;
     try {
       const res = await userService.updateStaffBreak(targetId, { action: 'end' });
       if (res.success) {
-        triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
         resetBreakToIdle();
-        showToast('Shift Resumed. Back on duty!', 'success');
+        const over = Number(res.overtimeSeconds) || 0;
+        const took = formatMmSs(res.actualSeconds);
+        const allowed = Number(res.allowedMinutes) || allowedMinutes;
+        playBreakAudio('start');
+        setBreakAlertModal({
+          isOpen: true,
+          type: 'completed',
+          title: over > 0 ? '⏰ Break Ended — Over Time' : '✅ Break Ended On Time',
+          message: over > 0
+            ? `You took ${took} — ${formatMmSs(over)} over your ${allowed}-min break.`
+            : `You took ${took} — on time for your ${allowed}-min break.`,
+          duration: allowed,
+          returnTime: 'Now',
+          overtimeSeconds: over,
+          actualSeconds: Number(res.actualSeconds) || 0
+        });
         broadcastStaffUpdate();
       }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to end break', 'error');
+      fetchLiveBreakStatus(targetId);
+    } finally {
+      setIsEndingBreak(false);
     }
   };
 
@@ -369,23 +418,19 @@ export function StaffProvider({ children }) {
     setBreakAlertModal(prev => ({ ...prev, isOpen: false }));
   };
 
-  // 1-second reverse countdown, only while the break is active
+  // 1-second clock while the break is active: counts down to the end time, then
+  // keeps going as overtime until the server says the break is over.
   useEffect(() => {
     if (breakStatus.status !== 'active' || !breakStatus.breakEndTime) return;
     const endTime = breakStatus.breakEndTime;
-    const duration = breakStatus.breakDuration;
-    const endMs = new Date(endTime).getTime();
 
     const tick = () => {
-      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
-      if (remaining > 0) {
-        setBreakStatus(prev => (prev.status === 'active' ? { ...prev, remainingSeconds: remaining } : prev));
-      } else {
-        clearInterval(timer);
-        finishActiveBreakLocally(endTime, duration);
-      }
+      const clock = breakClock(endTime);
+      if (clock.isOvertime) noteOvertime(endTime);
+      setBreakStatus(prev => (prev.status === 'active' && prev.breakEndTime === endTime ? { ...prev, ...clock } : prev));
     };
 
+    tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [breakStatus.status, breakStatus.breakEndTime]);
@@ -1448,6 +1493,11 @@ export function StaffProvider({ children }) {
         startStaffBreak,
         isStartingBreak,
         endStaffBreak,
+        isEndingBreak,
+        isOvertime: breakStatus.status === 'active' && breakStatus.isOvertime,
+        overtimeSeconds: breakStatus.overtimeSeconds,
+        breakLabel: breakStatus.breakLabel,
+        breakScheduledTime: breakStatus.breakScheduledTime,
         breakAlertModal,
         dismissBreakAlertModal,
         notifications,

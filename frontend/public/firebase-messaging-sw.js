@@ -47,7 +47,10 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  const targetLink = data.link || '/bookings';
+  // Our own notifications carry `link` (bookings) or `url` (staff breaks); ones
+  // auto-displayed by the FCM SDK keep the original payload under FCM_MSG.
+  const fcmData = (data.FCM_MSG && data.FCM_MSG.data) || {};
+  const targetLink = data.link || data.url || fcmData.link || fcmData.url || '/bookings';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
