@@ -3,7 +3,12 @@ import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, 
 import AdminModal from '../common/components/AdminModal';
 import AdminLeaveRequestsPanel from '../common/components/AdminLeaveRequestsPanel';
 import AdminPayrollPanel from '../common/components/AdminPayrollPanel';
+import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../common/components/BreakScheduleFields';
+import BreakStatusBadge from '../common/components/BreakStatusBadge';
+import BreakHistoryPanel from '../common/components/BreakHistoryPanel';
 import userService from '../../common/services/userService';
+import { scheduleFromStaff } from '../common/utils/breakSchedule';
+import { formatClock, formatOvertime, formatHHmm12 } from '../common/utils/formatDuration';
 
 const DEPARTMENTS = ['Car Wash', 'Detailing', 'Cafe', 'Drive-Through Café', 'Salon', 'Dog Wash', 'Accounts', 'CRM', 'Reception', 'Inventory', 'Manager', 'Management'];
 const ALL_PERMISSIONS = ['dashboard', 'bookings', 'memberships', 'customers', 'orders', 'inventory', 'reports', 'payments'];
@@ -15,7 +20,8 @@ const emptyForm = {
   mobile: '',
   department: 'Car Wash',
   permissions: ['dashboard'],
-  branch: 'Main Branch'
+  branch: 'Main Branch',
+  breakSchedule: DEFAULT_BREAK_SCHEDULE
 };
 
 export default function ManageStaffPage() {
@@ -48,8 +54,9 @@ export default function ManageStaffPage() {
   const [modalLoading, setModalLoading] = useState(false);
 
   // Fetch staff list
-  const fetchStaff = useCallback(async (page = 1) => {
-    setLoading(true);
+  // `silent` refreshes (the 15s badge poll) keep the table on screen.
+  const fetchStaff = useCallback(async (page = 1, { silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const params = { page, limit: 20, search };
@@ -62,15 +69,24 @@ export default function ManageStaffPage() {
         setPagination(data.pagination || { total: data.count || (data.staff ? data.staff.length : 0), page: 1, limit: 20, pages: 1 });
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load staff');
+      if (!silent) setError(err.response?.data?.message || 'Failed to load staff');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [search, departmentFilter, statusFilter]);
 
   useEffect(() => {
     fetchStaff(1);
   }, [fetchStaff]);
+
+  // Keep break badges (pending -> on break -> overtime) current without a reload.
+  const currentPage = pagination?.page || 1;
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchStaff(currentPage, { silent: true });
+    }, 15000);
+    return () => clearInterval(id);
+  }, [fetchStaff, currentPage]);
 
   // Create staff
   const handleAddStaff = async (e) => {
@@ -103,7 +119,8 @@ export default function ManageStaffPage() {
       mobile: staff.mobile,
       department: staff.department,
       permissions: staff.permissions || [],
-      branch: staff.branch
+      branch: staff.branch,
+      breakSchedule: scheduleFromStaff(staff)
     });
     setModalError('');
     setIsEditOpen(true);
@@ -203,9 +220,9 @@ export default function ManageStaffPage() {
 
   useEffect(() => {
     if (!isBreakOpen || (!breakStaff?.isOnBreak && breakStaff?.breakStatus !== 'active') || !breakStaff?.breakEndTime) return;
+    // Signed: negative once the break is over but not yet ended (overtime).
     const tick = () => {
-      const diff = Math.max(0, Math.floor((new Date(breakStaff.breakEndTime).getTime() - Date.now()) / 1000));
-      setBreakCountdown(diff);
+      setBreakCountdown(Math.floor((new Date(breakStaff.breakEndTime).getTime() - Date.now()) / 1000));
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -409,15 +426,10 @@ export default function ManageStaffPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1 items-start">
-                        {staff.isOnBreak ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
-                            <Coffee className="w-3 h-3" /> On Break ({staff.breakDuration || 30}m)
-                          </span>
-                        ) : staff.breakStatus === 'pending' ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
-                            <Hourglass className="w-3 h-3" /> Break Assigned ({staff.breakDuration || 30}m)
-                          </span>
+                        {staff.isOnBreak || staff.breakStatus === 'active' || staff.breakStatus === 'pending' ? (
+                          <BreakStatusBadge staff={staff} />
                         ) : (
+                          <>
                           <button
                             onClick={() => handleToggleStatus(staff)}
                             className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
@@ -427,6 +439,8 @@ export default function ManageStaffPage() {
                             {staff.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                             <span>{staff.isActive ? 'Active' : 'Inactive'}</span>
                           </button>
+                          <BreakStatusBadge staff={staff} />
+                          </>
                         )}
                       </div>
                     </td>
@@ -548,6 +562,8 @@ export default function ManageStaffPage() {
             </div>
           </div>
 
+          <BreakScheduleFields value={form.breakSchedule} onChange={(breakSchedule) => setForm({ ...form, breakSchedule })} />
+
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={() => setIsAddOpen(false)}
               className="px-4 py-2 font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200">Cancel</button>
@@ -611,6 +627,8 @@ export default function ManageStaffPage() {
               ))}
             </div>
           </div>
+
+          <BreakScheduleFields value={editForm.breakSchedule} onChange={(breakSchedule) => setEditForm({ ...editForm, breakSchedule })} />
 
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={() => setIsEditOpen(false)}
@@ -678,7 +696,9 @@ export default function ManageStaffPage() {
           )}
 
           {breakPhase === 'active' ? (
-            <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
+            <div className={`rounded-2xl bg-gradient-to-br p-4 text-white shadow-md space-y-3 ${
+              breakCountdown < 0 ? 'from-red-500 via-red-600 to-rose-700' : 'from-amber-500 via-orange-600 to-amber-700'
+            }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
@@ -686,7 +706,7 @@ export default function ManageStaffPage() {
                   </div>
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
-                      Staff Break In Progress
+                      {breakCountdown < 0 ? 'Over Break Time' : 'Staff Break In Progress'}
                     </span>
                     <h4 className="text-sm font-black mt-0.5">{breakStaff.breakReason || 'Rest / Lunch Break'}</h4>
                   </div>
@@ -701,10 +721,10 @@ export default function ManageStaffPage() {
               <div className="bg-black/25 backdrop-blur-md rounded-xl p-3 border border-white/15 text-center">
                 <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1 mb-0.5">
                   <Timer className="w-3 h-3 text-amber-300" />
-                  Live Reverse Clock
+                  {breakCountdown < 0 ? 'Overtime' : 'Live Reverse Clock'}
                 </p>
                 <div className="text-3xl font-black font-mono tracking-tight text-white py-0.5">
-                  {`${String(Math.floor(breakCountdown / 60)).padStart(2, '0')}:${String(breakCountdown % 60).padStart(2, '0')}`}
+                  {breakCountdown < 0 ? formatOvertime(-breakCountdown) : formatClock(breakCountdown)}
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-amber-100 font-semibold px-2 mt-1">
                   <span>Started: {breakStaff.breakStartTime ? new Date(breakStaff.breakStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
@@ -719,7 +739,7 @@ export default function ManageStaffPage() {
                 className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>{modalLoading ? 'Updating...' : '⏹️ End Break Early & Resume Duty'}</span>
+                <span>{modalLoading ? 'Updating...' : breakCountdown < 0 ? '⏹️ End Break & Resume Duty' : '⏹️ End Break Early & Resume Duty'}</span>
               </button>
             </div>
           ) : breakPhase === 'pending' ? (
@@ -820,6 +840,34 @@ export default function ManageStaffPage() {
               </button>
             </div>
           )}
+
+          {/* Configured daily schedule (read-only here) */}
+          <div className="rounded-2xl border border-gray-200 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black text-gray-900">Daily Break Schedule</h4>
+              <button
+                type="button"
+                onClick={() => { const s = breakStaff || selectedStaff; setIsBreakOpen(false); openEdit(s); }}
+                className="text-[11px] font-bold text-amber-700 hover:underline"
+              >
+                Edit schedule
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {scheduleFromStaff(breakStaff || selectedStaff).map((slot) => (
+                <span
+                  key={slot.slot}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                    slot.enabled && slot.startTime ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-gray-50 text-gray-400 border-gray-200'
+                  }`}
+                >
+                  {slot.label}: {slot.enabled && slot.startTime ? `${formatHHmm12(slot.startTime)} · ${slot.durationMinutes} min` : 'off'}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {selectedStaff?._id && <BreakHistoryPanel staffId={selectedStaff._id} refreshKey={breakPhase} />}
         </div>
       </AdminModal>
     </div>

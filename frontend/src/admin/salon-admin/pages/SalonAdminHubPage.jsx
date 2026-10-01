@@ -23,7 +23,8 @@ import {
   UserPlus,
   Phone,
   Mail,
-  MapPin
+  MapPin,
+  Coffee
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,6 +42,9 @@ import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../../common/components/BreakScheduleFields';
+import BreakStatusBadge from '../../common/components/BreakStatusBadge';
+import StaffBreaksModal from '../../common/components/StaffBreaksModal';
 import apiClient from '../../../common/utils/apiClient';
 import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 import {
@@ -207,11 +211,13 @@ export default function SalonAdminHubPage() {
     salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
-    permissions: ['bookings', 'orders']
+    permissions: ['bookings', 'orders'],
+    breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
   // Edit Staff Modal States
   const [editStaffModal, setEditStaffModal] = useState(false);
+  const [breaksStaff, setBreaksStaff] = useState(null);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [editStaffForm, setEditStaffForm] = useState({
     fullName: '',
@@ -363,6 +369,7 @@ export default function SalonAdminHubPage() {
       leaveBalance: Number(staffForm.leaveBalance || 12),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
       permissions: staffForm.permissions || ['bookings', 'orders'],
+      breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
     };
@@ -395,7 +402,8 @@ export default function SalonAdminHubPage() {
       salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
-      permissions: ['bookings', 'orders']
+      permissions: ['bookings', 'orders'],
+      breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
 
@@ -764,6 +772,17 @@ export default function SalonAdminHubPage() {
     setPlanForm({ name: '', price: '', description: '', billing: 'per service' });
   };
 
+  // Keep break badges (pending / on break / overtime) current while the
+  // staff tab is open.
+  useEffect(() => {
+    if (activeTab !== 'staff') return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchLiveStaff();
+    }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   return (
     <div className="space-y-6">
       {/* Hero Header Banner */}
@@ -1128,6 +1147,18 @@ export default function SalonAdminHubPage() {
                       <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
                     </p>
                   </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
+                  <BreakStatusBadge staff={stf} />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setBreaksStaff(stf); }}
+                    className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                    title="Break schedule, live timer & overtime"
+                  >
+                    <Coffee className="w-3.5 h-3.5" /> Breaks
+                  </button>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
@@ -2015,6 +2046,11 @@ export default function SalonAdminHubPage() {
             </div>
           </div>
 
+          <BreakScheduleFields
+            value={staffForm.breakSchedule}
+            onChange={(breakSchedule) => setStaffForm(prev => ({ ...prev, breakSchedule }))}
+          />
+
           <div className="pt-2">
             <button
               type="submit"
@@ -2025,6 +2061,14 @@ export default function SalonAdminHubPage() {
           </div>
         </form>
       </AdminModal>
+
+      {/* Modal: per-staff breaks (schedule, live timer, overtime history) */}
+      <StaffBreaksModal
+        isOpen={!!breaksStaff}
+        onClose={() => setBreaksStaff(null)}
+        staff={breaksStaff}
+        onSaved={() => fetchLiveStaff()}
+      />
 
       {/* Modal: Edit Existing Staff Member & Shift Attendance Logs */}
       <AdminModal 

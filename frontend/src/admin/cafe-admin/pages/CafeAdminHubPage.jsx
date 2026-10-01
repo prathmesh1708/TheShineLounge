@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   Upload,
   X,
-  UserPlus
+  UserPlus,
+  Coffee
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,6 +36,9 @@ import AdminPayrollPanel from '../../common/components/AdminPayrollPanel';
 import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import AdminModal from '../../common/components/AdminModal';
+import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../../common/components/BreakScheduleFields';
+import BreakStatusBadge from '../../common/components/BreakStatusBadge';
+import StaffBreaksModal from '../../common/components/StaffBreaksModal';
 import apiClient from '../../../common/utils/apiClient';
 import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 
@@ -224,12 +228,14 @@ export default function CafeAdminHubPage() {
     salary: '',
     leaveBalance: 12,
     photo: '',
-    permissions: ['bookings', 'orders']
+    permissions: ['bookings', 'orders'],
+    breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
   const [dbStaff, setDbStaff] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [editStaffModal, setEditStaffModal] = useState(false);
+  const [breaksStaff, setBreaksStaff] = useState(null);
   const [activeStaffModalTab, setActiveStaffModalTab] = useState('details');
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
 
@@ -456,6 +462,7 @@ export default function CafeAdminHubPage() {
       leaveBalance: Number(staffForm.leaveBalance || 12),
       photo: staffForm.photo,
       permissions: staffForm.permissions || ['bookings', 'orders'],
+      breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
     };
@@ -488,7 +495,8 @@ export default function CafeAdminHubPage() {
       salary: '',
       leaveBalance: 12,
       photo: '',
-      permissions: ['bookings', 'orders']
+      permissions: ['bookings', 'orders'],
+      breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
 
@@ -605,6 +613,17 @@ export default function CafeAdminHubPage() {
     });
     setAddInventoryModal(false);
   };
+
+  // Keep break badges (pending / on break / overtime) current while the
+  // staff tab is open.
+  useEffect(() => {
+    if (activeTab !== 'staff') return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchLiveStaff();
+    }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   return (
     <div className="space-y-6">
@@ -929,6 +948,18 @@ export default function CafeAdminHubPage() {
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{stf.staffRole || stf.role}</p>
                       <p className="text-[10px] text-gray-500 truncate">{stf.email}</p>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
+                    <BreakStatusBadge staff={stf} />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setBreaksStaff(stf); }}
+                      className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                      title="Break schedule, live timer & overtime"
+                    >
+                      <Coffee className="w-3.5 h-3.5" /> Breaks
+                    </button>
                   </div>
 
                   <div className="pt-3 border-t flex items-center justify-between text-[11px] text-gray-500 font-semibold">
@@ -1530,6 +1561,11 @@ export default function CafeAdminHubPage() {
             </div>
           </div>
 
+          <BreakScheduleFields
+            value={staffForm.breakSchedule}
+            onChange={(breakSchedule) => setStaffForm(prev => ({ ...prev, breakSchedule }))}
+          />
+
           <button
             type="submit"
             className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider select-none active:scale-[0.98]"
@@ -1538,6 +1574,14 @@ export default function CafeAdminHubPage() {
           </button>
         </form>
       </AdminModal>
+
+      {/* Modal: per-staff breaks (schedule, live timer, overtime history) */}
+      <StaffBreaksModal
+        isOpen={!!breaksStaff}
+        onClose={() => setBreaksStaff(null)}
+        staff={breaksStaff}
+        onSaved={() => fetchLiveStaff()}
+      />
 
       {/* Modal: Edit / Details Staff Member */}
       <AdminModal isOpen={editStaffModal} onClose={() => setEditStaffModal(false)} title="Manage Staff Profile">

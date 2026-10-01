@@ -58,6 +58,11 @@ import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../../common/components/BreakScheduleFields';
+import BreakStatusBadge from '../../common/components/BreakStatusBadge';
+import BreakHistoryPanel from '../../common/components/BreakHistoryPanel';
+import { scheduleFromStaff } from '../../common/utils/breakSchedule';
+import { formatClock, formatOvertime } from '../../common/utils/formatDuration';
 import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
@@ -734,7 +739,8 @@ export default function CarWashAdminHubPage() {
     salary: '',
     leaveBalance: 12,
     photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-    permissions: ['bookings', 'orders']
+    permissions: ['bookings', 'orders'],
+    breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
   // Edit Staff Modal States
@@ -749,7 +755,8 @@ export default function CarWashAdminHubPage() {
     salary: '',
     leaveBalance: 12,
     photo: '',
-    permissions: []
+    permissions: [],
+    breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
   const [activeStaffModalTab, setActiveStaffModalTab] = useState('details'); // 'details' | 'break' | 'attendance'
@@ -763,9 +770,9 @@ export default function CarWashAdminHubPage() {
     if (!editStaffModal || (!staffLiveBreakState?.isOnBreak && staffLiveBreakState?.breakStatus !== 'active') || !staffLiveBreakState?.breakEndTime) {
       return;
     }
+    // Signed: negative once the break is over but not yet ended (overtime).
     const tick = () => {
-      const diff = Math.max(0, Math.floor((new Date(staffLiveBreakState.breakEndTime).getTime() - Date.now()) / 1000));
-      setAdminBreakCountdown(diff);
+      setAdminBreakCountdown(Math.floor((new Date(staffLiveBreakState.breakEndTime).getTime() - Date.now()) / 1000));
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -932,6 +939,7 @@ export default function CarWashAdminHubPage() {
       leaveBalance: Number(staffForm.leaveBalance || 12),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
       permissions: staffForm.permissions || ['bookings', 'orders'],
+      breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
     };
@@ -972,7 +980,8 @@ export default function CarWashAdminHubPage() {
       salary: '',
       leaveBalance: 12,
       photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-      permissions: ['bookings', 'orders']
+      permissions: ['bookings', 'orders'],
+      breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
 
@@ -990,7 +999,8 @@ export default function CarWashAdminHubPage() {
       salary: stf.monthlySalary || '',
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
-      permissions: stf.permissions || []
+      permissions: stf.permissions || [],
+      breakSchedule: scheduleFromStaff(stf)
     });
     setStaffAttendanceLogs([]);
     setActiveStaffModalTab('details');
@@ -1052,7 +1062,8 @@ export default function CarWashAdminHubPage() {
       salary: editStaffForm.salary,
       leaveBalance: Number(editStaffForm.leaveBalance),
       photo: editStaffForm.photo,
-      permissions: editStaffForm.permissions
+      permissions: editStaffForm.permissions,
+      breakSchedule: editStaffForm.breakSchedule
     };
     if (editStaffForm.password) {
       payload.password = editStaffForm.password;
@@ -1065,6 +1076,12 @@ export default function CarWashAdminHubPage() {
       }
     } catch (err) {
       console.warn('Staff update API error:', err);
+      // A server rejection (e.g. overlapping breaks) keeps the form open with the
+      // reason; a network failure keeps the old optimistic behaviour below.
+      if (err.response) {
+        showToast?.(`⚠️ ${err.response.data?.message || 'Failed to update staff member'}`, 'error');
+        return;
+      }
     }
 
     setDbStaff(prev => prev.map(st => (st._id === sId || st.id === sId || (st.email && st.email.toLowerCase() === editStaffForm.email.toLowerCase())) ? { ...st, ...payload } : st));
@@ -1474,6 +1491,17 @@ export default function CarWashAdminHubPage() {
     }
   };
 
+  // Keep break badges (pending / on break / overtime) current while the
+  // staff tab is open.
+  useEffect(() => {
+    if (activeTab !== 'staff') return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchLiveStaff();
+    }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   return (
     <div className="space-y-6">
       
@@ -1806,25 +1834,20 @@ export default function CarWashAdminHubPage() {
                     <div className="space-y-1 overflow-hidden">
                       <div className="flex items-center gap-1.5">
                         <h4 className="font-extrabold text-sm text-gray-900 truncate">{stf.fullName || stf.name}</h4>
-                        {stf.isOnBreak ? (
-                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-white flex items-center gap-1 animate-pulse shadow-xs">
-                            <Coffee className="w-2.5 h-2.5" /> On Break ({stf.breakDuration || 30}m)
-                          </span>
-                        ) : stf.breakStatus === 'pending' ? (
-                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
-                            <Hourglass className="w-2.5 h-2.5" /> Break Assigned ({stf.breakDuration || 30}m)
-                          </span>
-                        ) : (
-                          <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
-                            {stf.isActive !== false ? 'On Duty' : 'Inactive'}
-                          </span>
-                        )}
+                        {/* Break state (countdown / overtime) is shown by BreakStatusBadge below */}
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${stf.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {stf.isOnBreak || stf.breakStatus === 'active' ? 'On Break' : stf.isActive !== false ? 'On Duty' : 'Inactive'}
+                        </span>
                       </div>
                       <p className="text-xs font-bold text-amber-700">{stf.staffRole || stf.role || 'Car Wash Specialist'}</p>
                       <p className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
                         <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || '—'}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
+                    <BreakStatusBadge staff={stf} />
                   </div>
 
                   <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
@@ -3120,6 +3143,11 @@ export default function CarWashAdminHubPage() {
             </div>
           </div>
 
+          <BreakScheduleFields
+            value={staffForm.breakSchedule}
+            onChange={(breakSchedule) => setStaffForm(prev => ({ ...prev, breakSchedule }))}
+          />
+
           <div className="pt-2">
             <button
               type="submit"
@@ -3176,7 +3204,9 @@ export default function CarWashAdminHubPage() {
           {activeStaffModalTab === 'break' && (
             <div className="space-y-4 py-1">
               {staffBreakPhase === 'active' ? (
-                <div className="rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-4 text-white shadow-md space-y-3">
+                <div className={`rounded-2xl bg-gradient-to-br p-4 text-white shadow-md space-y-3 ${
+                  adminBreakCountdown < 0 ? 'from-red-500 via-red-600 to-rose-700' : 'from-amber-500 via-orange-600 to-amber-700'
+                }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
@@ -3184,7 +3214,7 @@ export default function CarWashAdminHubPage() {
                       </div>
                       <div>
                         <span className="text-[10px] font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
-                          Staff Break In Progress
+                          {adminBreakCountdown < 0 ? 'Over Break Time' : 'Staff Break In Progress'}
                         </span>
                         <h4 className="text-sm font-black mt-0.5">{staffLiveBreakState.breakReason || 'Rest / Lunch Break'}</h4>
                       </div>
@@ -3199,10 +3229,10 @@ export default function CarWashAdminHubPage() {
                   <div className="bg-black/25 backdrop-blur-md rounded-xl p-3 border border-white/15 text-center">
                     <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1 mb-0.5">
                       <Timer className="w-3 h-3 text-amber-300" />
-                      Time Remaining (Live Reverse Clock)
+                      {adminBreakCountdown < 0 ? 'Overtime (break not ended yet)' : 'Time Remaining (Live Reverse Clock)'}
                     </p>
                     <div className="text-3xl font-black font-mono tracking-tight text-white py-0.5">
-                      {`${String(Math.floor(adminBreakCountdown / 60)).padStart(2, '0')}:${String(adminBreakCountdown % 60).padStart(2, '0')}`}
+                      {adminBreakCountdown < 0 ? formatOvertime(-adminBreakCountdown) : formatClock(adminBreakCountdown)}
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-amber-100 font-semibold px-2 mt-1">
                       <span>Started: {staffLiveBreakState.breakStartTime ? new Date(staffLiveBreakState.breakStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
@@ -3217,7 +3247,7 @@ export default function CarWashAdminHubPage() {
                     className="w-full py-2.5 bg-white hover:bg-amber-50 active:scale-98 text-orange-950 font-black rounded-xl shadow-sm text-xs transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>{breakLoading ? 'Updating MongoDB...' : '⏹️ End Break Early & Resume Duty'}</span>
+                    <span>{breakLoading ? 'Updating MongoDB...' : adminBreakCountdown < 0 ? '⏹️ End Break & Resume Duty' : '⏹️ End Break Early & Resume Duty'}</span>
                   </button>
                 </div>
               ) : staffBreakPhase === 'pending' ? (
@@ -3318,6 +3348,13 @@ export default function CarWashAdminHubPage() {
                   </button>
                 </div>
               )}
+
+              {(() => {
+                const sId = selectedStaff?._id || selectedStaff?.id;
+                return sId && !String(sId).startsWith('STF-')
+                  ? <BreakHistoryPanel staffId={sId} refreshKey={staffBreakPhase} />
+                  : null;
+              })()}
             </div>
           )}
 
@@ -3482,6 +3519,11 @@ export default function CarWashAdminHubPage() {
                   ))}
                 </div>
               </div>
+
+              <BreakScheduleFields
+                value={editStaffForm.breakSchedule}
+                onChange={(breakSchedule) => setEditStaffForm(prev => ({ ...prev, breakSchedule }))}
+              />
 
               <div className="pt-2 flex gap-3">
                 <button
