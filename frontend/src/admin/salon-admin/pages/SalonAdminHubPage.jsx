@@ -24,7 +24,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  Coffee
+  Coffee,
+  Search,
+  ShoppingCart,
+  Barcode as BarcodeIcon
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,6 +50,19 @@ import BreakStatusBadge from '../../common/components/BreakStatusBadge';
 import StaffBreaksModal from '../../common/components/StaffBreaksModal';
 import apiClient from '../../../common/utils/apiClient';
 import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
+import SalonProductModal from '../../../salon/components/SalonProductModal';
+import SalonPosModal from '../../../salon/components/SalonPosModal';
+import SalonBillModal from '../../../salon/components/SalonBillModal';
+import BarcodeLabel from '../../../salon/components/BarcodeLabel';
+import {
+  getSalonProducts,
+  createSalonProduct,
+  updateSalonProduct,
+  deleteSalonProduct,
+  getSalonProductSales,
+  adjustSalonProductStock,
+  discountPercent
+} from '../../../salon/services/salonProductApi';
 import {
   getServicesSync,
   saveService,
@@ -86,6 +102,140 @@ export default function SalonAdminHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') || 'services';
   const [activeTab, setActiveTabState] = useState(tabFromUrl);
+
+  // --- Salon retail counter (products, POS, bills) ---
+  const [salonProducts, setSalonProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [posOpen, setPosOpen] = useState(false);
+  const [billSale, setBillSale] = useState(null);
+  const [barcodePreview, setBarcodePreview] = useState(null);
+
+  const [salonSales, setSalonSales] = useState([]);
+  const [salesRange, setSalesRange] = useState('today');
+  const [salesFrom, setSalesFrom] = useState('');
+  const [salesTo, setSalesTo] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+
+  const loadSalonSales = async () => {
+    try {
+      setSalonSales(await getSalonProductSales({ limit: 500 }));
+    } catch (err) {
+      console.warn("Could not load salon counter sales:", err.message);
+    }
+  };
+
+  const loadSalonProducts = async () => {
+    setProductsLoading(true);
+    try {
+      setSalonProducts(await getSalonProducts());
+    } catch (err) {
+      console.warn("Could not load salon products:", err.message);
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSalonProducts(); loadSalonSales(); }, []);
+
+  const handleSaveProduct = async (payload) => {
+    if (editingProduct) {
+      await updateSalonProduct(editingProduct._id, payload);
+    } else {
+      await createSalonProduct(payload);
+    }
+    await loadSalonProducts();
+  };
+
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`Remove "${product.name}" from the product list?`)) return;
+    try {
+      await deleteSalonProduct(product._id);
+      await loadSalonProducts();
+    } catch (err) {
+      window.alert(err?.response?.data?.message || "Could not remove product");
+    }
+  };
+
+  const handleRestock = async (product) => {
+    const input = window.prompt(`Add stock for "${product.name}" (use a negative number to remove)`, "10");
+    if (input === null) return;
+    const delta = Number(input);
+    if (!delta) return;
+    try {
+      await adjustSalonProductStock(product._id, delta);
+      await loadSalonProducts();
+    } catch (err) {
+      window.alert(err?.response?.data?.message || "Could not adjust stock");
+    }
+  };
+
+  const filteredSalonProducts = salonProducts.filter((p) => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [p.name, p.sku, p.barcode, p.category, p.variant, p.brand]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q));
+  });
+
+  // Revenue comes from the bills themselves rather than a running counter, so
+  // voiding a bill corrects the totals without any extra bookkeeping.
+  const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+  const startOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })();
+  const startOfLastMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() - 1, 1); })();
+
+  const sumBetween = (from, to) => salonSales.reduce((sum, sale) => {
+    const t = new Date(sale.createdAt).getTime();
+    if (isNaN(t)) return sum;
+    if (t < from.getTime()) return sum;
+    if (to && t >= to.getTime()) return sum;
+    return sum + (Number(sale.total) || 0);
+  }, 0);
+
+  const posLifetime = salonSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
+  const posToday = sumBetween(startOfToday, null);
+  const posYesterday = sumBetween(startOfYesterday, startOfToday);
+  const posMonth = sumBetween(startOfMonth, null);
+  const posLastMonth = sumBetween(startOfLastMonth, startOfMonth);
+
+  // A percentage against a zero baseline is meaningless, so the badge is
+  // simply omitted rather than showing a fabricated number.
+  const growthPct = (current, previous) => {
+    if (!previous || previous <= 0) return undefined;
+    return Math.round(((current - previous) / previous) * 1000) / 10;
+  };
+
+  const salesInRange = (() => {
+    const now = new Date();
+    let from = null;
+    let to = null;
+    if (salesRange === 'today') from = startOfToday;
+    else if (salesRange === 'week') from = new Date(startOfToday.getTime() - 6 * 86400000);
+    else if (salesRange === 'month') from = startOfMonth;
+    else if (salesRange === 'custom') {
+      if (salesFrom) { from = new Date(salesFrom); from.setHours(0, 0, 0, 0); }
+      if (salesTo) { to = new Date(salesTo); to.setHours(23, 59, 59, 999); }
+    }
+    const q = salesSearch.trim().toLowerCase();
+    return salonSales.filter((sale) => {
+      const t = new Date(sale.createdAt).getTime();
+      if (from && t < from.getTime()) return false;
+      if (to && t > to.getTime()) return false;
+      if (!q) return true;
+      const haystack = [sale.billNo, sale.customerName, sale.customerPhone, sale.paymentMode,
+        ...(sale.items || []).map((i) => i.name)].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  })();
+
+  const rangeTotal = salesInRange.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
+  const rangeItems = salesInRange.reduce((sum, sale) => sum + (sale.items || []).reduce((n, i) => n + (Number(i.quantity) || 0), 0), 0);
+
+  const lowStockCount = salonProducts.filter((p) => Number(p.stock) <= Number(p.lowStockThreshold || 0)).length;
+  const stockValue = salonProducts.reduce((sum, p) => sum + (Number(p.sellPrice) || 0) * (Number(p.stock) || 0), 0);
 
   // Dynamic Salon Services & Time Slots State
   const [salonServices, setSalonServices] = useState(getServicesSync());
@@ -822,10 +972,10 @@ export default function SalonAdminHubPage() {
 
       {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatsCard title="Lifetime Revenue" value={serviceStats.totalRevenue} isCurrency={true} growth={14.2} icon={IndianRupee} iconBg="#fff7ed" iconColor="#e07b2a" />
-        <StatsCard title="Monthly Sales" value={serviceStats.monthlySales} isCurrency={true} growth={10.8} icon={TrendingUp} iconBg="#eff6ff" iconColor="#1e4a7e" />
-        <StatsCard title="Today's Sales" value={serviceStats.todaySales} isCurrency={true} growth={8.5} icon={CalendarCheck} iconBg="#f0fdf4" iconColor="#10b981" />
-        <StatsCard title="Active Salon Services" value={salonServices.length} isCurrency={false} growth={8.4} icon={Scissors} iconBg="#faf5ff" iconColor="#8b5cf6" />
+        <StatsCard title="Lifetime Revenue" value={Math.round(posLifetime)} isCurrency={true} icon={IndianRupee} iconBg="#fff7ed" iconColor="#e07b2a" subtitle={`${salonSales.length} counter bill${salonSales.length === 1 ? "" : "s"}`} />
+        <StatsCard title="Monthly Sales" value={Math.round(posMonth)} isCurrency={true} growth={growthPct(posMonth, posLastMonth)} icon={TrendingUp} iconBg="#eff6ff" iconColor="#1e4a7e" subtitle="vs last month" />
+        <StatsCard title="Today's Sales" value={Math.round(posToday)} isCurrency={true} growth={growthPct(posToday, posYesterday)} icon={CalendarCheck} iconBg="#f0fdf4" iconColor="#10b981" subtitle="vs yesterday" />
+        <StatsCard title="Active Salon Services" value={salonServices.length} isCurrency={false} icon={Scissors} iconBg="#faf5ff" iconColor="#8b5cf6" />
       </div>
 
       {/* Internal Navigation Tabs */}
@@ -837,7 +987,8 @@ export default function SalonAdminHubPage() {
           { id: 'bookings', label: `Service Bookings (${serviceBookings.length})`, icon: CalendarCheck },
           { id: 'staff', label: `Department Staff (${serviceStaff.length})`, icon: Users },
           { id: 'marketing', label: `Promos & Banners (${serviceBanners.length})`, icon: ImageIcon },
-          { id: 'inventory', label: `Supplies & Stock (${serviceInventory.length})`, icon: Package }
+          { id: 'inventory', label: `Supplies & Stock (${salonProducts.length})`, icon: Package },
+          { id: 'possales', label: `Counter Sales (${salonSales.length})`, icon: ShoppingCart }
         ].map((tab) => {
 
           const Icon = tab.icon;
@@ -1297,15 +1448,287 @@ export default function SalonAdminHubPage() {
 
       {/* TAB 6: INVENTORY */}
       {activeTab === 'inventory' && (
-        <DataTable
-          columns={[
-            { header: 'Product Item', accessorKey: 'name' },
-            { header: 'Category', accessorKey: 'category' },
-            { header: 'Stock Level', accessorKey: 'currentStock' },
-            { header: 'Status', accessorKey: 'status' }
-          ]}
-          data={serviceInventory}
-        />
+        <div className="space-y-5">
+          {/* Counter header + actions */}
+          <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Package className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight">Salon Retail Counter</h3>
+                </div>
+                <p className="text-xs text-gray-500 font-medium mt-1">
+                  Products sold over the counter. Stock moves only when a bill is raised here.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => { setEditingProduct(null); setProductModalOpen(true); }}
+                  className="px-4 py-2.5 border border-gray-300 hover:bg-gray-50 active:scale-95 text-gray-800 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Product</span>
+                </button>
+                <button
+                  onClick={() => setPosOpen(true)}
+                  disabled={salonProducts.length === 0}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>New Sale</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-gray-100">
+              {[
+                { label: 'Products', value: salonProducts.length, tone: 'text-gray-900' },
+                { label: 'In Stock', value: salonProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0), tone: 'text-gray-900' },
+                { label: 'Low Stock', value: lowStockCount, tone: lowStockCount > 0 ? 'text-rose-600' : 'text-gray-900' },
+                { label: 'Stock Value', value: `₹${Math.round(stockValue).toLocaleString('en-IN')}`, tone: 'text-emerald-600' }
+              ].map((card) => (
+                <div key={card.label} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{card.label}</p>
+                  <p className={`text-lg font-black ${card.tone}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Search by name, SKU, barcode, brand or category..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400/60"
+              />
+            </div>
+          </div>
+
+          {/* Product list */}
+          {productsLoading && (
+            <p className="text-center text-xs font-bold text-gray-400 py-10">Loading products...</p>
+          )}
+
+          {!productsLoading && filteredSalonProducts.length === 0 && (
+            <div className="bg-white border border-gray-200/90 rounded-2xl py-16 text-center">
+              <Package className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm font-black text-gray-900">
+                {salonProducts.length === 0 ? 'No products yet' : 'No products match that search'}
+              </p>
+              <p className="text-xs text-gray-500 font-medium mt-1">
+                {salonProducts.length === 0
+                  ? 'Add your first retail product to start billing at the counter.'
+                  : 'Try a different name, SKU or barcode.'}
+              </p>
+            </div>
+          )}
+
+          {!productsLoading && filteredSalonProducts.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredSalonProducts.map((p) => {
+                const off = discountPercent(p.mrp, p.sellPrice);
+                const low = Number(p.stock) <= Number(p.lowStockThreshold || 0);
+                return (
+                  <div key={p._id} className="bg-white border border-gray-200/90 rounded-2xl p-4 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-gray-900 truncate">{p.name}</p>
+                        <p className="text-[11px] font-semibold text-gray-500 truncate">
+                          {[p.variant, p.brand, p.category].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black ${low ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {p.stock} {p.unit || 'pc'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-end gap-2">
+                      <span className="text-lg font-black text-gray-900">₹{p.sellPrice}</span>
+                      {off > 0 && (
+                        <>
+                          <span className="text-xs font-bold text-gray-400 line-through mb-0.5">₹{p.mrp}</span>
+                          <span className="text-[11px] font-black text-emerald-600 mb-0.5">{off}% off</span>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <code className="text-[10px] font-bold text-gray-400 truncate">{p.barcode || p.sku}</code>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => setBarcodePreview(p)} title="Barcode"
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                          <BarcodeIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleRestock(p)} title="Adjust stock"
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => { setEditingProduct(p); setProductModalOpen(true); }} title="Edit"
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteProduct(p)} title="Remove"
+                          className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'possales' && (
+        <div className="space-y-5">
+          <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight">Counter Sales</h3>
+                </div>
+                <p className="text-xs text-gray-500 font-medium mt-1">
+                  Every retail bill raised at the salon counter. Click a bill to reprint it.
+                </p>
+              </div>
+              <button
+                onClick={() => setPosOpen(true)}
+                disabled={salonProducts.length === 0}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50 shrink-0"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>New Sale</span>
+              </button>
+            </div>
+
+            {/* Range filter */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
+              {[
+                { id: 'today', label: 'Today' },
+                { id: 'week', label: 'Last 7 Days' },
+                { id: 'month', label: 'This Month' },
+                { id: 'all', label: 'All Time' },
+                { id: 'custom', label: 'Custom' }
+              ].map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => setSalesRange(r.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                    salesRange === r.id
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            {salesRange === 'custom' && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wide text-gray-500 mb-1">From</label>
+                  <input type="date" value={salesFrom} onChange={(e) => setSalesFrom(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wide text-gray-500 mb-1">To</label>
+                  <input type="date" value={salesTo} onChange={(e) => setSalesTo(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold" />
+                </div>
+              </div>
+            )}
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={salesSearch}
+                onChange={(e) => setSalesSearch(e.target.value)}
+                placeholder="Search by bill no, customer, phone, product or payment mode..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400/60"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Bills', value: salesInRange.length },
+                { label: 'Items Sold', value: rangeItems },
+                { label: 'Revenue', value: `₹${Math.round(rangeTotal).toLocaleString('en-IN')}`, tone: 'text-emerald-600' }
+              ].map((c) => (
+                <div key={c.label} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{c.label}</p>
+                  <p className={`text-lg font-black ${c.tone || 'text-gray-900'}`}>{c.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {salesInRange.length === 0 ? (
+            <div className="bg-white border border-gray-200/90 rounded-2xl py-16 text-center">
+              <ShoppingCart className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm font-black text-gray-900">No sales in this period</p>
+              <p className="text-xs text-gray-500 font-medium mt-1">
+                {salonSales.length === 0 ? 'Raise your first counter bill to see it here.' : 'Try a wider date range.'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200/90 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {['Bill No', 'Date', 'Customer', 'Items', 'Payment', 'Total', ''].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-wide text-gray-500">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {salesInRange.map((sale) => (
+                      <tr key={sale._id} className="hover:bg-amber-50/40 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black text-gray-900">{sale.billNo}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap">
+                          {new Date(sale.createdAt).toLocaleString('en-IN', {
+                            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
+                          })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-bold text-gray-900">{sale.customerName || 'Walk-in'}</span>
+                          {sale.customerPhone && (
+                            <span className="block text-[10px] font-semibold text-gray-400">{sale.customerPhone}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-semibold text-gray-600">
+                          {(sale.items || []).reduce((n, i) => n + (Number(i.quantity) || 0), 0)}
+                          <span className="text-gray-400"> · {(sale.items || []).length} line{(sale.items || []).length === 1 ? '' : 's'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] font-black text-gray-600">{sale.paymentMode}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-black text-gray-900 whitespace-nowrap">
+                          ₹{Number(sale.total).toLocaleString('en-IN')}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setBillSale(sale)}
+                            className="px-3 py-1.5 rounded-lg border border-gray-300 text-[11px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                          >
+                            View Bill
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* TAB: TIME SLOTS */}
@@ -2417,6 +2840,38 @@ export default function SalonAdminHubPage() {
           </div>
         </form>
       </AdminModal>
+
+      {/* Salon retail counter modals */}
+      <SalonProductModal
+        open={productModalOpen}
+        product={editingProduct}
+        onClose={() => { setProductModalOpen(false); setEditingProduct(null); }}
+        onSave={handleSaveProduct}
+      />
+
+      <SalonPosModal
+        open={posOpen}
+        products={salonProducts}
+        onClose={() => setPosOpen(false)}
+        onSold={(sale) => { setPosOpen(false); setBillSale(sale); loadSalonProducts(); loadSalonSales(); }}
+      />
+
+      <SalonBillModal
+        open={Boolean(billSale)}
+        sale={billSale}
+        onClose={() => setBillSale(null)}
+      />
+
+      {barcodePreview && (
+        <div className="fixed inset-0 z-[94] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4" onClick={() => setBarcodePreview(null)}>
+          <div className="bg-white rounded-2xl p-6 max-w-xs w-full text-center" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-black text-gray-900">{barcodePreview.name}</p>
+            <p className="text-[11px] font-semibold text-gray-500 mb-3">{barcodePreview.variant}</p>
+            <BarcodeLabel value={barcodePreview.barcode || barcodePreview.sku} />
+            <button onClick={() => setBarcodePreview(null)} className="mt-4 w-full px-4 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useStaff } from '../common/context/StaffContext';
+import {
+  issueWarranty,
+  previewExpiry,
+  formatWarrantyDate,
+  getWarrantyPeriods,
+  createWarrantyPeriod,
+  deleteWarrantyPeriod
+} from '../../car-detailing/services/warrantyApi';
 import { Receipt, Plus, Trash2, Printer, Tag, Sparkles, CheckCircle2, ShieldCheck, Calculator, X, Loader2, Check, Copy } from 'lucide-react';
 import serviceApi from '../../common/services/serviceApi';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
@@ -172,6 +180,57 @@ export default function StaffInvoicingPage() {
     return initial.length > 0 ? initial : [];
   });
   const [selectedServiceId, setSelectedServiceId] = useState('');
+
+  // Detailing work (ceramic, PPF, paint correction) is sold with a warranty.
+  // No other department issues one, so this stays switched off for them.
+  const isDetailing = currentDeptKey === 'car-detailing';
+  const [warrantyYears, setWarrantyYears] = useState(0);
+  const [warrantyNote, setWarrantyNote] = useState('');
+  const [warrantyPeriods, setWarrantyPeriods] = useState([]);
+  const [managingPeriods, setManagingPeriods] = useState(false);
+  const [newPeriod, setNewPeriod] = useState('');
+  const [periodError, setPeriodError] = useState('');
+
+  const loadWarrantyPeriods = useCallback(async () => {
+    try {
+      setWarrantyPeriods(await getWarrantyPeriods());
+    } catch (err) {
+      console.warn('Could not load warranty periods:', err.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isDetailing) loadWarrantyPeriods();
+  }, [isDetailing, loadWarrantyPeriods]);
+
+  const handleAddPeriod = async () => {
+    const years = Number(newPeriod);
+    if (!Number.isFinite(years) || years <= 0) {
+      setPeriodError('Enter a number of years, e.g. 15 or 0.5');
+      return;
+    }
+    setPeriodError('');
+    try {
+      await createWarrantyPeriod(years);
+      setNewPeriod('');
+      await loadWarrantyPeriods();
+    } catch (err) {
+      setPeriodError(err?.response?.data?.message || 'Could not add that period');
+    }
+  };
+
+  const handleRemovePeriod = async (period) => {
+    setPeriodError('');
+    try {
+      await deleteWarrantyPeriod(period._id);
+      // Deselect it if it was the chosen cover, so the invoice cannot be
+      // issued against an option that is no longer offered.
+      if (warrantyYears === period.years) setWarrantyYears(0);
+      await loadWarrantyPeriods();
+    } catch (err) {
+      setPeriodError(err?.response?.data?.message || 'Could not remove that period');
+    }
+  };
   const [items, setItems] = useState([]);
 
   // Sync services from live MongoDB backend and cache
@@ -568,7 +627,7 @@ export default function StaffInvoicingPage() {
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
-  const handleCreateInvoice = (e) => {
+  const handleCreateInvoice = async (e) => {
     e.preventDefault();
     if (items.length === 0) {
       showToast?.('Please add at least one line item to generate an invoice', 'error');
@@ -605,6 +664,32 @@ export default function StaffInvoicingPage() {
       pan: calcSettings?.pan || 'AABCT8742L',
       registeredAddress: calcSettings?.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'
     };
+    // The warranty is persisted, not just printed: the customer has to be able
+    // to produce it years later, long after this invoice is gone from screen.
+    if (isDetailing && warrantyYears > 0) {
+      try {
+        const warranty = await issueWarranty({
+          sourceType: 'invoice',
+          sourceId: inv.id,
+          customerName: inv.customerName,
+          customerPhone: inv.phone,
+          customerEmail: currentCust?.email || '',
+          vehicleNo: inv.vehicleNo,
+          vehicleModel: currentCust?.vehicles?.[0]?.model || '',
+          packageName: items.map((i) => i.name).join(', '),
+          years: warrantyYears,
+          amountPaid: grandTotal,
+          issuedBy: currentStaff?.name || '',
+          notes: warrantyNote
+        });
+        inv.warranty = warranty;
+        showToast?.(`🛡️ Warranty ${warranty.warrantyNo} issued — valid to ${formatWarrantyDate(warranty.expiryDate)}`, 'success');
+      } catch (err) {
+        // The sale itself is still valid; say plainly that the warranty is not.
+        showToast?.(err?.response?.data?.message || 'Invoice created, but the warranty could not be issued', 'error');
+      }
+    }
+
     setGeneratedInvoice(inv);
     showToast?.(`✅ Invoice ${inv.id} Generated (${includeGst ? `With ${deptGstRate}% GST` : 'Without GST'})!`, 'success');
   };
@@ -800,6 +885,100 @@ export default function StaffInvoicingPage() {
             </button>
           </div>
         </div>
+
+        {/* Warranty — car detailing only */}
+        {isDetailing && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-black text-amber-900 uppercase tracking-wide">Detailing Warranty</label>
+              {warrantyYears > 0 && (
+                <span className="text-[11px] font-black text-emerald-700">
+                  Valid to {formatWarrantyDate(previewExpiry(new Date(), warrantyYears))}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setWarrantyYears(0)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  warrantyYears === 0 ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                No Warranty
+              </button>
+              {warrantyPeriods.map((w) => (
+                <span key={w._id} className="relative inline-flex">
+                  <button
+                    type="button"
+                    onClick={() => setWarrantyYears(w.years)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                      warrantyYears === w.years ? 'bg-amber-500 text-white border-amber-500 shadow-xs' : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50'
+                    }`}
+                  >
+                    {w.label}
+                  </button>
+                  {managingPeriods && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePeriod(w)}
+                      title={`Remove ${w.label}`}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center shadow-sm hover:bg-rose-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+
+            {/* Manage the list of offered periods */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { setManagingPeriods((v) => !v); setPeriodError(''); }}
+                className="text-[10px] font-black uppercase tracking-wide text-gray-500 hover:text-gray-700"
+              >
+                {managingPeriods ? 'Done' : 'Edit Periods'}
+              </button>
+              {managingPeriods && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={newPeriod}
+                    onChange={(e) => setNewPeriod(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPeriod(); } }}
+                    placeholder="Years"
+                    className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-[11px] font-bold focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddPeriod}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold"
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
+            </div>
+            {periodError && <p className="text-[10px] font-bold text-rose-600">{periodError}</p>}
+            {warrantyYears > 0 && (
+              <>
+                <input
+                  value={warrantyNote}
+                  onChange={(e) => setWarrantyNote(e.target.value)}
+                  placeholder="Warranty note (coating type, coverage, conditions)"
+                  className="w-full px-3 py-2 rounded-lg border border-amber-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                />
+                <p className="text-[11px] font-semibold text-amber-800">
+                  Cover starts today and runs for {warrantyPeriods.find((w) => w.years === warrantyYears)?.label || `${warrantyYears} years`}. A warranty number is issued when you generate the invoice.
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* GST Billing Mode Selector Toggle */}
         <div>
@@ -1033,6 +1212,32 @@ export default function StaffInvoicingPage() {
               <span className="text-amber-700">₹{generatedInvoice.total.toFixed(2)}</span>
             </div>
           </div>
+
+          {/* Warranty certificate block — only present on detailing invoices */}
+          {generatedInvoice.warranty && (
+            <div className="rounded-xl border-2 border-dashed border-amber-400 bg-amber-50/60 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wide text-amber-900">Warranty Certificate</span>
+                <span className="text-[11px] font-black text-amber-900">{generatedInvoice.warranty.warrantyNo}</span>
+              </div>
+              <div className="flex justify-between text-[11px] font-semibold text-gray-700">
+                <span>Cover Period:</span>
+                <span className="font-black text-gray-900">{generatedInvoice.warranty.years} year{generatedInvoice.warranty.years === 1 ? '' : 's'}</span>
+              </div>
+              <div className="flex justify-between text-[11px] font-semibold text-gray-700">
+                <span>Starts:</span>
+                <span className="font-bold">{formatWarrantyDate(generatedInvoice.warranty.startDate)}</span>
+              </div>
+              <div className="flex justify-between text-[11px] font-semibold text-gray-700">
+                <span>Valid Until:</span>
+                <span className="font-black text-emerald-700">{formatWarrantyDate(generatedInvoice.warranty.expiryDate)}</span>
+              </div>
+              {generatedInvoice.warranty.notes && (
+                <p className="text-[10px] font-semibold text-gray-500 pt-1 border-t border-amber-200">{generatedInvoice.warranty.notes}</p>
+              )}
+              <p className="text-[10px] text-gray-500 pt-1">Quote this number with your vehicle registration to claim.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
             {/* Send via WhatsApp Button */}

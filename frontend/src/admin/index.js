@@ -17,6 +17,7 @@ export { default as RevenueReportsPage } from './pages/RevenueReportsPage';
 export { default as OffersCouponsPage } from './pages/OffersCouponsPage';
 export { default as AdminSettingsPage } from './pages/AdminSettingsPage';
 export { default as ManageOfflineSalesPage } from './pages/ManageOfflineSalesPage';
+export { default as ManageExpensesPage } from './pages/ManageExpensesPage';
 export { default as AdminCalculationSettingsPage } from './pages/AdminCalculationSettingsPage';
 export { default as ServiceModulePage } from './pages/ServiceModulePage';
 export { default as AdminNotificationsPage } from './pages/AdminNotificationsPage';
