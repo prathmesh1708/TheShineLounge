@@ -85,6 +85,9 @@ const todayBreakSummaries = async (staffList, now) => {
     const live = liveBreakFields(stf, now);
     result.set(String(stf._id), {
       overtimeSeconds: live.overtimeSeconds,
+      // The live part on its own, so a ticking client can add its own clock
+      // to the finished total without counting this snapshot twice.
+      liveOvertimeSeconds: live.overtimeSeconds,
       completedCount: 0,
       missedCount: 0
     });
