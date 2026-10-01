@@ -15,8 +15,9 @@ import {
   normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
-import { getSaleDate, parseSaleDate, toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
+import { toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
+import { isTransactionPaid, getBookingDate, buildRevenueTrend, buildServiceRevenue, buildPaymentModes } from '../utils/dashboardStats';
 
 const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -1081,30 +1082,12 @@ export const AdminProvider = ({ children }) => {
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
 
-    const getBookingDate = (b) => {
-      if (!b) return null;
-      return getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
-    };
-
     const isSameDay = (d1, d2) => {
       if (!d1 || !d2) return false;
       return (
         d1.getFullYear() === d2.getFullYear() &&
         d1.getMonth() === d2.getMonth() &&
         d1.getDate() === d2.getDate()
-      );
-    };
-
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
       );
     };
 
@@ -1151,132 +1134,13 @@ export const AdminProvider = ({ children }) => {
     });
   }, [bookings, inventory, customers, staffList, memberships]);
 
-  // Dynamic 12-Month Revenue Trend calculated from real bookings
-  const dynamicRevenueTrendData = React.useMemo(() => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentYear = new Date().getFullYear();
-    const map = {};
-    monthNames.forEach(m => {
-      map[m] = { month: m, revenue: 0, bookings: 0 };
-    });
-
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const d = getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
-      if (!d || isNaN(d.getTime())) return;
-      if (d.getFullYear() === currentYear) {
-        const mName = monthNames[d.getMonth()];
-        if (map[mName]) {
-          const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-          map[mName].revenue += amt;
-          map[mName].bookings += 1;
-        }
-      }
-    });
-
-    return Object.values(map);
-  }, [bookings]);
-
-  // Dynamic Service-wise Revenue Distribution
-  const dynamicServiceRevenueData = React.useMemo(() => {
-    const colorMap = {
-      'car-wash': '#e07b2a',
-      'car-detailing': '#1e4a7e',
-      'cafe': '#f59e0b',
-      'drive-through-cafe': '#3b82f6',
-      'dog-wash': '#10b981',
-      'salon': '#8b5cf6'
-    };
-    const titleMap = {
-      'car-wash': 'Car Wash',
-      'car-detailing': 'Car Detailing',
-      'cafe': 'Café',
-      'drive-through-cafe': 'Drive-Through Café',
-      'dog-wash': 'Dog Bath',
-      'salon': "Men's Salon"
-    };
-
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    const map = {};
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const key = b.serviceKey || (b.category ? String(b.category).toLowerCase().replace(/\s+/g, '-') : 'car-wash');
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      if (!map[key]) {
-        map[key] = {
-          name: titleMap[key] || b.service || b.serviceName || key,
-          value: 0,
-          color: colorMap[key] || '#6366f1'
-        };
-      }
-      map[key].value += amt;
-    });
-
-    const activeList = Object.values(map).filter(item => item.value > 0);
-    return activeList.length > 0 ? activeList : [
-      { name: 'Car Wash', value: 0, color: '#e07b2a' },
-      { name: 'Car Detailing', value: 0, color: '#1e4a7e' }
-    ];
-  }, [bookings]);
-
-  // Dynamic Payment Mode Distribution
-  const dynamicPaymentModeData = React.useMemo(() => {
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    const map = {};
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const mode = b.paymentMode || 'Cash';
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      if (!map[mode]) {
-        map[mode] = { mode, amount: 0, count: 0 };
-      }
-      map[mode].amount += amt;
-      map[mode].count += 1;
-    });
-
-    const result = Object.values(map);
-    return result.length > 0 ? result : [
-      { mode: 'UPI', amount: 0, count: 0 },
-      { mode: 'Cash', amount: 0, count: 0 }
-    ];
-  }, [bookings]);
+  // Dashboard charts; the same rules back the Global Dashboard's month filter.
+  const dynamicRevenueTrendData = React.useMemo(
+    () => buildRevenueTrend(bookings, new Date().getFullYear()),
+    [bookings]
+  );
+  const dynamicServiceRevenueData = React.useMemo(() => buildServiceRevenue(bookings), [bookings]);
+  const dynamicPaymentModeData = React.useMemo(() => buildPaymentModes(bookings), [bookings]);
 
 
   // --- CRUD ACTIONS ---
