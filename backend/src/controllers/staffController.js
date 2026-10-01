@@ -1,7 +1,11 @@
 const Staff = require('../models/Staff');
 const User = require('../models/User');
+const BreakLog = require('../models/BreakLog');
 const payroll = require('../services/payroll');
+const staffBreaks = require('../services/staffBreaks');
 const { parseSalaryText, formatSalaryText } = require('../utils/salaryAmount');
+const { normalizeBreakSchedule } = require('../utils/breakSchedule');
+const { dayKey } = require('../utils/siteTime');
 
 // Staff accounts may read the roster (e.g. to hand jobs over) but never another
 // person's pay. Their own salary is served only by /api/salary/me.
@@ -45,63 +49,32 @@ const buildStaffSearch = (idParam, reqUser) => {
   return { $or: conditions };
 };
 
-// Derive authoritative break status
-const resolveBreakStatus = (staff) => {
-  if (staff.breakStatus === 'pending' && !staff.isOnBreak) return 'pending';
-  if (staff.isOnBreak || staff.breakStatus === 'active') {
-    if (staff.breakEndTime && new Date(staff.breakEndTime) <= new Date()) {
-      return 'idle';
-    }
-    return 'active';
-  }
-  return staff.breakStatus === 'pending' ? 'pending' : 'idle';
+// Break-lifecycle rules live in services/staffBreaks so the scheduler and this
+// controller record breaks identically.
+const { resolveBreakStatus, liveBreakFields } = staffBreaks;
+
+const isAdminRole = (user) => ['admin', 'superadmin', 'manager'].includes(String(user?.role || '').toLowerCase());
+
+// Who may drive someone else's break. Narrower than canManageStaff on purpose:
+// 'orders'/'bookings' are default permissions for ordinary staff, and break
+// records now feed overtime reports, so only admins and real department
+// managers (explicit 'staff' permission or a management department) qualify.
+const canManageBreaks = (user) => {
+  if (isAdminRole(user)) return true;
+  const dept = String(user?.department || '').toLowerCase();
+  return String(user?.role || '').toLowerCase() === 'staff' && (
+    user.permissions?.includes('staff') || dept === 'management' || dept === 'manager'
+  );
 };
 
-// Logs the active break into breakHistory and resets the staff member to idle
-const closeActiveBreak = (staff, { endTime = new Date(), endedBy = 'admin', completedNaturally = true } = {}) => {
-  if (staff.breakStartTime && Array.isArray(staff.breakHistory)) {
-    staff.breakHistory.push({
-      startTime: staff.breakStartTime,
-      endTime,
-      duration: Math.round((new Date(endTime).getTime() - new Date(staff.breakStartTime).getTime()) / 60000),
-      reason: staff.breakReason || 'Rest / Lunch Break',
-      startedBy: 'admin',
-      endedBy,
-      completedNaturally
-    });
-  }
-  staff.breakStatus = 'idle';
-  staff.isOnBreak = false;
-  staff.breakStartTime = null;
-  staff.breakEndTime = null;
+const isSelf = (staff, user) => {
+  if (!staff || !user) return false;
+  if (user._id && String(staff._id) === String(user._id)) return true;
+  return !!user.email && staff.email === String(user.email).toLowerCase().trim();
 };
 
-// Returns true if an active break had run out and was closed
-const expireFinishedBreak = (staff, now = new Date()) => {
-  if ((staff.isOnBreak || staff.breakStatus === 'active') && staff.breakEndTime && new Date(staff.breakEndTime) <= now) {
-    closeActiveBreak(staff, { endTime: staff.breakEndTime, endedBy: 'system_timer', completedNaturally: true });
-    return true;
-  }
-  return false;
-};
-
-const notifyStaffAboutBreak = async (staff, { title, message, priority }) => {
-  try {
-    const Notification = require('../models/Notification');
-    await Notification.create({
-      title,
-      message,
-      recipientType: 'staff',
-      targetUserId: staff._id,
-      serviceKey: staff.serviceKey || 'car-wash',
-      category: 'service_update',
-      priority,
-      actionUrl: '/staff/dashboard'
-    });
-  } catch (err) {
-    console.warn('Failed to insert break notification:', err);
-  }
-};
+// Ending your own break counts as 'staff' even for a manager.
+const endedByFor = (staff, user) => (isSelf(staff, user) ? 'staff' : 'admin');
 
 // @desc    Get all staff members
 // @route   GET /api/staff
@@ -120,16 +93,9 @@ const getStaffList = async (req, res) => {
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
 
-    // Auto-expire any finished breaks in MongoDB
-    const now = new Date();
-    const updatedStaff = await Promise.all(
-      staffList.map(async (stf) => {
-        if (expireFinishedBreak(stf, now)) {
-          await stf.save().catch(() => {});
-        }
-        return stf;
-      })
-    );
+    // Breaks are no longer closed when their time runs out: an overdue break
+    // stays active so its overtime can be measured when the staff ends it.
+    const updatedStaff = staffList;
 
     res.status(200).json({
       success: true,
@@ -167,11 +133,6 @@ const getStaffById = async (req, res) => {
         success: false,
         message: 'Staff member not found'
       });
-    }
-
-    // Auto-expire break if time elapsed
-    if (expireFinishedBreak(staff)) {
-      await staff.save().catch(() => {});
     }
 
     res.status(200).json({
@@ -557,39 +518,48 @@ const resetStaffPassword = async (req, res) => {
   }
 };
 
-// @desc    Drive the staff break lifecycle: assign -> start -> end (or cancel while pending)
+// Loads the staff a break request targets and applies the ownership rule:
+// ordinary staff may only touch their own record. Sends the error response and
+// returns null when the request must stop.
+const loadBreakTarget = async (req, res) => {
+  const search = buildStaffSearch(req.params.id, req.user);
+  const staff = await Staff.findOne({ ...search, isDeleted: { $ne: true } });
+  if (!staff) {
+    res.status(404).json({ success: false, message: 'Staff member not found' });
+    return null;
+  }
+  if (!canManageBreaks(req.user) && !isSelf(staff, req.user)) {
+    res.status(403).json({ success: false, message: 'You can only view or change your own break.' });
+    return null;
+  }
+  return staff;
+};
+
+const SELF_SERVICE_BREAK_ACTIONS = new Set(['start', 'start_active', 'end', 'complete']);
+
+// @desc    Drive the staff break lifecycle: assign -> start -> end (or cancel)
 // @route   POST /api/staff/:id/break
-// @access  Private (Admin or Staff)
+// @access  Private (Staff: own start/end only; Admin/manager: everything)
 const updateStaffBreak = async (req, res) => {
   try {
-    const { action, duration = 30, reason = 'Rest / Lunch Break' } = req.body;
-    const search = buildStaffSearch(req.params.id, req.user);
-    let staff = await Staff.findOne(search);
+    const { action, duration = 30, reason = staffBreaks.DEFAULT_REASON } = req.body;
 
-    if (!staff) {
-      return res.status(404).json({ success: false, message: 'Staff member not found' });
+    if (!canManageBreaks(req.user) && !SELF_SERVICE_BREAK_ACTIONS.has(action)) {
+      return res.status(403).json({ success: false, message: 'Only an admin or manager can assign or cancel breaks.' });
     }
+
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
 
     const now = new Date();
-    if (expireFinishedBreak(staff, now)) {
-      await staff.save();
-    }
     const currentStatus = resolveBreakStatus(staff);
 
     if (action === 'assign' || action === 'request') {
-      const durationNum = Number(duration) || 30;
-      staff.breakStatus = 'pending';
-      staff.isOnBreak = false;
-      staff.breakDuration = durationNum;
-      staff.breakReason = reason || 'Rest / Lunch Break';
-      staff.breakStartTime = null;
-      staff.breakEndTime = null;
-      await staff.save();
-
-      await notifyStaffAboutBreak(staff, {
-        title: `☕ ${durationNum}-Minute Break Assigned`,
-        message: `Admin has assigned you a ${durationNum}-minute break (${staff.breakReason}). Open the app and tap Start when you are ready.`,
-        priority: 'high'
+      const { durationNum } = await staffBreaks.assignManualBreak(staff, {
+        duration,
+        reason,
+        now,
+        endedBy: endedByFor(staff, req.user)
       });
 
       return res.status(200).json({
@@ -601,15 +571,20 @@ const updateStaffBreak = async (req, res) => {
     }
 
     if (action === 'start' || action === 'start_active') {
-      const durationNum = Number(staff.breakDuration) || Number(duration) || 30;
-      const breakReasonStr = staff.breakReason || reason || 'Rest / Lunch Break';
-      staff.breakStatus = 'active';
-      staff.isOnBreak = true;
-      staff.breakDuration = durationNum;
-      staff.breakReason = breakReasonStr;
-      staff.breakStartTime = now;
-      staff.breakEndTime = new Date(now.getTime() + durationNum * 60 * 1000);
-      await staff.save();
+      if (currentStatus === 'active') {
+        // Starting twice (double tap, two tabs) must not reset the clock.
+        return res.status(200).json({
+          success: true,
+          message: 'Break is already running.',
+          breakStatus: 'active',
+          staff: forClient(req, staff)
+        });
+      }
+      if (currentStatus !== 'pending') {
+        return res.status(409).json({ success: false, message: 'There is no assigned break to start.' });
+      }
+
+      const { durationNum } = await staffBreaks.startBreak(staff, { now });
 
       return res.status(200).json({
         success: true,
@@ -619,55 +594,59 @@ const updateStaffBreak = async (req, res) => {
       });
     }
 
-    if (action === 'cancel') {
-      if (currentStatus === 'active') {
-        closeActiveBreak(staff, {
-          endTime: now,
-          endedBy: req.user?.role || 'admin',
-          completedNaturally: false
-        });
-      } else {
-        staff.breakStatus = 'idle';
-        staff.isOnBreak = false;
-        staff.breakStartTime = null;
-        staff.breakEndTime = null;
-      }
-      await staff.save();
+    // An admin pressing "End" on a break the staff never started means "call
+    // it off" — the old controller treated it that way too.
+    const isAdminEndOfPending = (action === 'end' || action === 'complete')
+      && currentStatus === 'pending' && canManageBreaks(req.user);
 
-      await notifyStaffAboutBreak(staff, {
+    if (action === 'cancel' || isAdminEndOfPending) {
+      const result = await staffBreaks.cancelBreak(staff, { now, endedBy: endedByFor(staff, req.user) });
+
+      await staffBreaks.notifyStaff(staff, {
         title: '❌ Break Request Revoked',
         message: 'Your assigned break has been cancelled by admin. Please continue with your duties.',
-        priority: 'high'
+        priority: 'high',
+        data: { type: 'break_cancelled' }
       });
 
       return res.status(200).json({
         success: true,
         message: `Break request for ${staff.fullName} cancelled.`,
         breakStatus: 'idle',
+        overtimeSeconds: result.overtimeSeconds,
+        actualSeconds: result.actualSeconds,
         staff: forClient(req, staff)
       });
     }
 
     if (action === 'end' || action === 'complete') {
-      closeActiveBreak(staff, {
-        endTime: now,
-        endedBy: req.user?.role || 'staff',
-        completedNaturally: action === 'complete'
-      });
-      await staff.save();
-
-      if (currentStatus === 'active') {
-        await notifyStaffAboutBreak(staff, {
-          title: '⏰ Break Completed',
-          message: 'Your break is over. Please return to your workstation.',
-          priority: 'urgent'
-        });
+      if (currentStatus !== 'active') {
+        return res.status(409).json({ success: false, message: 'There is no running break to end.' });
       }
+
+      const allowedMinutes = Number(staff.breakDuration) || 0;
+      const { actualSeconds, overtimeSeconds } = await staffBreaks.endActiveBreak(staff, {
+        now,
+        endedBy: endedByFor(staff, req.user),
+        completedNaturally: true
+      });
+
+      await staffBreaks.notifyStaff(staff, {
+        title: '⏰ Break Completed',
+        message: overtimeSeconds > 0
+          ? `Your break ran ${Math.ceil(overtimeSeconds / 60)} min over. Please return to your workstation.`
+          : 'Your break is over. Please return to your workstation.',
+        priority: 'urgent',
+        data: { type: 'break_completed' }
+      });
 
       return res.status(200).json({
         success: true,
         message: `Break ended for ${staff.fullName}. Status reset to active.`,
         breakStatus: 'idle',
+        actualSeconds,
+        overtimeSeconds,
+        allowedMinutes,
         staff: forClient(req, staff)
       });
     }
@@ -681,37 +660,40 @@ const updateStaffBreak = async (req, res) => {
   }
 };
 
-// @desc    Get staff break status
+// @desc    Get staff break status (plus today's breaks and the schedule)
 // @route   GET /api/staff/:id/break
-// @access  Private (Staff/Admin)
+// @access  Private (Staff: own only; Admin/manager)
 const getStaffBreakStatus = async (req, res) => {
   try {
-    const search = buildStaffSearch(req.params.id, req.user);
-    let staff = await Staff.findOne(search);
-
-    if (!staff) {
-      return res.status(404).json({ success: false, message: 'Staff member not found' });
-    }
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
 
     const now = new Date();
-    if (expireFinishedBreak(staff, now)) {
-      await staff.save();
-    }
+    const live = liveBreakFields(staff, now);
 
-    const breakStatus = resolveBreakStatus(staff);
-    const remainingSeconds = breakStatus === 'active' && staff.breakEndTime
-      ? Math.max(0, Math.floor((new Date(staff.breakEndTime).getTime() - now.getTime()) / 1000))
-      : 0;
+    const [currentLog, todayLogs] = await Promise.all([
+      staff.currentBreakLogId ? BreakLog.findById(staff.currentBreakLogId).lean() : null,
+      BreakLog.find({ staff: staff._id, date: dayKey(now) }).sort({ createdAt: 1 }).lean()
+    ]);
 
     res.status(200).json({
       success: true,
-      breakStatus,
-      isOnBreak: breakStatus === 'active',
+      breakStatus: live.breakStatus,
+      isOnBreak: live.breakStatus === 'active',
       breakStartTime: staff.breakStartTime,
       breakEndTime: staff.breakEndTime,
       breakDuration: staff.breakDuration,
       breakReason: staff.breakReason,
-      remainingSeconds,
+      remainingSeconds: live.remainingSeconds,
+      isOvertime: live.isOvertime,
+      overtimeSeconds: live.overtimeSeconds,
+      currentSlot: staff.currentBreakSlot ?? null,
+      label: currentLog?.label || staff.breakReason,
+      scheduledTime: currentLog?.scheduledTime || '',
+      source: currentLog?.source || null,
+      breakSchedule: staff.breakSchedule || [],
+      todayLogs,
+      serverNow: now.toISOString(),
       staff: forClient(req, staff)
     });
   } catch (error) {
