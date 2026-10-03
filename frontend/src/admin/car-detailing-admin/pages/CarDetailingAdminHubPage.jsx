@@ -452,7 +452,7 @@ export default function CarDetailingAdminHubPage() {
     mobile: '',
     staffRole: 'Detailing Specialist',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings'],
     breakSchedule: DEFAULT_BREAK_SCHEDULE
@@ -469,7 +469,7 @@ export default function CarDetailingAdminHubPage() {
     mobile: '',
     staffRole: 'Detailing Specialist',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: '',
     permissions: []
   });
@@ -533,7 +533,7 @@ export default function CarDetailingAdminHubPage() {
       staffRole: staffForm.staffRole || 'Detailing Specialist',
       role: 'staff',
       salary: staffForm.salary,
-      leaveBalance: Number(staffForm.leaveBalance || 12),
+      leaveBalance: Number(staffForm.leaveBalance || 0),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
       permissions: staffForm.permissions || ['bookings'],
       breakSchedule: staffForm.breakSchedule,
@@ -567,7 +567,7 @@ export default function CarDetailingAdminHubPage() {
       mobile: '',
       staffRole: 'Detailing Specialist',
       salary: '',
-      leaveBalance: 12,
+      leaveBalance: 0,
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings'],
       breakSchedule: DEFAULT_BREAK_SCHEDULE
@@ -583,7 +583,7 @@ export default function CarDetailingAdminHubPage() {
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Detailing Specialist',
       salary: stf.monthlySalary || '',
-      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 0,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
     });
@@ -2133,7 +2133,7 @@ export default function CarDetailingAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
               <input
                 type="number"
                 value={staffForm.leaveBalance}
@@ -2325,7 +2325,7 @@ export default function CarDetailingAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
                   <input
                     type="number"
                     value={editStaffForm.leaveBalance}

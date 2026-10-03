@@ -226,7 +226,7 @@ export default function CafeAdminHubPage() {
     mobile: '',
     staffRole: 'Cafe Barista',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: '',
     permissions: ['bookings', 'orders'],
     breakSchedule: DEFAULT_BREAK_SCHEDULE
@@ -246,7 +246,7 @@ export default function CafeAdminHubPage() {
     mobile: '',
     staffRole: 'Cafe Barista',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: '',
     permissions: []
   });
@@ -459,7 +459,7 @@ export default function CafeAdminHubPage() {
       staffRole: staffForm.staffRole || 'Cafe Barista',
       role: 'staff',
       salary: staffForm.salary,
-      leaveBalance: Number(staffForm.leaveBalance || 12),
+      leaveBalance: Number(staffForm.leaveBalance || 0),
       photo: staffForm.photo,
       permissions: staffForm.permissions || ['bookings', 'orders'],
       breakSchedule: staffForm.breakSchedule,
@@ -493,7 +493,7 @@ export default function CafeAdminHubPage() {
       mobile: '',
       staffRole: 'Cafe Barista',
       salary: '',
-      leaveBalance: 12,
+      leaveBalance: 0,
       photo: '',
       permissions: ['bookings', 'orders'],
       breakSchedule: DEFAULT_BREAK_SCHEDULE
@@ -509,7 +509,7 @@ export default function CafeAdminHubPage() {
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Cafe Barista',
       salary: stf.monthlySalary || '',
-      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 0,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
     });
@@ -1488,7 +1488,7 @@ export default function CafeAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
               <input
                 type="number"
                 value={staffForm.leaveBalance}
@@ -1696,7 +1696,7 @@ export default function CafeAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
                   <input
                     type="number"
                     value={editStaffForm.leaveBalance}

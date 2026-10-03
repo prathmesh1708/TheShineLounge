@@ -93,7 +93,7 @@ const userSchema = new mongoose.Schema(
     },
     leaveBalance: {
       type: Number,
-      default: 12
+      default: 0
     },
     lastLogin: {
       type: Date,
