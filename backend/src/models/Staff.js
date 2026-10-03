@@ -63,7 +63,7 @@ const staffSchema = new mongoose.Schema(
     },
     leaveBalance: {
       type: Number,
-      default: 12
+      default: 0
     },
     permissions: {
       type: [String],
