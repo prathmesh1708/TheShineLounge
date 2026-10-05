@@ -374,7 +374,7 @@ const updateCustomerUsageRules = async (req, res) => {
 // because ANPR will act on it.
 //
 // Returns `{ error }` for the caller to turn into a 400, or `{ vehicle }`.
-const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrimary }, addedVia) => {
+const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrimary, imageUrl }, addedVia) => {
   if (!plateNumber || !String(plateNumber).trim()) {
     return { error: 'Plate number is required' };
   }
@@ -397,6 +397,7 @@ const attachVehicle = (user, { plateNumber, brand, model, year, category, isPrim
     model: (model || '').trim(),
     year: (year || '').toString().trim(),
     category: category || 'Car',
+    imageUrl: imageUrl ? String(imageUrl).trim() : '',
     // The first car on an empty account is the primary one; nothing else is
     // promoted automatically.
     isPrimary: isPrimary === undefined ? (user.vehicles || []).length === 0 : Boolean(isPrimary),
@@ -431,7 +432,7 @@ const addCustomerVehicle = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    const { plateNumber, brand, model, year, category, isPrimary } = req.body;
+    const { plateNumber, brand, model, year, category, isPrimary, imageUrl } = req.body;
     if (!plateNumber || !String(plateNumber).trim()) {
       return res.status(400).json({ success: false, message: 'Plate number is required' });
     }
@@ -444,6 +445,7 @@ const addCustomerVehicle = async (req, res) => {
       if (model) user.vehicles[existingIndex].model = String(model).trim();
       if (year) user.vehicles[existingIndex].year = String(year).trim();
       if (category) user.vehicles[existingIndex].category = category;
+      if (imageUrl) user.vehicles[existingIndex].imageUrl = String(imageUrl).trim();
       if (isPrimary !== undefined) user.vehicles[existingIndex].isPrimary = Boolean(isPrimary);
     } else {
       const { error } = attachVehicle(user, req.body, req.user?.role || 'staff');
@@ -453,6 +455,7 @@ const addCustomerVehicle = async (req, res) => {
     }
 
     await user.save({ validateBeforeSave: false });
+    if (imageUrl) await require('../services/vehicleRegistry').syncVehicleImage(plateNumber, imageUrl);
 
     res.status(200).json({
       success: true,

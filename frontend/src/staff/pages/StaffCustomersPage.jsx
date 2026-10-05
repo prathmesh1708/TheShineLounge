@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStaff } from '../common/context/StaffContext';
 import apiClient from '../../common/utils/apiClient';
 import { formatVehicleName } from '../../common/services/vehicleService';
+import VehicleImagePicker from '../../common/components/VehicleImagePicker';
 import { UserPlus, Search, Car, Phone, Mail, MapPin, Award, X, Calendar, IndianRupee, Clock, ChevronRight, ShieldCheck, Sparkles, History } from 'lucide-react';
 
 export default function StaffCustomersPage() {
@@ -20,6 +21,8 @@ export default function StaffCustomersPage() {
   const [vehicleNo, setVehicleNo] = useState('');
   const [brand, setBrand] = useState('Hyundai');
   const [model, setModel] = useState('Creta');
+  const [vehicleImage, setVehicleImage] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,6 +52,7 @@ export default function StaffCustomersPage() {
             plateNumber: vehicleNo.toUpperCase().trim(),
             brand,
             model,
+            imageUrl: vehicleImage,
             color: 'White',
             fuelType: 'Petrol'
           }
@@ -60,6 +64,7 @@ export default function StaffCustomersPage() {
       setEmail('');
       setAddress('');
       setVehicleNo('');
+      setVehicleImage('');
     } catch (err) {
       console.error('Registration failed:', err);
     } finally {
@@ -175,8 +180,13 @@ export default function StaffCustomersPage() {
 
                 return vList.map(v => (
                   <div key={v.id || v.registrationNumber} className="flex items-center justify-between text-xs">
-                    <span className="font-black text-gray-900 flex items-center gap-1">
-                      <Car className="w-3.5 h-3.5 text-amber-600" /> {v.registrationNumber}
+                    <span className="font-black text-gray-900 flex items-center gap-1.5">
+                      {v.imageUrl ? (
+                        <img src={v.imageUrl} alt={v.registrationNumber} className="w-7 h-7 rounded-md object-cover border border-gray-200" />
+                      ) : (
+                        <Car className="w-3.5 h-3.5 text-amber-600" />
+                      )}
+                      {v.registrationNumber}
                     </span>
                     <span className="text-gray-500 font-semibold">
                       {formatVehicleName(v.brand, v.model, 'Vehicle')}
@@ -301,7 +311,12 @@ export default function StaffCustomersPage() {
 
                     {registered.map(v => (
                       <div key={v.id || v.registrationNumber} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
-                        <div>
+                        {v.imageUrl && (
+                          <a href={v.imageUrl} target="_blank" rel="noreferrer" className="mr-3 shrink-0">
+                            <img src={v.imageUrl} alt={v.registrationNumber} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                          </a>
+                        )}
+                        <div className="flex-1">
                           <span className="font-black text-sm text-gray-900">{v.registrationNumber}</span>
                           <p className="text-[10px] text-gray-500 font-semibold">
                             {formatVehicleName(v.brand, v.model, 'Vehicle')}
@@ -450,9 +465,14 @@ export default function StaffCustomersPage() {
                   className="px-3 py-2 border rounded-xl text-xs font-bold"
                 />
               </div>
+              <VehicleImagePicker
+                value={vehicleImage}
+                onChange={setVehicleImage}
+                onBusy={setIsUploadingImage}
+              />
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploadingImage}
                 className="w-full py-2.5 rounded-xl text-white font-extrabold text-xs shadow-md disabled:opacity-50 active:scale-98 transition-transform"
                 style={{ backgroundColor: '#e07b2a' }}
               >

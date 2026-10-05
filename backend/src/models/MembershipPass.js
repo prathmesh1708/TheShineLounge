@@ -32,6 +32,10 @@ const membershipPassSchema = new mongoose.Schema(
       type: [String],
       default: []
     },
+    vehicleImages: {
+      type: [{ plateNumber: String, imageUrl: String, _id: false }],
+      default: []
+    },
     startDate: {
       type: Date,
       default: Date.now

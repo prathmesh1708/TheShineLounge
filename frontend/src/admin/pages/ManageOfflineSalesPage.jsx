@@ -497,6 +497,7 @@ export default function ManageOfflineSalesPage() {
       vehicle: {
         plate,
         model: sale.vehicleModel || sale.vehicleType || '',
+        imageUrl: (sale.vehicles || []).find(x => x && x.imageUrl)?.imageUrl || '',
         ownerName: sale.customerName || '',
         ownerEmail: sale.customerEmail || '',
         ownerPhone: sale.phone || '',
@@ -1323,6 +1324,13 @@ export default function ManageOfflineSalesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
+                       <div className="flex items-center gap-2">
+                        {(sale.vehicles || []).find(x => x && x.imageUrl) && (
+                          <a href={(sale.vehicles || []).find(x => x && x.imageUrl).imageUrl} target="_blank" rel="noreferrer" title="View vehicle photo">
+                            <img src={(sale.vehicles || []).find(x => x && x.imageUrl).imageUrl} alt="Vehicle" className="w-9 h-9 rounded-lg object-cover border border-gray-200 shrink-0" />
+                          </a>
+                        )}
+                        <div className="min-w-0">
                         {Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1350,6 +1358,8 @@ export default function ManageOfflineSalesPage() {
                             )}
                           </div>
                         )}
+                        </div>
+                       </div>
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-bold text-gray-800">{sale.packageName || sale.membershipName || '—'}</p>

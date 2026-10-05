@@ -59,6 +59,7 @@ import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
 import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../../common/components/BreakScheduleFields';
+import ShiftTimingFields from '../../common/components/ShiftTimingFields';
 import BreakStatusBadge from '../../common/components/BreakStatusBadge';
 import BreakHistoryPanel from '../../common/components/BreakHistoryPanel';
 import { scheduleFromStaff } from '../../common/utils/breakSchedule';
@@ -257,6 +258,7 @@ export default function CarWashAdminHubPage() {
       _id: v._id,
       vehicleId: v.vehicleId,
       plate,
+      imageUrl: v.imageUrl || '',
       model: modelName,
       customerId: v.customerId || matchedCust?._id || matchedCust?.id || null,
       ownerName: v.ownerName || matchedCust?.fullName || matchedCust?.name || 'Customer',
@@ -271,6 +273,13 @@ export default function CarWashAdminHubPage() {
   // Attach live membership status and wash count if vehicle has an active plan
   Object.values(registeredVehiclesMap).forEach((veh) => {
     const cleanPlate = normalizePlate(veh.plate);
+    // Fall back to the photo saved on a sale/booking carrying this plate.
+    if (!veh.imageUrl) {
+      for (const b of bookings || []) {
+        const hit = (b.vehicles || []).find(x => x && x.imageUrl && normalizePlate(x.plateNumber) === cleanPlate);
+        if (hit) { veh.imageUrl = hit.imageUrl; break; }
+      }
+    }
     const activeMem = (memberships || []).find(m => {
       if (cleanPlate && normalizePlate(m.vehicleNo) === cleanPlate) return true;
       if (veh.ownerEmail && m.email && m.email.toLowerCase().trim() === veh.ownerEmail.toLowerCase().trim()) return true;
@@ -740,6 +749,9 @@ export default function CarWashAdminHubPage() {
     leaveBalance: 0,
     photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
     permissions: ['bookings'],
+    shiftStartTime: '09:00',
+    shiftEndTime: '18:00',
+    shiftTiming: '09:00 AM - 06:00 PM',
     breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
@@ -756,6 +768,9 @@ export default function CarWashAdminHubPage() {
     leaveBalance: 0,
     photo: '',
     permissions: [],
+    shiftStartTime: '09:00',
+    shiftEndTime: '18:00',
+    shiftTiming: '09:00 AM - 06:00 PM',
     breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
   const [staffAttendanceLogs, setStaffAttendanceLogs] = useState([]);
@@ -939,6 +954,9 @@ export default function CarWashAdminHubPage() {
       leaveBalance: Number(staffForm.leaveBalance || 0),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
       permissions: staffForm.permissions || ['bookings'],
+      shiftStartTime: staffForm.shiftStartTime || '09:00',
+      shiftEndTime: staffForm.shiftEndTime || '18:00',
+      shiftTiming: staffForm.shiftTiming || '09:00 AM - 06:00 PM',
       breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
@@ -981,6 +999,9 @@ export default function CarWashAdminHubPage() {
       leaveBalance: 0,
       photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
       permissions: ['bookings'],
+      shiftStartTime: '09:00',
+      shiftEndTime: '18:00',
+      shiftTiming: '09:00 AM - 06:00 PM',
       breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
@@ -1000,6 +1021,9 @@ export default function CarWashAdminHubPage() {
       leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 0,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || [],
+      shiftStartTime: stf.shiftStartTime || '09:00',
+      shiftEndTime: stf.shiftEndTime || '18:00',
+      shiftTiming: stf.shiftTiming || '09:00 AM - 06:00 PM',
       breakSchedule: scheduleFromStaff(stf)
     });
     setStaffAttendanceLogs([]);
@@ -1063,6 +1087,9 @@ export default function CarWashAdminHubPage() {
       leaveBalance: Number(editStaffForm.leaveBalance),
       photo: editStaffForm.photo,
       permissions: editStaffForm.permissions,
+      shiftStartTime: editStaffForm.shiftStartTime || '09:00',
+      shiftEndTime: editStaffForm.shiftEndTime || '18:00',
+      shiftTiming: editStaffForm.shiftTiming || '09:00 AM - 06:00 PM',
       breakSchedule: editStaffForm.breakSchedule
     };
     if (editStaffForm.password) {
@@ -1848,6 +1875,10 @@ export default function CarWashAdminHubPage() {
 
                   <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
                     <BreakStatusBadge staff={stf} />
+                    <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/80 flex items-center gap-1 shadow-2xs">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>{stf.shiftTiming || `${stf.shiftStartTime || '09:00'} - ${stf.shiftEndTime || '18:00'}`}</span>
+                    </span>
                   </div>
 
                   <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
@@ -1975,11 +2006,16 @@ export default function CarWashAdminHubPage() {
                     setSelectedVehicleDetail({ vehicle: v, history: vehicleBookings });
                   }}
                 >
+                  {v.imageUrl && (
+                    <img src={v.imageUrl} alt={v.plate} className="w-full h-36 object-cover rounded-xl border border-gray-200" />
+                  )}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
+                      {v.imageUrl ? null : (
                       <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
                         🚗
                       </div>
+                      )}
                       <div>
                         <h4 className="font-extrabold text-sm text-gray-900">{v.model || 'Vehicle'}</h4>
                         <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
@@ -3142,6 +3178,14 @@ export default function CarWashAdminHubPage() {
             </div>
           </div>
 
+          <ShiftTimingFields
+            startTime={staffForm.shiftStartTime}
+            endTime={staffForm.shiftEndTime}
+            onChange={({ shiftStartTime, shiftEndTime, shiftTiming }) =>
+              setStaffForm(prev => ({ ...prev, shiftStartTime, shiftEndTime, shiftTiming }))
+            }
+          />
+
           <BreakScheduleFields
             value={staffForm.breakSchedule}
             onChange={(breakSchedule) => setStaffForm(prev => ({ ...prev, breakSchedule }))}
@@ -3517,6 +3561,14 @@ export default function CarWashAdminHubPage() {
                   ))}
                 </div>
               </div>
+
+              <ShiftTimingFields
+                startTime={editStaffForm.shiftStartTime}
+                endTime={editStaffForm.shiftEndTime}
+                onChange={({ shiftStartTime, shiftEndTime, shiftTiming }) =>
+                  setEditStaffForm(prev => ({ ...prev, shiftStartTime, shiftEndTime, shiftTiming }))
+                }
+              />
 
               <BreakScheduleFields
                 value={editStaffForm.breakSchedule}

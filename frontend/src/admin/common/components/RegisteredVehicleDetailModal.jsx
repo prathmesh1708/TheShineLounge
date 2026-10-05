@@ -115,6 +115,12 @@ export default function RegisteredVehicleDetailModal({
             </div>
           </div>
 
+          {v.imageUrl && (
+            <a href={v.imageUrl} target="_blank" rel="noreferrer" className="block">
+              <img src={v.imageUrl} alt={`${v.plate} vehicle`} className="w-full max-h-64 object-cover rounded-2xl border border-gray-200 shadow-sm" />
+            </a>
+          )}
+
           {/* Vehicle & Service Stats */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
             <h4 className="flex items-center gap-2 text-xs font-black text-gray-900">

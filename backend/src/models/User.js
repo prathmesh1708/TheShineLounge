@@ -108,6 +108,18 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: 'Main Branch'
     },
+    shiftStartTime: {
+      type: String,
+      default: '09:00'
+    },
+    shiftEndTime: {
+      type: String,
+      default: '18:00'
+    },
+    shiftTiming: {
+      type: String,
+      default: '09:00 AM - 06:00 PM'
+    },
     city: {
       type: String,
       default: 'Mumbai'
@@ -140,6 +152,7 @@ const userSchema = new mongoose.Schema(
         model: { type: String, default: '' },
         year: { type: String, default: '' },
         category: { type: String, default: 'Car' },
+        imageUrl: { type: String, default: '' },
         isPrimary: { type: Boolean, default: false },
         // How this vehicle came to be on the account, so an unverified plate
         // seen once by a camera is not treated like one the customer entered.

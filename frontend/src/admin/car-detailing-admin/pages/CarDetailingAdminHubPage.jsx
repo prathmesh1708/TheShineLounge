@@ -242,6 +242,7 @@ export default function CarDetailingAdminHubPage() {
       if (!registeredVehiclesMap[key]) {
         registeredVehiclesMap[key] = {
           plate: rawPlate || cleanPlate,
+          imageUrl: (Array.isArray(b.vehicles) ? b.vehicles : []).find(x => x && x.imageUrl && normalizePlate(x.plateNumber) === cleanPlate)?.imageUrl || '',
           model: model,
           customerId: matchedCust?._id || matchedCust?.id || null,
           ownerName: name,
@@ -256,6 +257,9 @@ export default function CarDetailingAdminHubPage() {
         registeredVehiclesMap[key].totalBookings += 1;
         if (b.date) {
           registeredVehiclesMap[key].lastServiceDate = b.date;
+        }
+        if (!registeredVehiclesMap[key].imageUrl) {
+          registeredVehiclesMap[key].imageUrl = (Array.isArray(b.vehicles) ? b.vehicles : []).find(x => x && x.imageUrl && normalizePlate(x.plateNumber) === cleanPlate)?.imageUrl || '';
         }
         if (!registeredVehiclesMap[key].ownerPhone && custPhone) {
           registeredVehiclesMap[key].ownerPhone = custPhone;
@@ -1264,9 +1268,13 @@ export default function CarDetailingAdminHubPage() {
                   <div>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
+                        {v.imageUrl ? (
+                          <img src={v.imageUrl} alt={v.plate} className="w-10 h-10 rounded-2xl object-cover border border-amber-500/20" />
+                        ) : (
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
                           🚗
                         </div>
+                        )}
                         <div>
                           <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
                           <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>

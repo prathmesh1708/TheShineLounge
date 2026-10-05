@@ -1,18 +1,61 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
-import { Phone, Mail, LogOut } from 'lucide-react';
+import { useAuth } from '../../common/context/AuthContext';
+import { formatTime12h } from '../../admin/common/components/ShiftTimingFields';
+import { Phone, Mail, LogOut, Clock, Sun, Sparkles } from 'lucide-react';
 import StaffLeaveSection from '../common/components/StaffLeaveSection';
 import StaffSalarySection from '../common/components/StaffSalarySection';
 
 export default function StaffProfilePage() {
   const navigate = useNavigate();
   const { currentStaff, logoutStaff, isCheckedIn, checkInTime } = useStaff();
+  const { user } = useAuth();
 
   const handleLogout = () => {
     logoutStaff();
     navigate('/staff/login');
   };
+
+  const staff = currentStaff || user;
+  const shiftStart = staff?.shiftStartTime || user?.shiftStartTime || '09:00';
+  const shiftEnd = staff?.shiftEndTime || user?.shiftEndTime || '18:00';
+  const shiftTimingText = staff?.shiftTiming || user?.shiftTiming || `${formatTime12h(shiftStart)} - ${formatTime12h(shiftEnd)}`;
+
+  // Calculate live shift status
+  const getShiftLiveState = () => {
+    try {
+      const now = new Date();
+      const curH = now.getHours();
+      const curM = now.getMinutes();
+
+      const [sH, sM] = shiftStart.split(':').map(Number);
+      const [eH, eM] = shiftEnd.split(':').map(Number);
+
+      const curMinutes = curH * 60 + curM;
+      const startMinutes = sH * 60 + sM;
+      let endMinutes = eH * 60 + eM;
+      if (endMinutes <= startMinutes) endMinutes += 24 * 60; // Crosses midnight
+
+      let adjustedCur = curMinutes;
+      if (curMinutes < startMinutes && endMinutes > 24 * 60) {
+        adjustedCur += 24 * 60;
+      }
+
+      if (adjustedCur >= startMinutes && adjustedCur < endMinutes) {
+        const remainingMinutes = endMinutes - adjustedCur;
+        if (remainingMinutes <= 30) {
+          return { label: `Shift Ending Soon (${remainingMinutes}m left)`, color: 'amber' };
+        }
+        return { label: 'Currently On Shift Window', color: 'emerald' };
+      }
+      return { label: 'Shift Ended / Off Duty Window', color: 'gray' };
+    } catch (e) {
+      return { label: 'Assigned Shift', color: 'amber' };
+    }
+  };
+
+  const shiftState = getShiftLiveState();
 
   return (
     <div className="space-y-4">
@@ -21,7 +64,7 @@ export default function StaffProfilePage() {
         {/* Avatar with Status Ring */}
         <div className="relative w-16 h-16 mx-auto">
           <img
-            src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'}
+            src={currentStaff?.avatar || currentStaff?.photo || currentStaff?.profileImage || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'}
             alt="Staff Profile"
             className="w-full h-full object-cover rounded-full border-4 border-amber-500 shadow-sm"
           />
@@ -43,12 +86,65 @@ export default function StaffProfilePage() {
           </p>
         </div>
 
-        {/* Shift Status Box */}
-        <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center text-xs">
-          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide block">Shift Status</span>
-          <span className={`font-black text-xs ${isCheckedIn ? 'text-emerald-600' : 'text-amber-600'}`}>
-            {isCheckedIn ? `On Shift (${checkInTime})` : 'Off Shift'}
+        {/* Shift & Check-In Status Grid */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 text-center">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide block">Punch Status</span>
+            <span className={`font-black text-xs ${isCheckedIn ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {isCheckedIn ? `Checked In (${checkInTime || 'Active'})` : 'Checked Out'}
+            </span>
+          </div>
+
+          <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 text-center">
+            <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wide block flex items-center justify-center gap-1">
+              <Clock className="w-2.5 h-2.5" /> Shift Window
+            </span>
+            <span className="font-black text-[11px] text-amber-900 truncate block">
+              {shiftTimingText}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Official Shift Timing Schedule Card */}
+      <div className="bg-white border border-gray-200/80 rounded-2xl p-4 shadow-xs space-y-3 text-xs">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+          <h3 className="font-extrabold text-xs text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Assigned Shift Schedule</span>
+          </h3>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${
+            shiftState.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+            shiftState.color === 'amber' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+            'bg-gray-100 text-gray-600 border border-gray-200'
+          }`}>
+            {shiftState.label}
           </span>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/40 p-3 rounded-xl border border-amber-200/80 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                <Sun className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 uppercase block">Daily Working Hours</span>
+                <span className="font-extrabold text-sm text-gray-900">{shiftTimingText}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-100/80 text-[11px]">
+            <div className="bg-white/90 p-2 rounded-lg border border-amber-100">
+              <span className="text-gray-400 font-semibold block text-[9px] uppercase">Shift Start</span>
+              <span className="font-extrabold text-gray-900">{shiftTimingText.split('-')[0]?.trim() || shiftStart}</span>
+            </div>
+            <div className="bg-white/90 p-2 rounded-lg border border-amber-100">
+              <span className="text-gray-400 font-semibold block text-[9px] uppercase">Shift End</span>
+              <span className="font-extrabold text-amber-700">{shiftTimingText.split('-')[1]?.trim() || shiftEnd}</span>
+            </div>
+          </div>
         </div>
       </div>
 

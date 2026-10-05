@@ -6,6 +6,7 @@ const staffBreaks = require('../services/staffBreaks');
 const { processStaffBreaks } = require('../services/breakScheduler');
 const { parseSalaryText, formatSalaryText } = require('../utils/salaryAmount');
 const { normalizeBreakSchedule } = require('../utils/breakSchedule');
+const { normalizeShiftTiming } = require('../utils/shiftTiming');
 const { dayKey } = require('../utils/siteTime');
 
 // Staff accounts may read the roster (e.g. to hand jobs over) but never another
@@ -16,6 +17,16 @@ const forClient = (req, staffDoc) => {
   const obj = typeof staffDoc.toJSON === 'function' ? staffDoc.toJSON() : { ...staffDoc };
   const requesterRole = String(req.user?.role || '').toLowerCase();
   if (requesterRole === 'staff') PAYROLL_FIELDS.forEach((field) => delete obj[field]);
+
+  const normalized = normalizeShiftTiming({
+    shiftStartTime: obj.shiftStartTime,
+    shiftEndTime: obj.shiftEndTime,
+    shiftTiming: obj.shiftTiming
+  });
+  obj.shiftStartTime = normalized.shiftStartTime;
+  obj.shiftEndTime = normalized.shiftEndTime;
+  obj.shiftTiming = normalized.shiftTiming;
+
   return obj;
 };
 
@@ -238,6 +249,12 @@ const createStaff = async (req, res) => {
       });
     }
 
+    const { shiftStartTime, shiftEndTime, shiftTiming } = normalizeShiftTiming({
+      shiftStartTime: req.body.shiftStartTime,
+      shiftEndTime: req.body.shiftEndTime,
+      shiftTiming: req.body.shiftTiming
+    });
+
     const staffId = `STF-${Math.floor(100 + Math.random() * 900)}`;
 
     const staff = await Staff.create({
@@ -256,6 +273,9 @@ const createStaff = async (req, res) => {
       profileImage: photo || '',
       permissions: permissions || [],
       branch: branch || 'Main Branch',
+      shiftStartTime,
+      shiftEndTime,
+      shiftTiming,
       breakSchedule
     });
 
@@ -279,12 +299,18 @@ const createStaff = async (req, res) => {
           photo: photo || '',
           permissions: permissions || [],
           branch: branch || 'Main Branch',
+          shiftStartTime,
+          shiftEndTime,
+          shiftTiming,
           // Only mirrored if the legacy schema ever grows the field.
           ...(User.schema.path('breakSchedule') ? { breakSchedule } : {})
         });
       } else {
         existingUser.role = 'staff';
         existingUser.password = password;
+        existingUser.shiftStartTime = shiftStartTime;
+        existingUser.shiftEndTime = shiftEndTime;
+        existingUser.shiftTiming = shiftTiming;
         await existingUser.save();
       }
     } catch (userSyncErr) {
@@ -416,6 +442,22 @@ const updateStaff = async (req, res) => {
     if (branch !== undefined) {
       staff.branch = branch;
       if (legacyUser) legacyUser.branch = branch;
+    }
+
+    if (req.body.shiftStartTime !== undefined || req.body.shiftEndTime !== undefined || req.body.shiftTiming !== undefined) {
+      const shiftData = normalizeShiftTiming({
+        shiftStartTime: req.body.shiftStartTime !== undefined ? req.body.shiftStartTime : staff.shiftStartTime,
+        shiftEndTime: req.body.shiftEndTime !== undefined ? req.body.shiftEndTime : staff.shiftEndTime,
+        shiftTiming: req.body.shiftTiming
+      });
+      staff.shiftStartTime = shiftData.shiftStartTime;
+      staff.shiftEndTime = shiftData.shiftEndTime;
+      staff.shiftTiming = shiftData.shiftTiming;
+      if (legacyUser) {
+        legacyUser.shiftStartTime = shiftData.shiftStartTime;
+        legacyUser.shiftEndTime = shiftData.shiftEndTime;
+        legacyUser.shiftTiming = shiftData.shiftTiming;
+      }
     }
 
     if (password && String(password).trim()) {

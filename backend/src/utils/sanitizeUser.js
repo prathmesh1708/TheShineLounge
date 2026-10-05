@@ -45,6 +45,7 @@ const sanitizeVehicle = (vehicle) => {
     model: vehicle.model || '',
     year: vehicle.year || '',
     category: vehicle.category || 'Car',
+    imageUrl: vehicle.imageUrl || '',
     isPrimary: Boolean(vehicle.isPrimary),
     addedVia: vehicle.addedVia || 'self',
     verifiedAt: vehicle.verifiedAt || null
@@ -117,6 +118,9 @@ const sanitizeUser = (user) => {
     photo: user.photo,
     profileImage: user.profileImage,
     branch: user.branch,
+    shiftStartTime: user.shiftStartTime || '09:00',
+    shiftEndTime: user.shiftEndTime || '18:00',
+    shiftTiming: user.shiftTiming || '09:00 AM - 06:00 PM',
     city: user.city,
     isActive: user.isActive,
     lastLogin: user.lastLogin,

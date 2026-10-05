@@ -412,6 +412,84 @@ const clearAllNotifications = async (req, res) => {
   }
 };
 
+// @desc    Record shift end notification for staff
+// @route   POST /api/notifications/shift-end
+// @access  Private (Staff/Admin)
+const createStaffShiftEndNotification = async (req, res) => {
+  try {
+    const Staff = require('../models/Staff');
+    const targetStaffId = req.body.staffId || (req.user ? req.user._id : null);
+    const shiftTiming = req.body.shiftTiming || 'Scheduled Shift';
+
+    if (!targetStaffId) {
+      return res.status(400).json({ success: false, message: 'Staff ID is required' });
+    }
+
+    let staff = await Staff.findById(targetStaffId);
+    if (!staff && req.user?.email) {
+      staff = await Staff.findOne({ email: req.user.email });
+    }
+
+    const title = 'Shift Completed';
+    const message = `Your shift (${shiftTiming}) has ended for today. Please make sure to complete pending tasks, submit logs, and punch out.`;
+
+    // Deduplicate per day in MongoDB: check if a shift end notification already exists for today
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const existingNotif = await Notification.findOne({
+      recipientType: 'staff',
+      targetUserId: targetStaffId,
+      title: 'Shift Completed',
+      createdAt: { $gte: startOfDay }
+    });
+
+    if (existingNotif) {
+      return res.status(200).json({
+        success: true,
+        message: 'Shift end notification already recorded for today.',
+        notification: existingNotif
+      });
+    }
+
+    const notification = await Notification.create({
+      title,
+      message,
+      recipientType: 'staff',
+      targetUserId: targetStaffId,
+      category: 'service_update',
+      priority: 'high',
+      serviceKey: staff?.serviceKey || req.body.serviceKey || 'car-wash',
+      actionUrl: '/staff/profile'
+    });
+
+    // Optional push notification
+    try {
+      const payload = {
+        title,
+        body: message,
+        data: {
+          category: 'service_update',
+          serviceKey: staff?.serviceKey || 'car-wash',
+          link: '/staff/profile'
+        }
+      };
+      sendNotificationToUser(targetStaffId, payload).catch(() => {});
+    } catch (pushErr) {}
+
+    res.status(201).json({
+      success: true,
+      message: 'Shift end notification created successfully.',
+      notification
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error recording shift end notification'
+    });
+  }
+};
+
 module.exports = {
   createNotification,
   getAdminNotifications,
@@ -419,6 +497,7 @@ module.exports = {
   deleteNotification,
   getUserNotifications,
   getStaffNotifications,
+  createStaffShiftEndNotification,
   markAsRead,
   markAllAsRead,
   dismissNotification,

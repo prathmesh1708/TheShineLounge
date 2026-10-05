@@ -4,6 +4,7 @@ import AdminModal from '../common/components/AdminModal';
 import AdminLeaveRequestsPanel from '../common/components/AdminLeaveRequestsPanel';
 import AdminPayrollPanel from '../common/components/AdminPayrollPanel';
 import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../common/components/BreakScheduleFields';
+import ShiftTimingFields from '../common/components/ShiftTimingFields';
 import BreakStatusBadge from '../common/components/BreakStatusBadge';
 import BreakHistoryPanel from '../common/components/BreakHistoryPanel';
 import userService from '../../common/services/userService';
@@ -21,6 +22,9 @@ const emptyForm = {
   department: 'Car Wash',
   permissions: ['bookings'],
   branch: 'Main Branch',
+  shiftStartTime: '09:00',
+  shiftEndTime: '18:00',
+  shiftTiming: '09:00 AM - 06:00 PM',
   breakSchedule: DEFAULT_BREAK_SCHEDULE
 };
 
@@ -120,6 +124,9 @@ export default function ManageStaffPage() {
       department: staff.department,
       permissions: staff.permissions || [],
       branch: staff.branch,
+      shiftStartTime: staff.shiftStartTime || '09:00',
+      shiftEndTime: staff.shiftEndTime || '18:00',
+      shiftTiming: staff.shiftTiming || '09:00 AM - 06:00 PM',
       breakSchedule: scheduleFromStaff(staff)
     });
     setModalError('');
@@ -407,8 +414,12 @@ export default function ManageStaffPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-gray-100 text-gray-700">
+                      <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-gray-100 text-gray-700 block mb-1">
                         {staff.department || '—'}
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 inline-flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5 text-amber-600" />
+                        {staff.shiftTiming || `${staff.shiftStartTime || '09:00'} - ${staff.shiftEndTime || '18:00'}`}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -562,6 +573,14 @@ export default function ManageStaffPage() {
             </div>
           </div>
 
+          <ShiftTimingFields
+            startTime={form.shiftStartTime}
+            endTime={form.shiftEndTime}
+            onChange={({ shiftStartTime, shiftEndTime, shiftTiming }) =>
+              setForm(prev => ({ ...prev, shiftStartTime, shiftEndTime, shiftTiming }))
+            }
+          />
+
           <BreakScheduleFields value={form.breakSchedule} onChange={(breakSchedule) => setForm({ ...form, breakSchedule })} />
 
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
@@ -627,6 +646,14 @@ export default function ManageStaffPage() {
               ))}
             </div>
           </div>
+
+          <ShiftTimingFields
+            startTime={editForm.shiftStartTime}
+            endTime={editForm.shiftEndTime}
+            onChange={({ shiftStartTime, shiftEndTime, shiftTiming }) =>
+              setEditForm(prev => ({ ...prev, shiftStartTime, shiftEndTime, shiftTiming }))
+            }
+          />
 
           <BreakScheduleFields value={editForm.breakSchedule} onChange={(breakSchedule) => setEditForm({ ...editForm, breakSchedule })} />
 

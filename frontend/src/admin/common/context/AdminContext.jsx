@@ -467,6 +467,7 @@ export const AdminProvider = ({ children }) => {
               customerEmail: b.customerEmail || b.email || '',
               vehicleNo: b.vehicleNo || b.vehiclePlate || '',
               vehicleType: b.vehicleType || b.vehicleModel || '',
+              vehicles: Array.isArray(b.vehicles) ? b.vehicles : [],
               location: b.location || 'Main Branch',
               phone: b.phone || b.mobile || b.customerPhone || '',
               serviceKey: b.serviceKey,
@@ -1871,6 +1872,7 @@ export const AdminProvider = ({ children }) => {
       }
       fetchBookingsList(true);
       fetchCustomersList(true);
+      fetchVehiclesList();
     } catch (err) {
       console.error('Offline sale MongoDB save error:', err.response?.data || err.message);
     }

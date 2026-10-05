@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const cloudinaryService = require('../common/services/cloudinaryService');
 const { CLOUDINARY_CLOUD_NAME } = require('../common/config/env');
+const authMiddleware = require('../middleware/authMiddleware');
+const { staffOnly } = require('../middleware/roleMiddleware');
 
 // Local fallback uploads directory — used only when Cloudinary env keys are omitted
 const UPLOADS_DIR = path.resolve(__dirname, '../../../frontend/public/uploads');
@@ -41,17 +43,23 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100 MB max
 });
 
+const VEHICLE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const isVehicleFolder = (folder) => String(folder || '').includes('/vehicles');
+
 /**
  * POST /api/upload
  * Supports multipart file upload (req.file) OR JSON base64 upload (req.body.base64)
  * Returns Cloudinary secure CDN URL or local static URL fallback
  */
-router.post('/', upload.single('file'), async (req, res) => {
+router.post('/', authMiddleware, staffOnly, upload.single('file'), async (req, res) => {
   try {
     const folder = req.query.folder || req.body.folder || 'shine-lounge/uploads';
 
     // 1. Base64 Upload Handling
     if (req.body && req.body.base64) {
+      if (isVehicleFolder(folder) && (!/^data:image\//.test(req.body.base64) || req.body.base64.length > VEHICLE_IMAGE_MAX_BYTES * 1.4)) {
+        return res.status(400).json({ success: false, message: 'Vehicle photos must be images up to 10 MB' });
+      }
       if (CLOUDINARY_CLOUD_NAME) {
         const result = await cloudinaryService.uploadBase64(req.body.base64, { folder });
         return res.status(200).json({
@@ -77,6 +85,9 @@ router.post('/', upload.single('file'), async (req, res) => {
     // 2. Binary File Upload Handling
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file provided' });
+    }
+    if (isVehicleFolder(folder) && (!req.file.mimetype.startsWith('image/') || req.file.size > VEHICLE_IMAGE_MAX_BYTES)) {
+      return res.status(400).json({ success: false, message: 'Vehicle photos must be images up to 10 MB' });
     }
 
     if (CLOUDINARY_CLOUD_NAME) {
@@ -121,7 +132,7 @@ router.post('/', upload.single('file'), async (req, res) => {
  * DELETE /api/upload
  * Deletes asset from Cloudinary by publicId
  */
-router.delete('/', async (req, res) => {
+router.delete('/', authMiddleware, staffOnly, async (req, res) => {
   try {
     const { publicId, resourceType = 'image' } = req.body;
     if (!publicId) {

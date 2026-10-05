@@ -87,6 +87,9 @@ const formatStaffUser = (u) => {
     phone: mobile,
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+    shiftStartTime: u.shiftStartTime || '09:00',
+    shiftEndTime: u.shiftEndTime || '18:00',
+    shiftTiming: u.shiftTiming || '09:00 AM - 06:00 PM',
     // Exactly what the admin saved; only a record with no array at all gets
     // the legacy hub default (see utils/staffPermissions).
     permissions: normalizePermissions(u.permissions)
@@ -159,6 +162,7 @@ export function StaffProvider({ children }) {
   const [jobs, setJobs] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [vehicleRegistry, setVehicleRegistry] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [notifications, setNotifications] = useState([]);
   
@@ -205,10 +209,21 @@ export function StaffProvider({ children }) {
   // The break poll returns the staff record every few seconds, so profile
   // details and module access the admin changes (in Manage Staff or a
   // department hub) reach this app within moments, without a re-login.
-  const PROFILE_FIELDS = ['fullName', 'email', 'mobile', 'staffId', 'staffRole', 'department', 'serviceKey', 'photo', 'profileImage'];
+  const PROFILE_FIELDS = ['fullName', 'email', 'mobile', 'staffId', 'staffRole', 'department', 'serviceKey', 'photo', 'profileImage', 'shiftStartTime', 'shiftEndTime', 'shiftTiming'];
   const syncProfileFromServer = (staffDoc) => {
     const current = authUserRef.current;
-    if (!staffDoc || !current || current.role !== 'staff') return;
+    if (!staffDoc) return;
+
+    if (staffDoc.shiftStartTime || staffDoc.shiftEndTime || staffDoc.shiftTiming) {
+      setCurrentStaff(prev => ({
+        ...prev,
+        shiftStartTime: staffDoc.shiftStartTime || prev?.shiftStartTime || '09:00',
+        shiftEndTime: staffDoc.shiftEndTime || prev?.shiftEndTime || '18:00',
+        shiftTiming: staffDoc.shiftTiming || prev?.shiftTiming || '09:00 AM - 06:00 PM'
+      }));
+    }
+
+    if (!current || current.role !== 'staff') return;
 
     const patch = {};
     for (const field of PROFILE_FIELDS) {
@@ -476,18 +491,89 @@ export function StaffProvider({ children }) {
     return () => clearInterval(timer);
   }, [breakStatus.status, breakStatus.breakEndTime]);
 
+  const fetchStaffNotifications = async () => {
+    try {
+      const res = await apiClient.get('/notifications/staff');
+      if (res.data && Array.isArray(res.data.notifications)) {
+        setNotifications(res.data.notifications);
+      }
+    } catch (err) {
+      console.warn('Could not fetch staff notifications from MongoDB:', err.message);
+    }
+  };
+
+  // Shift end alert tracking ref so we only alert once per day per staff session
+  const shiftEndAlertedDayRef = useRef('');
+
+  const checkShiftEndAlert = async () => {
+    const staff = authUserRef.current;
+    if (!staff || staff.role !== 'staff') return;
+
+    const endTime = staff.shiftEndTime || '18:00';
+    const match = String(endTime).trim().match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (!match) return;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const [endHour, endMin] = [parseInt(match[1], 10), parseInt(match[2], 10)];
+
+    const isAfterOrAtShiftEnd = (currentHour > endHour) || (currentHour === endHour && currentMinute >= endMin);
+    const todayKeyStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+
+    const staffId = staff._id || staff.id || staff.email;
+    const storageKey = `tsl_shift_end_notified_${staffId}_${todayKeyStr}`;
+    let alreadyNotified = shiftEndAlertedDayRef.current === todayKeyStr;
+    try {
+      if (!alreadyNotified && localStorage.getItem(storageKey) === 'true') {
+        alreadyNotified = true;
+      }
+    } catch (e) {}
+
+    if (isAfterOrAtShiftEnd && !alreadyNotified) {
+      shiftEndAlertedDayRef.current = todayKeyStr;
+      try { localStorage.setItem(storageKey, 'true'); } catch (e) {}
+
+      const formattedShift = staff.shiftTiming || `${endTime}`;
+      showToast(`⏰ Shift Ended: Your shift (${formattedShift}) has completed for today. Please complete pending tasks and punch out.`, 'info');
+      playBreakAudio('start');
+
+      // Post notification to MongoDB
+      try {
+        const targetStaffId = staff._id || staff.id;
+        await apiClient.post('/notifications/shift-end', {
+          staffId: targetStaffId,
+          shiftTiming: formattedShift,
+          serviceKey: staff.serviceKey || 'car-wash'
+        });
+        fetchStaffNotifications();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+        }
+      } catch (postErr) {
+        console.warn('Could not post shift-end notification to MongoDB:', postErr.message);
+      }
+    }
+  };
+
   // Fast MongoDB poll every 2.5 seconds + live event listeners for immediate sync
   useEffect(() => {
     const targetId = getStaffTargetId();
     if (!targetId) return;
 
     fetchLiveBreakStatus(targetId);
+    checkShiftEndAlert();
+    fetchStaffNotifications();
+
     const poller = setInterval(() => {
       fetchLiveBreakStatus(targetId);
+      checkShiftEndAlert();
     }, 2500);
 
     const handleStaffBreakSync = () => {
       fetchLiveBreakStatus(targetId);
+      checkShiftEndAlert();
+      fetchStaffNotifications();
     };
 
     window.addEventListener('tsl_staff_updated', handleStaffBreakSync);
@@ -590,6 +676,8 @@ export function StaffProvider({ children }) {
             pickupTime: b.pickupTime || '',
             expectedAt: b.expectedAt || null,
             vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
+            vehicles: Array.isArray(b.vehicles) ? b.vehicles : [],
+            vehicleImageUrl: (Array.isArray(b.vehicles) ? b.vehicles : []).find(v => v && v.imageUrl)?.imageUrl || '',
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
             customerName: resolveCustomerName(b, idx, resolvedKey === 'salon' ? 'Salon Client' : 'Customer'),
@@ -770,6 +858,26 @@ export function StaffProvider({ children }) {
     setJobs(finalJobsList);
   };
 
+  // Plate -> photo lookup source. Staff sees the same car photo everywhere.
+  const fetchVehicleRegistry = async () => {
+    try {
+      const res = await apiClient.get('/vehicles');
+      if (res.data && Array.isArray(res.data.vehicles)) setVehicleRegistry(res.data.vehicles);
+    } catch (err) {
+      console.warn('Could not fetch vehicle photos:', err.message);
+    }
+  };
+
+  const getVehicleImage = (plate, vehicleList) => {
+    const key = String(plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!key) return '';
+    const norm = (p) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const hit = (vehicleRegistry || []).find(v => v.imageUrl && norm(v.plateNumber) === key);
+    if (hit) return hit.imageUrl;
+    const own = (vehicleList || []).find(v => v && v.imageUrl && norm(v.plateNumber) === key);
+    return own ? own.imageUrl : '';
+  };
+
   const fetchLiveCustomers = async () => {
     try {
       let baseList = [];
@@ -835,6 +943,7 @@ export function StaffProvider({ children }) {
           .map(v => ({
             id: v._id || v.plateNumber,
             registrationNumber: v.plateNumber,
+            imageUrl: v.imageUrl || '',
             brand: v.brand || '',
             model: v.model || '',
             color: v.color || '',
@@ -1061,12 +1170,14 @@ export function StaffProvider({ children }) {
     }
     fetchLiveJobs();
     fetchLiveCustomers();
+    fetchVehicleRegistry();
     fetchLiveStaffList();
 
     // Listen for cross-portal customer, booking, and staff updates
     const handleSync = () => {
       fetchLiveCustomers();
       fetchLiveJobs();
+      fetchVehicleRegistry();
       fetchLiveStaffList();
     };
     window.addEventListener('tsl_customer_updated', handleSync);
@@ -1522,6 +1633,7 @@ export function StaffProvider({ children }) {
         updateJobStatus,
         customers: staffCustomers,
         allCustomers: customers,
+        getVehicleImage,
         addCustomer,
         updateCustomerVehicle,
         attendance,

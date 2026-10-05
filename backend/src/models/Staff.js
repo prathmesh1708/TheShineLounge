@@ -81,6 +81,18 @@ const staffSchema = new mongoose.Schema(
       type: String,
       default: 'Main Branch'
     },
+    shiftStartTime: {
+      type: String,
+      default: '09:00'
+    },
+    shiftEndTime: {
+      type: String,
+      default: '18:00'
+    },
+    shiftTiming: {
+      type: String,
+      default: '09:00 AM - 06:00 PM'
+    },
     isActive: {
       type: Boolean,
       default: true

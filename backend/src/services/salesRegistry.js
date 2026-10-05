@@ -46,7 +46,8 @@ const mirrorOfflineSale = async (booking) => {
         plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
         model: v.model || v.vehicleModel || '',
         brand: v.brand || '',
-        category: v.category || 'Car'
+        category: v.category || 'Car',
+        imageUrl: v.imageUrl || ''
       })).filter(v => Boolean(v.plateNumber))
     : [];
 
@@ -106,6 +107,12 @@ const mirrorMembershipPass = async (booking) => {
     ? booking.vehicles.map(v => (v.plateNumber || v.plate || '').toUpperCase().trim()).filter(Boolean)
     : (plate ? [plate] : []);
 
+  const vehicleImages = Array.isArray(booking.vehicles)
+    ? booking.vehicles
+        .filter(v => v && v.imageUrl && (v.plateNumber || v.plate))
+        .map(v => ({ plateNumber: (v.plateNumber || v.plate).toUpperCase().trim(), imageUrl: v.imageUrl }))
+    : [];
+
   const doc = {
     planName: booking.membershipName || booking.packageName || 'Monthly Membership',
     serviceKey: booking.serviceKey || 'car-wash',
@@ -113,6 +120,7 @@ const mirrorMembershipPass = async (booking) => {
     customerEmail: (booking.customerEmail || '').toLowerCase().trim(),
     phone: booking.phone || '',
     boundVehicles: vehiclePlates.length > 0 ? Array.from(new Set(vehiclePlates)) : [],
+    ...(vehicleImages.length > 0 ? { vehicleImages } : {}),
     startDate,
     expiryDate,
     status: booking.status === 'Cancelled' ? 'Suspended' : 'Active',

@@ -55,8 +55,27 @@ export default function ManageMembershipsPage() {
     updateMembershipStatus,
     renewMembership,
     logMembershipWash,
-    deleteMembership
+    deleteMembership,
+    vehicles: registryVehicles,
+    bookings: allBookings,
+    fetchVehiclesList
   } = useAdmin();
+
+  React.useEffect(() => { if (fetchVehiclesList) fetchVehiclesList(); }, []);
+
+  const plateKey = (p) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const vehicleImageFor = (member) => {
+    const key = plateKey(member?.vehicleNo || (Array.isArray(member?.boundVehicles) ? member.boundVehicles[0] : ''));
+    if (!key) return '';
+    const fromRegistry = (registryVehicles || []).find(v => plateKey(v.plateNumber) === key)?.imageUrl;
+    if (fromRegistry) return fromRegistry;
+    // Fall back to the photo saved on the sale itself.
+    for (const b of allBookings || []) {
+      const hit = (b.vehicles || []).find(x => x && x.imageUrl && plateKey(x.plateNumber) === key);
+      if (hit) return hit.imageUrl;
+    }
+    return '';
+  };
 
   const [selectedMember, setSelectedMember] = useState(null);
   const [editMember, setEditMember] = useState(null);
@@ -215,7 +234,13 @@ export default function ManageMembershipsPage() {
       accessorKey: 'vehicleNo',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
-          <Car className="w-3.5 h-3.5 text-amber-500" />
+          {vehicleImageFor(row) ? (
+            <a href={vehicleImageFor(row)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
+              <img src={vehicleImageFor(row)} alt="Vehicle" className="w-9 h-9 rounded-lg object-cover border border-gray-200" />
+            </a>
+          ) : (
+            <Car className="w-3.5 h-3.5 text-amber-500" />
+          )}
           <div>
             <span className="font-extrabold text-gray-800 block">{row.vehicleNo || (Array.isArray(row.boundVehicles) ? row.boundVehicles[0] : '—')}</span>
             <span className="text-[10px] text-gray-400">{row.vehicleModel}</span>
@@ -659,6 +684,11 @@ export default function ManageMembershipsPage() {
       >
         {selectedMember && (
           <div className="space-y-4 text-xs">
+            {vehicleImageFor(selectedMember) && (
+              <a href={vehicleImageFor(selectedMember)} target="_blank" rel="noreferrer" className="block">
+                <img src={vehicleImageFor(selectedMember)} alt="Vehicle" className="w-full max-h-48 object-cover rounded-xl border border-gray-200" />
+              </a>
+            )}
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Customer Phone</span>

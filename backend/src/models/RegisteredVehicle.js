@@ -36,6 +36,10 @@ const registeredVehicleSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    imageUrl: {
+      type: String,
+      default: ''
+    },
     ownerName: {
       type: String,
       default: 'Customer'

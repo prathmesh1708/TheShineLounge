@@ -1,5 +1,5 @@
 const RegisteredVehicle = require('../models/RegisteredVehicle');
-const { upsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { upsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 const { normalizePlate } = require('../utils/plateNormalizer');
 const Booking = require('../models/Booking');
 const { isSaleOrCustomerBooking } = require('../utils/bookingKinds');
@@ -54,7 +54,7 @@ const getRegisteredVehicles = async (req, res) => {
 // @access  Private (Staff/Admin)
 const registerVehicle = async (req, res) => {
   try {
-    const { plateNumber, brand, model, category, year, ownerName, ownerEmail, ownerPhone, customerId, addedVia } = req.body;
+    const { plateNumber, brand, model, category, year, ownerName, ownerEmail, ownerPhone, customerId, addedVia, imageUrl } = req.body;
 
     if (!plateNumber) {
       return res.status(400).json({
@@ -66,8 +66,10 @@ const registerVehicle = async (req, res) => {
     const vehicle = await upsertRegisteredVehicle({
       plateNumber, brand, model, category, year,
       ownerName, ownerEmail, ownerPhone, customerId,
-      addedVia: addedVia || 'staff'
+      addedVia: addedVia || 'staff',
+      imageUrl
     });
+    await syncVehicleImage(plateNumber, imageUrl);
 
     res.status(201).json({
       success: true,

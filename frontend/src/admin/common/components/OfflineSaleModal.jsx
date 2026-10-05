@@ -3,6 +3,7 @@ import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronD
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
 import { toIsoDate } from '../../../common/utils/dateFormat';
+import VehicleImagePicker from '../../../common/components/VehicleImagePicker';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -71,7 +72,7 @@ const initialFormState = {
   phone: '',
   vehicleNo: '',
   vehicleModel: '',
-  vehicles: [{ plateNumber: '', model: '', brand: '' }],
+  vehicles: [{ plateNumber: '', model: '', brand: '', imageUrl: '' }],
   saleType: 'service',
   packageName: '',
   membershipName: '',
@@ -158,6 +159,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const [isCustomCountryCode, setIsCustomCountryCode] = useState(false);
   const [customCountryCode, setCustomCountryCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [imageUploads, setImageUploads] = useState(0);
   const [isCustomPackage, setIsCustomPackage] = useState(false);
   const [isCustomMembership, setIsCustomMembership] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
@@ -212,7 +214,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
           ? editSale.vehicles.map(v => ({
               plateNumber: v.plateNumber || v.plate || '',
               model: v.model || v.vehicleModel || v.vehicleType || '',
-              brand: v.brand || ''
+              brand: v.brand || '',
+              imageUrl: v.imageUrl || ''
             }))
           : [{
               plateNumber: editSale.vehicleNo || editSale.plate || '',
@@ -245,7 +248,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         setIsCustomPackage(Boolean(pName && !DEFAULT_CAR_WASH_PACKAGES.some(p => p.name === pName)));
         setIsCustomMembership(Boolean(mName && !DEFAULT_CAR_WASH_MEMBERSHIPS.some(m => m.name === mName)));
       } else {
-        setForm({ ...initialFormState, vehicles: [{ plateNumber: '', model: '', brand: '' }], saleDate: new Date().toISOString().split('T')[0] });
+        setForm({ ...initialFormState, vehicles: [{ plateNumber: '', model: '', brand: '', imageUrl: '' }], saleDate: new Date().toISOString().split('T')[0] });
         setCountryCode('+91');
         setIsCustomCountryCode(false);
         setCustomCountryCode('');
@@ -392,7 +395,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     setForm(prev => {
       const updatedVehicles = [...(prev.vehicles || [])];
       if (!updatedVehicles[index]) {
-        updatedVehicles[index] = { plateNumber: '', model: '', brand: '' };
+        updatedVehicles[index] = { plateNumber: '', model: '', brand: '', imageUrl: '' };
       }
       updatedVehicles[index] = {
         ...updatedVehicles[index],
@@ -410,14 +413,14 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const handleAddVehicle = () => {
     setForm(prev => ({
       ...prev,
-      vehicles: [...(prev.vehicles || []), { plateNumber: '', model: '', brand: '' }]
+      vehicles: [...(prev.vehicles || []), { plateNumber: '', model: '', brand: '', imageUrl: '' }]
     }));
   };
 
   const handleRemoveVehicle = (indexToRemove) => {
     setForm(prev => {
       const filtered = (prev.vehicles || []).filter((_, i) => i !== indexToRemove);
-      const finalVehicles = filtered.length > 0 ? filtered : [{ plateNumber: '', model: '', brand: '' }];
+      const finalVehicles = filtered.length > 0 ? filtered : [{ plateNumber: '', model: '', brand: '', imageUrl: '' }];
       return {
         ...prev,
         vehicles: finalVehicles,
@@ -429,7 +432,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSubmittingRef.current || submitting) return;
+    if (isSubmittingRef.current || submitting || imageUploads > 0) return;
     const trimmedPhone = (form.phone || '').trim();
 
     const rawVehicles = form.vehicles || [];
@@ -437,7 +440,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
       .map(v => ({
         plateNumber: (v.plateNumber || '').toUpperCase().trim(),
         model: (v.model || '').trim(),
-        brand: (v.brand || '').trim()
+        brand: (v.brand || '').trim(),
+        imageUrl: v.imageUrl || ''
       }))
       .filter(v => Boolean(v.plateNumber));
 
@@ -677,7 +681,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
             </div>
 
             <div className="space-y-3">
-              {(form.vehicles || [{ plateNumber: '', model: '', brand: '' }]).map((v, index) => (
+              {(form.vehicles || [{ plateNumber: '', model: '', brand: '', imageUrl: '' }]).map((v, index) => (
                 <div key={index} className="p-3 bg-gray-50/80 border border-gray-200/90 rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-700 flex items-center gap-1.5">
@@ -718,6 +722,12 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
                       />
                     </div>
                   </div>
+                  <VehicleImagePicker
+                    label="Vehicle Photo"
+                    value={v.imageUrl || ''}
+                    onChange={url => handleVehicleChange(index, 'imageUrl', url)}
+                    onBusy={busy => setImageUploads(n => Math.max(0, n + (busy ? 1 : -1)))}
+                  />
                 </div>
               ))}
             </div>
@@ -1001,12 +1011,12 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || imageUploads > 0}
               className="px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               style={{ backgroundColor: '#e07b2a' }}
             >
               <CheckCircle2 className="w-4 h-4" />
-              {submitting ? 'Saving...' : (editSale ? 'Update Offline Sale' : 'Submit Offline Sale')}
+              {submitting ? 'Saving...' : imageUploads > 0 ? 'Uploading photo…' : (editSale ? 'Update Offline Sale' : 'Submit Offline Sale')}
             </button>
           </div>
         </form>
