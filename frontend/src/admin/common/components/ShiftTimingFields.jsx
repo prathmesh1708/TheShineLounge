@@ -1,44 +1,5 @@
 import React from 'react';
-import { Clock, Sun, Sunrise, Sunset, Moon, Sparkles } from 'lucide-react';
-
-export const SHIFT_PRESETS = [
-  {
-    id: 'general',
-    label: 'General Shift',
-    start: '09:00',
-    end: '18:00',
-    display: '09:00 AM - 06:00 PM',
-    icon: Sun,
-    badge: '9 Hours'
-  },
-  {
-    id: 'morning',
-    label: 'Morning Shift',
-    start: '07:00',
-    end: '16:00',
-    display: '07:00 AM - 04:00 PM',
-    icon: Sunrise,
-    badge: '9 Hours'
-  },
-  {
-    id: 'evening',
-    label: 'Evening Shift',
-    start: '13:00',
-    end: '22:00',
-    display: '01:00 PM - 10:00 PM',
-    icon: Sunset,
-    badge: '9 Hours'
-  },
-  {
-    id: 'night',
-    label: 'Night Shift',
-    start: '21:00',
-    end: '06:00',
-    display: '09:00 PM - 06:00 AM',
-    icon: Moon,
-    badge: '9 Hours'
-  }
-];
+import { Clock } from 'lucide-react';
 
 export const formatTime12h = (time24) => {
   if (!time24) return '';
@@ -98,14 +59,6 @@ export default function ShiftTimingFields({
     });
   };
 
-  const applyPreset = (preset) => {
-    onChange?.({
-      shiftStartTime: preset.start,
-      shiftEndTime: preset.end,
-      shiftTiming: preset.display
-    });
-  };
-
   return (
     <div className="space-y-3 bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 p-3.5 rounded-2xl border border-amber-200/80 shadow-xs">
       <div className="flex items-center justify-between">
@@ -130,40 +83,7 @@ export default function ShiftTimingFields({
         )}
       </div>
 
-      {/* Preset Chips */}
-      <div>
-        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
-          <Sparkles className="w-3 h-3 text-amber-500" /> Quick Shift Presets:
-        </span>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-          {SHIFT_PRESETS.map((p) => {
-            const isSelected = currentStart === p.start && currentEnd === p.end;
-            const Icon = p.icon;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => applyPreset(p)}
-                className={`p-2 rounded-xl text-left border transition-all flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-300'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50/70 hover:border-amber-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-gray-900'}`}>
-                    {p.label}
-                  </span>
-                  <Icon className={`w-3 h-3 ${isSelected ? 'text-white' : 'text-amber-600'}`} />
-                </div>
-                <span className={`text-[9px] font-bold ${isSelected ? 'text-amber-100' : 'text-gray-500'}`}>
-                  {p.display}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+
 
       {/* Custom Time Pickers */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-amber-100/80">

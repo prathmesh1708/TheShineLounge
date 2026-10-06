@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight, Coffee, Timer, CheckCircle2, Hourglass } from 'lucide-react';
+import { Plus, UserCheck, Mail, Phone, Shield, ToggleLeft, ToggleRight, Trash2, KeyRound, Pencil, AlertCircle, X, Search, ChevronLeft, ChevronRight, Coffee, Timer, CheckCircle2, Hourglass, Clock } from 'lucide-react';
 import AdminModal from '../common/components/AdminModal';
 import AdminLeaveRequestsPanel from '../common/components/AdminLeaveRequestsPanel';
 import AdminPayrollPanel from '../common/components/AdminPayrollPanel';

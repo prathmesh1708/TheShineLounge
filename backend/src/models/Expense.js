@@ -40,6 +40,7 @@ const expenseSchema = new mongoose.Schema(
     vendor: { type: String, default: '', trim: true },
     billRef: { type: String, default: '', trim: true },
     notes: { type: String, default: '' },
+    image: { type: String, default: '', trim: true },
     recordedBy: { type: String, default: '' },
     isDeleted: { type: Boolean, default: false }
   },
