@@ -6,6 +6,7 @@ import StaffBottomNav from './StaffBottomNav';
 import CameraCapture from './CameraCapture';
 import StaffBreakAlertModal from './StaffBreakAlertModal';
 import StaffBreakTimerBar from './StaffBreakTimerBar';
+import PushPermissionPrompt from '../../../common/components/PushPermissionPrompt';
 
 function StaffLayoutInner() {
   const location = useLocation();
@@ -28,6 +29,7 @@ function StaffLayoutInner() {
         
         {/* Navy Blue Mobile Top Bar */}
         <StaffHeader />
+        <PushPermissionPrompt className="bg-amber-50 text-amber-900 border-b border-amber-100" />
 
         {/* Compact break timer + End button on every other staff page */}
         {!isDashboard && <StaffBreakTimerBar />}

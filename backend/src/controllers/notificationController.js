@@ -1,6 +1,5 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
-const { sendNotificationToUser, sendNotificationToAll, sendNotificationToRole } = require('../common/services/pushNotificationHelper');
 
 // @desc    Create / Broadcast new notification
 // @route   POST /api/notifications/admin
@@ -38,24 +37,7 @@ const createNotification = async (req, res) => {
       actionUrl
     });
 
-    // Dispatch FCM Push Notifications based on recipient target
-    const payload = {
-      title: title,
-      body: message,
-      data: {
-        category,
-        serviceKey,
-        link: actionUrl || '/'
-      }
-    };
-
-    if (recipientType === 'single_user' && targetUserId) {
-      sendNotificationToUser(targetUserId, payload).catch(err => console.warn('Push error:', err.message));
-    } else if (recipientType === 'staff_only') {
-      sendNotificationToRole('staff', payload).catch(err => console.warn('Push error:', err.message));
-    } else {
-      sendNotificationToAll(payload).catch(err => console.warn('Push error:', err.message));
-    }
+    // Push delivery happens in the Notification model's post-save hook.
 
     res.status(201).json({
       success: true,
@@ -462,20 +444,6 @@ const createStaffShiftEndNotification = async (req, res) => {
       serviceKey: staff?.serviceKey || req.body.serviceKey || 'car-wash',
       actionUrl: '/staff/profile'
     });
-
-    // Optional push notification
-    try {
-      const payload = {
-        title,
-        body: message,
-        data: {
-          category: 'service_update',
-          serviceKey: staff?.serviceKey || 'car-wash',
-          link: '/staff/profile'
-        }
-      };
-      sendNotificationToUser(targetStaffId, payload).catch(() => {});
-    } catch (pushErr) {}
 
     res.status(201).json({
       success: true,

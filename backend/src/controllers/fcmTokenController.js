@@ -1,4 +1,4 @@
-const User = require('../models/User');
+const { findAccountById } = require('../utils/findAccount');
 
 /**
  * Save FCM Token for the logged-in user
@@ -14,7 +14,7 @@ const saveFcmToken = async (req, res) => {
       return res.status(400).json({ success: false, message: 'FCM token is required' });
     }
 
-    const user = await User.findById(userId);
+    const user = await findAccountById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -65,7 +65,7 @@ const removeFcmToken = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Token is required' });
     }
 
-    const user = await User.findById(userId);
+    const user = await findAccountById(userId);
     if (user) {
       if (platform === 'web' && user.fcmTokens) {
         user.fcmTokens = user.fcmTokens.filter((t) => t !== token);

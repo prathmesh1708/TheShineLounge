@@ -137,6 +137,7 @@ const getCustomers = async (req, res) => {
     // Also include any customer from offline sales or bookings who hasn't been created in User yet
     const existingEmails = new Set(customers.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean));
     const existingPhones = new Set(customers.map(c => String(c.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
+    const extraCustomersMap = new Map();
 
     // Also include any customer from Customer collection
     for (const cm of (customerModelRecords || [])) {

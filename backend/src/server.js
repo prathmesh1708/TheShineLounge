@@ -136,6 +136,7 @@ app.use('/api/vehicles', require('./routes/vehicleRoutes'));
 app.use('/api/memberships', require('./routes/membershipRoutes'));
 app.use('/api/offline-sales', require('./routes/offlineSaleRoutes'));
 app.use('/api/customers', require('./routes/customerRoutes'));
+app.use('/api/invoices', require('./routes/invoiceRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 
 

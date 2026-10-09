@@ -1,3 +1,4 @@
+import { mirrorToastToDevice } from '../../../common/services/pushNotificationService';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import apiClient from '../../../common/utils/apiClient';
 import userService from '../../../common/services/userService';
@@ -878,64 +879,23 @@ export function StaffProvider({ children }) {
     return own ? own.imageUrl : '';
   };
 
+  // Customers come from MongoDB only: /users/customers merges the `users` and
+  // `customers` collections plus booking-only customers on the server.
   const fetchLiveCustomers = async () => {
     try {
       let baseList = [];
       try {
-        const res = await apiClient.get('/users/customers');
-        if (res.data && Array.isArray(res.data.customers) && res.data.customers.length > 0) {
+        const res = await apiClient.get('/users/customers', { params: { limit: 5000 } });
+        if (res.data && Array.isArray(res.data.customers)) {
           baseList = res.data.customers;
         }
       } catch (e) {
         console.warn('Could not fetch from /users/customers, trying /customers:', e.message);
-      }
-
-      // If baseList is still empty, fetch from /customers (public route)
-      if (baseList.length === 0) {
-        try {
-          const res = await apiClient.get('/customers');
-          if (res.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
-            baseList = res.data.data;
-          }
-        } catch (e) {
-          console.warn('Could not fetch from /customers:', e.message);
+        const res = await apiClient.get('/customers');
+        if (res.data && Array.isArray(res.data.data)) {
+          baseList = res.data.data;
         }
       }
-
-      // If still empty, check localStorage cached customers
-      if (baseList.length === 0) {
-        try {
-          const cached = JSON.parse(localStorage.getItem('tsl_customers') || '[]');
-          if (Array.isArray(cached) && cached.length > 0) {
-            baseList = cached;
-          }
-        } catch (e) {}
-      }
-
-      // Read live memberships from Admin Panel -> Membership
-      let adminMemberships = [];
-      try {
-        const raw = localStorage.getItem('tsl_admin_memberships');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) adminMemberships = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
-        }
-      } catch (e) {}
-
-      // Read customer vehicles overrides from staff/admin updates
-      let custVehicles = {};
-      try {
-        custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
-      } catch (e) {}
-
-      // Seed/default vehicle plates for realistic customers if none attached
-      const defaultKnownPlates = {
-        'prathmesh@gmail.com': { plate: 'MP09GG8790', model: 'Hyundai i20' },
-        'amit.sharma@gmail.com': { plate: 'MH02CP4455', model: 'Tesla Model S' },
-        'neha.k@gmail.com': { plate: 'MH01AB1234', model: 'BMW 3 Series' },
-        'rahul.verma@gmail.com': { plate: 'MH12FG5678', model: 'Audi A6' },
-        'sneha.patel@gmail.com': { plate: 'MH04DZ8989', model: 'Hyundai Creta' }
-      };
 
       const mapped = baseList.map((c) => {
         let userVehicles = (c.rawVehicles || [])
@@ -951,201 +911,36 @@ export function StaffProvider({ children }) {
             isPrimary: Boolean(v.isPrimary)
           }));
 
-        // If no rawVehicles, try parsing string array c.vehicles
+        // Fall back to the "PLATE (Model)" strings the API also returns
         if (userVehicles.length === 0 && Array.isArray(c.vehicles) && c.vehicles.length > 0) {
           userVehicles = c.vehicles.map(vStr => {
             if (typeof vStr === 'object' && vStr?.registrationNumber) return vStr;
             const match = String(vStr).match(/^([A-Z0-9-]+)\s*(?:\(([^)]+)\))?/i);
             const plate = match ? match[1].trim() : String(vStr).trim();
             const model = match && match[2] ? match[2].trim() : '';
-            return {
-              id: plate,
-              registrationNumber: plate,
-              brand: '',
-              model,
-              color: '',
-              fuelType: '',
-              isPrimary: true
-            };
+            return { id: plate, registrationNumber: plate, brand: '', model, color: '', fuelType: '', isPrimary: true };
           });
-        }
-
-        // Check Admin Panel -> Membership for this customer
-        const cEmail = (c.email || '').toLowerCase().trim();
-        const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
-        const cName = (c.fullName || c.name || '').toLowerCase().trim();
-
-        const adminMem = adminMemberships.find(m => {
-          const mEmail = (m.email || '').toLowerCase().trim();
-          const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
-          const mName = (m.customerName || '').toLowerCase().trim();
-          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (mName && mName === cName);
-        });
-
-        if (adminMem && adminMem.vehicleNo) {
-          const cleanPlate = adminMem.vehicleNo.toUpperCase().trim();
-          if (!userVehicles.some(v => v.registrationNumber === cleanPlate)) {
-            userVehicles.push({
-              id: cleanPlate,
-              registrationNumber: cleanPlate,
-              brand: '',
-              model: adminMem.vehicleModel || 'Car',
-              color: '',
-              fuelType: '',
-              isPrimary: true
-            });
-          }
-        }
-
-        // Check default known plates
-        if (userVehicles.length === 0 && defaultKnownPlates[cEmail]) {
-          userVehicles.push({
-            id: defaultKnownPlates[cEmail].plate,
-            registrationNumber: defaultKnownPlates[cEmail].plate,
-            brand: '',
-            model: defaultKnownPlates[cEmail].model,
-            color: '',
-            fuelType: '',
-            isPrimary: true
-          });
-        }
-
-        // Check local override in custVehicles
-        const override = (cEmail && custVehicles[cEmail]) ||
-                         (cPhone && custVehicles[cPhone]) ||
-                         (cName && custVehicles[cName]) ||
-                         (c._id && custVehicles[c._id]);
-        if (override && override.plateNumber) {
-          const cleanOverridePlate = override.plateNumber.toUpperCase().trim();
-          userVehicles = [{
-            id: cleanOverridePlate,
-            registrationNumber: cleanOverridePlate,
-            brand: '',
-            model: override.model || '',
-            color: '',
-            fuelType: '',
-            isPrimary: true
-          }, ...userVehicles.filter(v => v.registrationNumber !== cleanOverridePlate)];
         }
 
         return {
-          id: c.email || c._id || `cust-${c.name || 'user'}`,
+          id: c.email || c._id || c.customerId || c.mobile,
           _id: c._id,
+          customerId: c.customerId || '',
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
           email: c.email || '',
           mobile: c.mobile || c.phone || '',
           phone: c.mobile || c.phone || '',
           role: c.role || 'user',
-          segment: c.segment || (adminMem ? 'Active Member' : 'Regular'),
-          serviceKey: 'car-wash',
+          segment: c.segment || 'Regular',
+          serviceKey: c.serviceKey || 'car-wash',
           vehicles: userVehicles,
-          activePassesCount: adminMem ? 1 : 0
+          membership: c.membership || null,
+          activePassesCount: c.membership && c.membership.status === 'Active' ? 1 : 0
         };
       });
 
-      // Also merge any customers from Admin Panel -> Membership who aren't in baseList
-      adminMemberships.forEach(m => {
-        if (!m.customerName) return;
-        const mEmail = (m.email || '').toLowerCase().trim();
-        const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
-        const mName = (m.customerName || '').toLowerCase().trim();
-
-        const exists = mapped.some(c => {
-          const cEmail = (c.email || '').toLowerCase().trim();
-          const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
-          const cName = (c.name || '').toLowerCase().trim();
-          return (mEmail && cEmail === mEmail) || (mPhone && cPhone === mPhone) || (mName && cName === mName);
-        });
-
-        if (!exists) {
-          const cleanPlate = (m.vehicleNo || 'MH01AB1234').toUpperCase().trim();
-          mapped.push({
-            id: m.email || m.id || `CUST-${m.customerName.replace(/\s+/g, '-').toLowerCase()}`,
-            name: m.customerName,
-            fullName: m.customerName,
-            email: m.email || '',
-            mobile: m.phone || '',
-            phone: m.phone || '',
-            role: 'user',
-            segment: 'Active Member',
-            serviceKey: 'car-wash',
-            vehicles: [
-              {
-                id: cleanPlate,
-                registrationNumber: cleanPlate,
-                brand: '',
-                model: m.vehicleModel || 'Car',
-                color: '',
-                fuelType: '',
-                isPrimary: true
-              }
-            ],
-            activePassesCount: 1
-          });
-        }
-      });
-
-      // If mapped is still empty, seed default realistic customers so staff can always issue invoices/passes
-      if (mapped.length === 0) {
-        const defaultSeeds = [
-          {
-            id: 'prathmesh@gmail.com',
-            name: 'Prathmesh Jawade',
-            fullName: 'Prathmesh Jawade',
-            email: 'prathmesh@gmail.com',
-            mobile: '+91 98210 12345',
-            phone: '+91 98210 12345',
-            role: 'user',
-            segment: 'VIP Member',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MP09GG8790', registrationNumber: 'MP09GG8790', model: 'Hyundai i20', isPrimary: true }],
-            activePassesCount: 1
-          },
-          {
-            id: 'amit.sharma@gmail.com',
-            name: 'Amit Sharma',
-            fullName: 'Amit Sharma',
-            email: 'amit.sharma@gmail.com',
-            mobile: '+91 98765 43210',
-            phone: '+91 98765 43210',
-            role: 'user',
-            segment: 'Active Member',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH02CP4455', registrationNumber: 'MH02CP4455', model: 'Tesla Model S', isPrimary: true }],
-            activePassesCount: 1
-          },
-          {
-            id: 'neha.k@gmail.com',
-            name: 'Neha Kapoor',
-            fullName: 'Neha Kapoor',
-            email: 'neha.k@gmail.com',
-            mobile: '+91 98111 22334',
-            phone: '+91 98111 22334',
-            role: 'user',
-            segment: 'Regular',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH01AB1234', registrationNumber: 'MH01AB1234', model: 'BMW 3 Series', isPrimary: true }],
-            activePassesCount: 0
-          },
-          {
-            id: 'rahul.verma@gmail.com',
-            name: 'Rahul Verma',
-            fullName: 'Rahul Verma',
-            email: 'rahul.verma@gmail.com',
-            mobile: '+91 99223 34455',
-            phone: '+91 99223 34455',
-            role: 'user',
-            segment: 'Regular',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH12FG5678', registrationNumber: 'MH12FG5678', model: 'Audi A6', isPrimary: true }],
-            activePassesCount: 0
-          }
-        ];
-        setCustomers(defaultSeeds);
-      } else {
-        setCustomers(mapped);
-      }
+      setCustomers(mapped);
     } catch (err) {
       console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
@@ -1206,6 +1001,7 @@ export function StaffProvider({ children }) {
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
+    mirrorToastToDevice(message, type);
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -1423,19 +1219,8 @@ export function StaffProvider({ children }) {
       return res.data?.data;
     } catch (err) {
       console.error('Error adding customer via staff panel:', err);
-      // Fallback local update if offline
-      const newCust = {
-        id: `CUST-${Date.now().toString().slice(-3)}`,
-        ...customerData,
-        serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
-        totalSpent: 0,
-        loyaltyPoints: 100,
-        joinDate: new Date().toISOString().split('T')[0],
-        lastVisit: new Date().toISOString().split('T')[0]
-      };
-      setCustomers(prev => [newCust, ...prev]);
-      showToast(err.response?.data?.message || `Registered new customer ${customerData.name || 'Customer'}`, 'success');
-      return newCust;
+      showToast(err.response?.data?.message || 'Could not save customer to the database', 'error');
+      throw err;
     }
   };
 
@@ -1444,13 +1229,6 @@ export function StaffProvider({ children }) {
     const cleanPlate = String(vehicleData.plateNumber || '').trim().toUpperCase();
     const cleanModel = String(vehicleData.model || '').trim();
     if (!cleanPlate) return;
-
-    try {
-      const custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
-      const vObj = { plateNumber: cleanPlate, model: cleanModel, isPrimary: true };
-      if (customerIdOrEmail) custVehicles[customerIdOrEmail] = vObj;
-      localStorage.setItem('tsl_customer_vehicles', JSON.stringify(custVehicles));
-    } catch (e) {}
 
     setCustomers(prev => prev.map(c => {
       const match = c.id === customerIdOrEmail || c.email === customerIdOrEmail || c._id === customerIdOrEmail;
@@ -1477,7 +1255,9 @@ export function StaffProvider({ children }) {
         model: cleanModel,
         isPrimary: true
       });
-    } catch (err) {}
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Could not save vehicle to the database', 'error');
+    }
 
     try {
       window.dispatchEvent(new CustomEvent('tsl_customer_updated', {

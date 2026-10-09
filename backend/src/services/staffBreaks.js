@@ -47,8 +47,8 @@ const liveBreakFields = (staff, now = new Date()) => {
   };
 };
 
-// In-app notification plus FCM push. Neither may fail the caller: a missing
-// token or a Firebase outage must not stop a break from being assigned.
+// In-app notification; the Notification model's post-save hook sends the FCM
+// push. A failure here must not stop a break from being assigned.
 const notifyStaff = async (staff, { title, message, priority = 'high', data = {} }) => {
   try {
     await Notification.create({
@@ -59,21 +59,11 @@ const notifyStaff = async (staff, { title, message, priority = 'high', data = {}
       serviceKey: staff.serviceKey || 'car-wash',
       category: 'service_update',
       priority,
-      actionUrl: '/staff/dashboard'
+      actionUrl: '/staff/dashboard',
+      pushType: data.type || ''
     });
   } catch (err) {
     console.warn('Failed to insert break notification:', err.message);
-  }
-
-  try {
-    // Staff._id equals the legacy User._id that holds the FCM tokens. FCM data
-    // values must be strings.
-    const stringData = Object.fromEntries(
-      Object.entries({ url: '/staff/dashboard', ...data }).map(([k, v]) => [k, String(v ?? '')])
-    );
-    await pushHelper.sendNotificationToUser(staff._id, { title, body: message, data: stringData });
-  } catch (err) {
-    console.warn('Failed to send break push notification:', err.message);
   }
 };
 

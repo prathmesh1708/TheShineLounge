@@ -28,12 +28,14 @@ if (firebase.apps.length > 0) {
 
   // Handle background push messages
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Background message received:', payload);
+  // Messages with a `notification` block are displayed by the FCM SDK itself;
+  // showing again here would duplicate them. Only handle data-only messages.
+  if (payload.notification) return;
 
-  const notificationTitle = payload.notification?.title || 'The Shine Lounge';
+  const notificationTitle = payload.data?.title || 'The Shine Lounge';
   const notificationOptions = {
-    body: payload.notification?.body || 'You have a new update.',
-    icon: payload.notification?.icon || '/favicon.ico',
+    body: payload.data?.body || 'You have a new update.',
+    icon: '/favicon.ico',
     badge: '/favicon.ico',
     data: payload.data || {}
   };

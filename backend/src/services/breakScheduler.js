@@ -15,6 +15,7 @@ const Staff = require('../models/Staff');
 const BreakLog = require('../models/BreakLog');
 const Attendance = require('../models/Attendance');
 const env = require('../common/config/env');
+const Notification = require('../models/Notification');
 const staffBreaks = require('./staffBreaks');
 const { nowParts, hhmmToMinutes, dayKey } = require('../utils/siteTime');
 
@@ -254,11 +255,60 @@ const runBreakSchedulerTick = async (now = new Date(), options = {}) => {
   }
 };
 
+// "Shift Completed" push for staff whose shift ended, even with the app closed.
+// Same title/once-per-day rule as POST /notifications/shift-end, so the staff
+// app (which still raises it when open) and this tick never double up.
+const SHIFT_END_WINDOW_MIN = 180;
+
+const runShiftEndTick = async (now = new Date()) => {
+  const { minutesOfDay } = nowParts(now);
+  const staffList = await Staff.find({
+    isActive: true,
+    isDeleted: { $ne: true },
+    shiftEndTime: { $nin: ['', null] }
+  }).select('_id serviceKey shiftEndTime shiftTiming').lean();
+
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  let sent = 0;
+
+  for (const staff of staffList) {
+    const end = hhmmToMinutes(staff.shiftEndTime);
+    if (end === null) continue;
+    const late = minutesOfDay - end;
+    if (late < 0 || late > SHIFT_END_WINDOW_MIN) continue;
+
+    const exists = await Notification.exists({
+      recipientType: 'staff',
+      targetUserId: staff._id,
+      title: 'Shift Completed',
+      createdAt: { $gte: startOfDay }
+    });
+    if (exists) continue;
+
+    await Notification.create({
+      title: 'Shift Completed',
+      message: `Your shift (${staff.shiftTiming || staff.shiftEndTime}) has ended for today. Please make sure to complete pending tasks, submit logs, and punch out.`,
+      recipientType: 'staff',
+      targetUserId: staff._id,
+      category: 'service_update',
+      priority: 'high',
+      serviceKey: staff.serviceKey || 'car-wash',
+      actionUrl: '/staff/profile'
+    });
+    sent += 1;
+  }
+  return sent;
+};
+
 let timer = null;
 
 const startBreakScheduler = () => {
   if (timer) return;
-  const tick = () => runBreakSchedulerTick().catch((err) => console.error('[breakScheduler] tick failed:', err.message));
+  const tick = () => {
+    runBreakSchedulerTick().catch((err) => console.error('[breakScheduler] tick failed:', err.message));
+    runShiftEndTick().catch((err) => console.error('[shiftEnd] tick failed:', err.message));
+  };
   timer = setInterval(tick, TICK_MS);
   // Never keep the process alive just for this timer.
   if (typeof timer.unref === 'function') timer.unref();
@@ -273,6 +323,7 @@ const stopBreakScheduler = () => {
 
 module.exports = {
   runBreakSchedulerTick,
+  runShiftEndTick,
   processStaffBreaks,
   startBreakScheduler,
   stopBreakScheduler

@@ -1,5 +1,22 @@
 const { sendPushNotification } = require('./firebaseAdmin');
 const User = require('../../models/User');
+const Admin = require('../../models/Admin');
+const Staff = require('../../models/Staff');
+const { findAccountById } = require('../../utils/findAccount');
+
+const TOKEN_FILTER = {
+  $or: [
+    { 'fcmTokens.0': { $exists: true } },
+    { 'fcmTokenMobile.0': { $exists: true } }
+  ]
+};
+
+// Role -> collection(s) holding that role's accounts.
+const modelsForRole = (role) => {
+  if (role === 'staff') return [Staff];
+  if (role === 'admin') return [Admin];
+  return [User];
+};
 
 /**
  * Send push notification to a specific user by User ID
@@ -9,7 +26,7 @@ const User = require('../../models/User');
  */
 async function sendNotificationToUser(userId, payload, includeMobile = true) {
   try {
-    const user = await User.findById(userId);
+    const user = await findAccountById(userId);
     if (!user) {
       console.warn(`User ${userId} not found for push notification.`);
       return;
@@ -40,12 +57,9 @@ async function sendNotificationToUser(userId, payload, includeMobile = true) {
  */
 async function sendNotificationToAll(payload) {
   try {
-    const users = await User.find({
-      $or: [
-        { 'fcmTokens.0': { $exists: true } },
-        { 'fcmTokenMobile.0': { $exists: true } }
-      ]
-    }).select('fcmTokens fcmTokenMobile');
+    const users = (await Promise.all(
+      [User, Staff, Admin].map((M) => M.find(TOKEN_FILTER).select('fcmTokens fcmTokenMobile'))
+    )).flat();
 
     let allTokens = [];
     for (const user of users) {
@@ -71,13 +85,9 @@ async function sendNotificationToAll(payload) {
  */
 async function sendNotificationToRole(role, payload) {
   try {
-    const users = await User.find({
-      role,
-      $or: [
-        { 'fcmTokens.0': { $exists: true } },
-        { 'fcmTokenMobile.0': { $exists: true } }
-      ]
-    }).select('fcmTokens fcmTokenMobile');
+    const users = (await Promise.all(
+      modelsForRole(role).map((M) => M.find({ ...TOKEN_FILTER, role }).select('fcmTokens fcmTokenMobile'))
+    )).flat();
 
     let tokens = [];
     for (const user of users) {

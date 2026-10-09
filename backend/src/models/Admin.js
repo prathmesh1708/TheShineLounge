@@ -49,6 +49,9 @@ const adminSchema = new mongoose.Schema(
         'payments'
       ]
     },
+    // FCM Push Notification Tokens
+    fcmTokens: { type: [String], default: [] },
+    fcmTokenMobile: { type: [String], default: [] },
     isActive: {
       type: Boolean,
       default: true
