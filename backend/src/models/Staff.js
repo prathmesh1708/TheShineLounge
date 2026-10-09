@@ -93,6 +93,9 @@ const staffSchema = new mongoose.Schema(
       type: String,
       default: '09:00 AM - 06:00 PM'
     },
+    // FCM Push Notification Tokens
+    fcmTokens: { type: [String], default: [] },
+    fcmTokenMobile: { type: [String], default: [] },
     isActive: {
       type: Boolean,
       default: true

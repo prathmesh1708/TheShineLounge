@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { getMessaging } = require('firebase-admin/messaging');
 const path = require('path');
 const fs = require('fs');
 const { FIREBASE_SERVICE_ACCOUNT_PATH } = require('../config/env');
@@ -60,7 +61,15 @@ async function sendPushNotification(tokens, payload) {
       title: payload.title || 'The Shine Lounge',
       body: payload.body || ''
     },
-    data: payload.data || {},
+    // FCM data values must be strings
+    data: Object.fromEntries(
+      Object.entries(payload.data || {}).map(([k, v]) => [k, String(v ?? '')])
+    ),
+    webpush: {
+      headers: { Urgency: 'high', TTL: '86400' },
+      fcmOptions: { link: (payload.data && (payload.data.link || payload.data.url)) || '/' }
+    },
+    android: { priority: 'high' },
     tokens: uniqueTokens
   };
 
@@ -74,7 +83,7 @@ async function sendPushNotification(tokens, payload) {
   }
 
   try {
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const response = await getMessaging().sendEachForMulticast(message, process.env.FCM_DRY_RUN === 'true');
     console.log(`[FCM Push] Sent: ${response.successCount}, Failed: ${response.failureCount}`);
     return response;
   } catch (error) {

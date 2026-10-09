@@ -10,6 +10,8 @@ import {
 } from '../../car-detailing/services/warrantyApi';
 import { Receipt, Plus, Trash2, Printer, Tag, Sparkles, CheckCircle2, ShieldCheck, Calculator, X, Loader2, Check, Copy } from 'lucide-react';
 import serviceApi from '../../common/services/serviceApi';
+import apiClient from '../../common/utils/apiClient';
+import { Link } from 'react-router-dom';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
 import { downloadReceiptPdf, copyReceiptImageToClipboard, getReceiptPdfBlob } from '../../common/utils/receiptPdfGenerator';
 
@@ -96,7 +98,8 @@ const getCachedServiceData = (deptSlug) => {
 };
 
 export default function StaffInvoicingPage() {
-  const { customers, currentStaff, showToast } = useStaff();
+  // Any staff member may bill any customer, so use the unfiltered DB list.
+  const { allCustomers: customers, currentStaff, showToast } = useStaff();
 
   // Dynamic Admin Calculation Settings from localStorage / AdminContext
   const [calcSettings, setCalcSettings] = useState(() => {
@@ -323,13 +326,13 @@ export default function StaffInvoicingPage() {
     }
   }, [deptServices, selectedServiceId]);
 
-  // Robust resolved customer profiles with guaranteed fallbacks
+  // Real customers from MongoDB only (no demo fallbacks)
   const resolvedCustomers = React.useMemo(() => {
-    const list = (customers || []).map(c => {
+    const list = (customers || []).filter(c => c && (c._id || c.email || c.mobile || c.phone)).map(c => {
       const primaryPlate = c.vehicles?.[0]?.registrationNumber || c.vehicles?.[0]?.plateNumber || c.carPlate || '';
       const primaryModel = c.vehicles?.[0]?.model || c.vehicles?.[0]?.brand || c.carModel || '';
       return {
-        id: c.id || c._id || c.email || `cust-${c.name || 'user'}`,
+        id: String(c.id || c._id || c.email),
         _id: c._id,
         name: c.name || c.fullName || 'Customer',
         fullName: c.name || c.fullName || 'Customer',
@@ -342,70 +345,11 @@ export default function StaffInvoicingPage() {
       };
     });
 
-    if (list.length === 0) {
-      return [
-        {
-          id: 'walkin-01',
-          name: 'Walk-in Customer',
-          fullName: 'Walk-in Customer',
-          mobile: '+91 98000 00000',
-          phone: '+91 98000 00000',
-          email: 'walkin@theshinelounge.com',
-          carPlate: 'HR26DK9999',
-          carModel: 'General Vehicle',
-          vehicles: [{ registrationNumber: 'HR26DK9999', model: 'General Vehicle' }]
-        },
-        {
-          id: 'prathmesh@gmail.com',
-          name: 'Prathmesh Jawade',
-          fullName: 'Prathmesh Jawade',
-          mobile: '+91 98210 12345',
-          phone: '+91 98210 12345',
-          email: 'prathmesh@gmail.com',
-          carPlate: 'MP09GG8790',
-          carModel: 'Hyundai i20',
-          vehicles: [{ registrationNumber: 'MP09GG8790', model: 'Hyundai i20' }]
-        },
-        {
-          id: 'amit.sharma@gmail.com',
-          name: 'Amit Sharma',
-          fullName: 'Amit Sharma',
-          mobile: '+91 98765 43210',
-          phone: '+91 98765 43210',
-          email: 'amit.sharma@gmail.com',
-          carPlate: 'MH02CP4455',
-          carModel: 'Tesla Model S',
-          vehicles: [{ registrationNumber: 'MH02CP4455', model: 'Tesla Model S' }]
-        },
-        {
-          id: 'neha.k@gmail.com',
-          name: 'Neha Kapoor',
-          fullName: 'Neha Kapoor',
-          mobile: '+91 98111 22334',
-          phone: '+91 98111 22334',
-          email: 'neha.k@gmail.com',
-          carPlate: 'MH01AB1234',
-          carModel: 'BMW 3 Series',
-          vehicles: [{ registrationNumber: 'MH01AB1234', model: 'BMW 3 Series' }]
-        },
-        {
-          id: 'rahul.verma@gmail.com',
-          name: 'Rahul Verma',
-          fullName: 'Rahul Verma',
-          mobile: '+91 99223 34455',
-          phone: '+91 99223 34455',
-          email: 'rahul.verma@gmail.com',
-          carPlate: 'MH12FG5678',
-          carModel: 'Audi A6',
-          vehicles: [{ registrationNumber: 'MH12FG5678', model: 'Audi A6' }]
-        }
-      ];
-    }
-
     return list;
   }, [customers]);
 
-  const [selectedCustomer, setSelectedCustomer] = useState(() => resolvedCustomers[0]?.id || '');
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -423,16 +367,26 @@ export default function StaffInvoicingPage() {
   const [editableMessageText, setEditableMessageText] = useState('');
   const isProcessingRef = useRef(false);
 
-  // Keep selectedCustomer synchronized when resolvedCustomers list updates
+  // Drop the selection if that customer disappears from the DB list
   useEffect(() => {
-    if (resolvedCustomers && resolvedCustomers.length > 0) {
-      if (!selectedCustomer || !resolvedCustomers.some(c => c.id === selectedCustomer)) {
-        setSelectedCustomer(resolvedCustomers[0].id);
-      }
+    if (selectedCustomer && !resolvedCustomers.some(c => c.id === selectedCustomer)) {
+      setSelectedCustomer('');
     }
   }, [resolvedCustomers, selectedCustomer]);
 
-  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || resolvedCustomers[0] || {};
+  const filteredCustomers = React.useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return resolvedCustomers;
+    const qDigits = q.replace(/\D/g, '');
+    return resolvedCustomers.filter(c =>
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (qDigits && String(c.mobile || '').replace(/\D/g, '').includes(qDigits)) ||
+      (c.vehicles || []).some(v => String(v.registrationNumber || '').toLowerCase().includes(q))
+    );
+  }, [resolvedCustomers, customerSearch]);
+
+  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || null;
 
   // Helper to generate default WhatsApp receipt message
   const getDefaultMessage = useCallback((inv) => {
@@ -633,9 +587,13 @@ export default function StaffInvoicingPage() {
       showToast?.('Please add at least one line item to generate an invoice', 'error');
       return;
     }
+    if (!currentCust) {
+      showToast?.('Please select a customer', 'error');
+      return;
+    }
 
     const inv = {
-      id: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: '',
       department: currentDeptLabel,
       departmentKey: currentDeptKey,
       sacCode: sacCode,
@@ -664,6 +622,20 @@ export default function StaffInvoicingPage() {
       pan: calcSettings?.pan || 'AABCT8742L',
       registeredAddress: calcSettings?.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'
     };
+    // Save to MongoDB first; the invoice number is allocated by the server.
+    try {
+      const res = await apiClient.post('/invoices', {
+        ...inv,
+        customerId: currentCust._id || currentCust.id,
+        customerEmail: currentCust.email || ''
+      });
+      inv.id = res.data.invoice.invoiceNo;
+      inv.date = new Date(res.data.invoice.createdAt).toLocaleString();
+    } catch (err) {
+      showToast?.(err?.response?.data?.message || 'Could not save the invoice. Nothing was billed — please retry.', 'error');
+      return;
+    }
+
     // The warranty is persisted, not just printed: the customer has to be able
     // to produce it years later, long after this invoice is gone from screen.
     if (isDetailing && warrantyYears > 0) {
@@ -683,6 +655,7 @@ export default function StaffInvoicingPage() {
           notes: warrantyNote
         });
         inv.warranty = warranty;
+        apiClient.patch(`/invoices/${encodeURIComponent(inv.id)}/warranty`, { warrantyNo: warranty.warrantyNo }).catch(() => {});
         showToast?.(`🛡️ Warranty ${warranty.warrantyNo} issued — valid to ${formatWarrantyDate(warranty.expiryDate)}`, 'success');
       } catch (err) {
         // The sale itself is still valid; say plainly that the warranty is not.
@@ -740,17 +713,35 @@ export default function StaffInvoicingPage() {
               </span>
             )}
           </div>
-          <select
-            value={selectedCustomer}
-            onChange={e => setSelectedCustomer(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-          >
-            {resolvedCustomers.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.carPlate || c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile || c.phone || 'No Phone'}
-              </option>
-            ))}
-          </select>
+          {resolvedCustomers.length === 0 ? (
+            <div className="text-xs font-semibold text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-xl px-3 py-3">
+              No customers in the database yet.{' '}
+              <Link to="/staff/customers" className="font-extrabold text-amber-700 underline">Register a customer</Link> to bill them.
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+                placeholder="Search name, phone, email or plate…"
+                className="w-full mb-1.5 px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+              <select
+                value={selectedCustomer}
+                onChange={e => setSelectedCustomer(e.target.value)}
+                required
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+              >
+                <option value="">— Select customer ({filteredCustomers.length}) —</option>
+                {filteredCustomers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.carPlate || c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile || c.phone || 'No Phone'}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         {/* Department Service Dropdown Selector */}

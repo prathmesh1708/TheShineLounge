@@ -1,3 +1,4 @@
+import { mirrorToastToDevice } from '../../../common/services/pushNotificationService';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
@@ -219,6 +220,7 @@ export const AdminProvider = ({ children }) => {
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
+    mirrorToastToDevice(message, type);
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);

@@ -3,10 +3,11 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { ThemeProvider } from './common/context/ThemeContext';
-import { AuthProvider } from './common/context/AuthContext';
+import { AuthProvider, useAuth } from './common/context/AuthContext';
 import { NotificationProvider } from './common/context/NotificationContext';
 import { AdminRoute, StaffRoute, StaffPermissionRoute } from './common/components/ProtectedRoute';
-import { initializePushNotifications, setupForegroundNotificationHandler } from './common/services/pushNotificationService';
+import { initializePushNotifications, setupForegroundNotificationHandler, registerFCMToken } from './common/services/pushNotificationService';
+import PushPermissionPrompt from './common/components/PushPermissionPrompt';
 
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
@@ -105,8 +106,18 @@ function MainAppContent() {
     });
   }, []);
 
+  // Already-granted devices: re-sync the token whenever a session exists (page
+  // reloads restore the session without going through login()).
+  const { user: sessionUser } = useAuth();
+  React.useEffect(() => {
+    if (sessionUser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      registerFCMToken(true).catch(() => {});
+    }
+  }, [sessionUser?._id, sessionUser?.id]);
+
   return (
     <div className="app-container">
+      {!isAuthRoute && !isAdminRoute && !isStaffRoute && !isReceiptRoute && <PushPermissionPrompt className="text-white" />}
       {!isCleanLayout && <Navbar />}
       
       <main className={isCleanLayout ? "w-full min-h-screen p-0 m-0" : "main-content"}>
