@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
+import { getBookingDate, toDateKey, bookingAmount } from '../../admin/common/utils/dashboardStats';
 import {
   BarChart3,
   Calendar,
@@ -32,18 +33,37 @@ export default function StaffReportsPage() {
     showToast
   } = useStaff();
 
-  const [dateRange, setDateRange] = useState('today');
+  // "Daily" report: only today's jobs, cancelled ones excluded from value.
+  const todayKey = toDateKey(new Date());
+  const isCancelled = (j) => ['cancelled', 'canceled', 'rejected'].includes(String(j.status || '').toLowerCase());
+  const todayJobs = (jobs || []).filter((j) => {
+    const d = getBookingDate(j);
+    return d && toDateKey(d) === todayKey;
+  });
 
   // Filter jobs handled
-  const completedJobs = jobs.filter((j) => {
+  const completedJobs = todayJobs.filter((j) => {
+    if (isCancelled(j)) return false;
     const s = (j.status || '').toLowerCase();
     return s.includes('completed') || s.includes('delivered') || (j.stepIndex || 0) >= 3;
   });
 
-  const totalAssigned = jobs.length;
+  const totalAssigned = todayJobs.length;
   const totalCompleted = completedJobs.length;
-  const totalRevenue = jobs.reduce((sum, j) => sum + (Number(j.total || j.amount) || 0), 0);
-  const completedRevenue = completedJobs.reduce((sum, j) => sum + (Number(j.total || j.amount) || 0), 0);
+  const totalRevenue = todayJobs.filter((j) => !isCancelled(j)).reduce((sum, j) => sum + bookingAmount(j), 0);
+  const completedRevenue = completedJobs.reduce((sum, j) => sum + bookingAmount(j), 0);
+
+  // Collected per payment channel, from each job's recorded payment mode.
+  const channelOf = (j) => {
+    const m = String(j.paymentMode || '').toLowerCase();
+    if (j.saleType === 'membership' || m.includes('pass') || m.includes('membership') || m.includes('prepaid')) return 'pass';
+    if (m.includes('upi') || m.includes('qr') || m.includes('card') || m.includes('online') || m.includes('bank')) return 'upi';
+    return 'cash';
+  };
+  const collected = completedJobs.reduce((acc, j) => {
+    acc[channelOf(j)] += bookingAmount(j);
+    return acc;
+  }, { upi: 0, cash: 0, pass: 0 });
 
   // Breaks calculations
   const finishedBreaks = (todayBreakLogs || []).filter((b) => b.status === 'completed');
@@ -174,17 +194,17 @@ export default function StaffReportsPage() {
       <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs space-y-3">
         <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
           <CreditCard className="w-4 h-4 text-blue-900" />
-          <span>Payment Collection Estimations</span>
+          <span>Payment Collection (Today)</span>
         </h3>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 text-xs font-bold">
             <div className="flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-purple-600" />
-              <span className="text-gray-800">UPI / QR Code</span>
+              <span className="text-gray-800">UPI / QR / Card</span>
             </div>
             <span className="font-mono text-gray-900 font-extrabold">
-              ₹{Math.round(completedRevenue * 0.65).toLocaleString('en-IN')}
+              ₹{Math.round(collected.upi).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -194,7 +214,7 @@ export default function StaffReportsPage() {
               <span className="text-gray-800">Cash Counter</span>
             </div>
             <span className="font-mono text-gray-900 font-extrabold">
-              ₹{Math.round(completedRevenue * 0.25).toLocaleString('en-IN')}
+              ₹{Math.round(collected.cash).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -204,7 +224,7 @@ export default function StaffReportsPage() {
               <span className="text-gray-800">Passes & Prepaids</span>
             </div>
             <span className="font-mono text-gray-900 font-extrabold">
-              ₹{Math.round(completedRevenue * 0.10).toLocaleString('en-IN')}
+              ₹{Math.round(collected.pass).toLocaleString('en-IN')}
             </span>
           </div>
         </div>

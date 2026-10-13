@@ -268,7 +268,50 @@ const getMySalary = async (req, res) => {
   }
 };
 
+// @desc    Salary cost per pay month over a span, for the "actual" net-profit mode
+// @route   GET /api/salary/cost?from=YYYY-MM&to=YYYY-MM
+// @access  Admin
+// A staff member costs nothing in months before they joined, so those months
+// are skipped instead of charging today's salary back to the start of the span.
+// Future months are never included.
+const getSalaryCost = async (req, res) => {
+  try {
+    const current = payroll.currentPayMonth();
+    const from = String(req.query.from || current);
+    let to = String(req.query.to || current);
+    if (!payroll.isValidMonth(from) || !payroll.isValidMonth(to)) {
+      return res.status(400).json({ success: false, message: 'from and to must be YYYY-MM.' });
+    }
+    if (to > current) to = current;
+
+    const months = [];
+    for (let [y, m] = from.split('-').map(Number); `${y}-${String(m).padStart(2, '0')}` <= to; m === 12 ? (y += 1, m = 1) : (m += 1)) {
+      months.push(`${y}-${String(m).padStart(2, '0')}`);
+      if (months.length > 240) break;
+    }
+
+    const staffList = await Staff.find({ isDeleted: { $ne: true } }).select('fullName monthlySalary createdAt');
+    const joinMonth = (s) => (s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 7) : '0000-00');
+
+    const rows = [];
+    for (const month of months) {
+      let netPayable = 0;
+      for (const staff of staffList) {
+        if (joinMonth(staff) > month) continue;
+        const view = await payroll.getStatementView(staff, month);
+        netPayable += Number(view.netPayable) || 0;
+      }
+      rows.push({ month, netPayable });
+    }
+
+    res.status(200).json({ success: true, months: rows, total: rows.reduce((a, r) => a + r.netPayable, 0) });
+  } catch (error) {
+    sendError(res, error, 'Server error computing salary cost');
+  }
+};
+
 module.exports = {
+  getSalaryCost,
   getSalaryOverview,
   getStaffSalary,
   addStaffDeduction,

@@ -1,4 +1,12 @@
 // Financial & Tax Calculation Engine for "The Shine Lounge"
+import {
+  isRevenueSale,
+  getBookingDate,
+  bookingAmount,
+  isInDateRange,
+  getPresetRange,
+  getFinancialYear
+} from './dashboardStats';
 // Standardized according to Indian GST Law, SAC codes, and Lounge Financial Operations
 
 export const defaultCalculationSettings = {
@@ -42,8 +50,15 @@ export const defaultCalculationSettings = {
   depreciationReserveRate: 0,
   fixedMonthlyOverhead: 150000, // ₹1,50,000 fixed overhead per month
 
+  // How Net Profit is worked out:
+  //  'estimate' – taxable sales minus the overhead % and gateway % above
+  //  'actual'   – taxable sales minus costs actually recorded in the app
+  profitMethod: 'estimate',
+  profitIncludeExpenses: true, // actual mode: subtract Misc. Expenses
+  profitIncludePayroll: true,  // actual mode: subtract staff salaries (net payable)
+
   // Fiscal Year & Reporting
-  fiscalYear: 'FY 2025-26',
+  fiscalYear: getFinancialYear().label,
   quarter: 'Q2 (Jul - Sep)',
   accountingMethod: 'Accrual Basis',
 
@@ -89,24 +104,46 @@ export const getServiceDisplayName = (key) => {
  * Computes GST tax & base for a single transaction according to calculation settings
  */
 export const computeTransactionTax = (item, settings = defaultCalculationSettings) => {
-  const gross = Math.max(0, Number(item.total ?? item.amount ?? item.price ?? 0));
+  const gross = bookingAmount(item);
   const serviceKey = normalizeServiceKey(item.serviceKey || item.serviceName || item.service || item.department);
-  const rate = Number(settings.categoryGstRates?.[serviceKey] ?? settings.defaultGstRate ?? 18);
   const sacCode = settings.categorySacCodes?.[serviceKey] || '998714';
 
-  let taxableBase = 0;
-  let taxAmount = 0;
+  let rate;
+  let taxableBase;
+  let taxAmount;
   let finalGross = gross;
 
-  if (settings.gstPricingMode === 'exclusive') {
-    taxableBase = gross;
-    taxAmount = (gross * rate) / 100;
-    finalGross = taxableBase + taxAmount;
+  if (typeof item.includeGst === 'boolean') {
+    // The sale records whether GST was charged and how much — use that. A
+    // non-GST receipt has no output tax; inventing 18% on it overstated the
+    // GST liability sent to the CA.
+    if (item.includeGst) {
+      const stored = Number(item.gstAmount) || 0;
+      const fromSubtotal = Number(item.subtotal) > 0 ? gross - Number(item.subtotal) : 0;
+      const storedRate = Number(item.gstRate) || 0;
+      taxAmount = stored > 0 ? stored
+        : fromSubtotal > 0 ? fromSubtotal
+        : storedRate > 0 ? gross - gross / (1 + storedRate / 100)
+        : 0;
+      taxAmount = Math.min(Math.max(0, taxAmount), gross);
+      taxableBase = gross - taxAmount;
+      rate = storedRate || (taxableBase > 0 ? Math.round((taxAmount / taxableBase) * 1000) / 10 : 0);
+    } else {
+      taxAmount = 0;
+      taxableBase = gross;
+      rate = 0;
+    }
   } else {
-    // Inclusive (standard Indian consumer billing)
-    taxableBase = rate > 0 ? gross / (1 + rate / 100) : gross;
-    taxAmount = gross - taxableBase;
-    finalGross = gross;
+    // Legacy rows with no GST record: estimate from the configured category rate.
+    rate = Number(settings.categoryGstRates?.[serviceKey] ?? settings.defaultGstRate ?? 18);
+    if (settings.gstPricingMode === 'exclusive') {
+      taxableBase = gross;
+      taxAmount = (gross * rate) / 100;
+      finalGross = taxableBase + taxAmount;
+    } else {
+      taxableBase = rate > 0 ? gross / (1 + rate / 100) : gross;
+      taxAmount = gross - taxableBase;
+    }
   }
 
   let cgst = 0;
@@ -135,15 +172,10 @@ export const computeTransactionTax = (item, settings = defaultCalculationSetting
 };
 
 /**
- * Parses and returns a valid Date object from transaction fields
+ * Parses and returns a valid Date object from transaction fields.
+ * Same rule as the dashboard: the sale date wins over the record's createdAt.
  */
-export const parseItemDate = (item) => {
-  if (!item) return null;
-  const raw = item.date || item.createdAt || item.bookedAt || item.saleDate || item.bookingDate;
-  if (!raw) return null;
-  const d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
-};
+export const parseItemDate = (item) => getBookingDate(item);
 
 /**
  * Checks if a transaction is cancelled or failed
@@ -152,70 +184,59 @@ export const isCancelledTransaction = (item) => {
   if (!item) return false;
   const s = String(item.status || item.bookingStatus || '').toLowerCase();
   const p = String(item.paymentStatus || '').toLowerCase();
-  return s === 'cancelled' || s === 'canceled' || p === 'failed';
+  return ['cancelled', 'canceled', 'rejected', 'failed', 'refunded'].includes(s) || ['failed', 'refunded', 'cancelled'].includes(p);
+};
+
+export const currentFinancialYearLabel = () => getFinancialYear().label;
+
+// 'FY 2026-27' -> { start: '2026-04-01', end: '2027-03-31' }
+const parseFyLabel = (label) => {
+  const m = /^FY\s*(\d{4})-(\d{2})$/.exec(String(label || '').trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  return { start: `${y}-04-01`, end: `${y + 1}-03-31` };
 };
 
 /**
- * Filters transactions based on time range (Excludes cancelled/failed orders)
+ * Filters to paid, non-zero sales inside the time range. Unpaid, cancelled and
+ * ₹0 membership redemptions are excluded so totals, counts and AOV are real.
  */
 export const filterTransactionsByRange = (items = [], timeRange = 'This Month', customStart = null, customEnd = null) => {
-  const now = new Date();
+  let range = null;
+  if (timeRange === 'Today') range = getPresetRange('today');
+  else if (timeRange === 'This Week') range = getPresetRange('last7');
+  else if (timeRange === 'This Month') range = getPresetRange('thisMonth');
+  else if (timeRange === 'Custom' && customStart && customEnd) range = { start: customStart, end: customEnd };
+  else range = parseFyLabel(timeRange); // 'FY yyyy-yy'; null => All Time
+  return filterByRange(items, range);
+};
 
-  return items.filter(item => {
-    // Exclude cancelled or failed transactions from revenue
-    if (isCancelledTransaction(item)) {
-      return false;
-    }
+// The concrete { start, end } a report time range covers (null => All Time).
+export const getReportRange = (timeRange, customStart = null, customEnd = null) => {
+  if (timeRange === 'Today') return getPresetRange('today');
+  if (timeRange === 'This Week') return getPresetRange('last7');
+  if (timeRange === 'This Month') return getPresetRange('thisMonth');
+  if (timeRange === 'Custom' && customStart && customEnd) return { start: customStart, end: customEnd };
+  return parseFyLabel(timeRange);
+};
 
-    const itemDate = parseItemDate(item);
-
-    if (timeRange === 'Today') {
-      if (!itemDate) return false;
-      return (
-        itemDate.getDate() === now.getDate() &&
-        itemDate.getMonth() === now.getMonth() &&
-        itemDate.getFullYear() === now.getFullYear()
-      );
-    }
-
-    if (timeRange === 'This Week') {
-      if (!itemDate) return false;
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return itemDate >= oneWeekAgo && itemDate <= now;
-    }
-
-    if (timeRange === 'This Month') {
-      if (!itemDate) return false;
-      return (
-        itemDate.getMonth() === now.getMonth() &&
-        itemDate.getFullYear() === now.getFullYear()
-      );
-    }
-
-    if (timeRange === 'FY 2025-26') {
-      if (!itemDate) return false;
-      const startFY = new Date(2025, 3, 1, 0, 0, 0); // 1 Apr 2025
-      const endFY = new Date(2026, 2, 31, 23, 59, 59, 999); // 31 Mar 2026
-      return itemDate >= startFY && itemDate <= endFY;
-    }
-
-    if (timeRange === 'Custom' && customStart && customEnd) {
-      if (!itemDate) return false;
-      const start = new Date(customStart);
-      const end = new Date(customEnd);
-      end.setHours(23, 59, 59, 999);
-      return itemDate >= start && itemDate <= end;
-    }
-
-    // Default 'All Time'
-    return true;
+const filterByRange = (items, range) => {
+  return (items || []).filter((item) => {
+    if (!isRevenueSale(item)) return false;
+    if (!range) return true;
+    return isInDateRange(getBookingDate(item), range.start, range.end);
   });
 };
 
 /**
  * Computes complete financial summary, P&L, and CA audit metrics strictly from live transaction data
  */
-export const computeFinancialSummary = (allTransactions = [], settings = defaultCalculationSettings, timeRange = 'This Month') => {
+/**
+ * actualCosts (only used when settings.profitMethod === 'actual'):
+ *   { expenses: number|null, payroll: number|null, loading: boolean }
+ * null means "not loaded / unavailable" — reported, never guessed.
+ */
+export const computeFinancialSummary = (allTransactions = [], settings = defaultCalculationSettings, timeRange = 'This Month', actualCosts = null) => {
   const safeSettings = { ...defaultCalculationSettings, ...(settings || {}) };
   const filtered = filterTransactionsByRange(allTransactions, timeRange);
 
@@ -286,20 +307,44 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
     };
   });
 
-  const effectiveTaxRate = Number(safeSettings.defaultGstRate || 18);
+  // Actual blended rate of the GST charged in the period, not the default setting.
+  const effectiveTaxRate = totalTaxable > 0 ? Math.round((totalTax / totalTaxable) * 1000) / 10 : 0;
 
-  // Operating Deductions according to Admin Calculation Settings
-  const overheadRate = Number(safeSettings.operatingOverheadRate || 18.5);
-  const gatewayRate = Number(safeSettings.gatewaySurchargeRate || 1.8);
+  // Operating deductions: estimated from the settings, or actual recorded costs.
+  const isActual = safeSettings.profitMethod === 'actual';
+  const overheadRate = Number(safeSettings.operatingOverheadRate ?? 18.5);
+  const gatewayRate = Number(safeSettings.gatewaySurchargeRate ?? 1.8);
 
-  const operatingOverheads = (totalTaxable * overheadRate) / 100;
+  let operatingOverheads = 0;
+  let gatewayFees = 0;
+  let recordedExpenses = 0;
+  let payrollCost = 0;
+  const deductionRows = [];
+
+  if (isActual) {
+    const costs = actualCosts || {};
+    if (safeSettings.profitIncludeExpenses !== false) {
+      recordedExpenses = Number(costs.expenses) || 0;
+      deductionRows.push({ label: 'Recorded Expenses (Misc. Expenses)', basis: 'Actual, by date spent', amount: Math.round(recordedExpenses) });
+    }
+    if (safeSettings.profitIncludePayroll !== false) {
+      payrollCost = Number(costs.payroll) || 0;
+      deductionRows.push({ label: 'Staff Salaries (net payable)', basis: 'Actual, pro-rated to the period', amount: Math.round(payrollCost) });
+    }
+  } else {
+    operatingOverheads = (totalTaxable * overheadRate) / 100;
+    gatewayFees = (totalGross * gatewayRate) / 100;
+    deductionRows.push({ label: 'Operating Overheads (Rent, Utilities, Consumables)', basis: `${overheadRate}% of net taxable base (estimate)`, amount: Math.round(operatingOverheads) });
+    deductionRows.push({ label: 'Payment Gateway & POS Surcharge', basis: `${gatewayRate}% of gross turnover (estimate)`, amount: Math.round(gatewayFees) });
+  }
+
   const staffIncentives = 0;
-  const gatewayFees = (totalGross * gatewayRate) / 100;
   const depreciationReserve = 0;
-  const totalDeductions = operatingOverheads + gatewayFees;
+  const totalDeductions = operatingOverheads + gatewayFees + recordedExpenses + payrollCost;
 
-  // Net Operating Profit (EBITDA before direct corporate income tax)
-  const netProfit = Math.max(0, totalTaxable - totalDeductions);
+  // Net Operating Profit (EBITDA before direct corporate income tax).
+  // Not clamped: a loss must show as a loss, not as ₹0.
+  const netProfit = totalTaxable - totalDeductions;
   const netProfitMargin = totalTaxable > 0 ? (netProfit / totalTaxable) * 100 : 0;
 
   const txCount = enrichedTransactions.length;
@@ -353,6 +398,12 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
     gatewayFees: Math.round(gatewayFees),
     depreciationReserve: Math.round(depreciationReserve),
     totalDeductions: Math.round(totalDeductions),
+    profitMethod: isActual ? 'actual' : 'estimate',
+    profitBasisLabel: isActual ? 'Actual recorded costs' : 'Estimated from overhead %',
+    costsLoading: Boolean(isActual && actualCosts && actualCosts.loading),
+    recordedExpenses: Math.round(recordedExpenses),
+    payrollCost: Math.round(payrollCost),
+    deductionRows,
     netProfit: Math.round(netProfit),
     netProfitMargin: Math.round(netProfitMargin * 10) / 10,
     transactionCount: txCount,
@@ -367,9 +418,35 @@ export const computeFinancialSummary = (allTransactions = [], settings = default
  * Currency formatter for Indian Rupees
  */
 export const formatINR = (val) => {
-  const num = Number(val || 0);
-  return '₹' + num.toLocaleString('en-IN', {
+  const raw = Number(val || 0);
+  const num = Math.abs(raw);
+  return (raw < 0 ? '-₹' : '₹') + num.toLocaleString('en-IN', {
     maximumFractionDigits: 2,
     minimumFractionDigits: num % 1 === 0 ? 0 : 2
   });
+};
+
+/**
+ * Monthly salary totals pro-rated to the days of `range` that fall in each
+ * month (a 7-day report carries 7/31 of a 31-day month's payroll). Days after
+ * today are not charged.
+ */
+export const prorateMonthlyCost = (monthRows = [], range, todayKey) => {
+  if (!range || !range.start || !range.end) {
+    return monthRows.reduce((sum, r) => sum + (Number(r.netPayable) || 0), 0);
+  }
+  const end = range.end > todayKey ? todayKey : range.end;
+  let total = 0;
+  for (const row of monthRows) {
+    const [y, m] = String(row.month).split('-').map(Number);
+    const dim = new Date(y, m, 0).getDate();
+    const mStart = `${row.month}-01`;
+    const mEnd = `${row.month}-${String(dim).padStart(2, '0')}`;
+    const from = range.start > mStart ? range.start : mStart;
+    const to = end < mEnd ? end : mEnd;
+    if (from > to) continue;
+    const days = Math.round((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000) + 1;
+    total += (Number(row.netPayable) || 0) * (days / dim);
+  }
+  return total;
 };

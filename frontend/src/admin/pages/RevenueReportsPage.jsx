@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import apiClient from '../../common/utils/apiClient';
 import {
   Download,
   FileText,
@@ -28,7 +29,8 @@ import {
   Bar
 } from 'recharts';
 import { useAdmin } from '../common/context/AdminContext';
-import { computeFinancialSummary, formatINR } from '../common/utils/calculationUtils';
+import { computeFinancialSummary, formatINR, filterTransactionsByRange, parseItemDate, currentFinancialYearLabel, getReportRange, prorateMonthlyCost } from '../common/utils/calculationUtils';
+import { bookingAmount, MONTH_NAMES, getDataSpan, toDateKey } from '../common/utils/dashboardStats';
 import CaRevenueReportModal from '../common/components/CaRevenueReportModal';
 import AdminCalculationSettingsPage from './AdminCalculationSettingsPage';
 
@@ -43,41 +45,63 @@ export default function RevenueReportsPage() {
     return [...(bookings || [])];
   }, [bookings]);
 
+  // "Actual" profit mode: load the costs recorded for the selected period.
+  const isActualProfit = calculationSettings?.profitMethod === 'actual';
+  const includeExpenses = calculationSettings?.profitIncludeExpenses !== false;
+  const includePayroll = calculationSettings?.profitIncludePayroll !== false;
+  const [actualCosts, setActualCosts] = useState({ expenses: null, payroll: null, loading: false });
+
+  useEffect(() => {
+    if (!isActualProfit) return undefined;
+    let cancelled = false;
+    const todayKey = toDateKey(new Date());
+    // All Time starts at the first recorded sale.
+    const range = getReportRange(timeRange) || { start: getDataSpan(allTransactions)?.start || todayKey, end: todayKey };
+    const end = range.end > todayKey ? todayKey : range.end;
+
+    setActualCosts((prev) => ({ ...prev, loading: true }));
+    Promise.all([
+      includeExpenses
+        ? apiClient.get('/expenses', { params: { range: 'custom', from: range.start, to: end } }).then((r) => Number(r.data?.total) || 0)
+        : Promise.resolve(0),
+      includePayroll
+        ? apiClient.get('/salary/cost', { params: { from: range.start.slice(0, 7), to: end.slice(0, 7) } })
+            .then((r) => prorateMonthlyCost(r.data?.months || [], { start: range.start, end }, todayKey))
+        : Promise.resolve(0)
+    ])
+      .then(([expenses, payroll]) => { if (!cancelled) setActualCosts({ expenses, payroll, loading: false }); })
+      .catch((err) => {
+        if (cancelled) return;
+        setActualCosts({ expenses: null, payroll: null, loading: false, error: true });
+        showToast?.(err?.response?.data?.message || 'Could not load recorded expenses / salaries for net profit', 'error');
+      });
+    return () => { cancelled = true; };
+  }, [isActualProfit, includeExpenses, includePayroll, timeRange, allTransactions]);
+
   // Compute dynamic financial metrics using calculationSettings
   const summary = useMemo(() => {
-    return computeFinancialSummary(allTransactions, calculationSettings, timeRange);
-  }, [allTransactions, calculationSettings, timeRange]);
+    return computeFinancialSummary(allTransactions, calculationSettings, timeRange, isActualProfit ? actualCosts : null);
+  }, [allTransactions, calculationSettings, timeRange, isActualProfit, actualCosts]);
 
-  // Dynamic monthly flow trajectory aggregated strictly from real transactions
+  const fyLabel = currentFinancialYearLabel();
+  // The FY the report is about: the selected one, else the current FY.
+  const reportFy = /^FY /.test(timeRange) ? timeRange : fyLabel;
+
+  // Monthly revenue curve from the same paid-sale rules as the summary. An FY
+  // runs Apr–Mar; every other range plots the current calendar year.
   const dynamicTrendData = useMemo(() => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthlyTotals = new Array(12).fill(0);
+    const isFy = /^FY /.test(timeRange);
+    const order = isFy ? [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const totals = new Array(12).fill(0);
     const targetYear = new Date().getFullYear();
-
-    (allTransactions || []).forEach((item) => {
-      if (!item || String(item.status || item.bookingStatus || '').toLowerCase() === 'cancelled') return;
-      const rawDate = item.date || item.createdAt || item.bookedAt || item.saleDate || item.bookingDate;
-      if (!rawDate) return;
-      const d = new Date(rawDate);
-      if (isNaN(d.getTime())) return;
-      
-      const gross = Math.max(0, Number(item.total ?? item.amount ?? item.price ?? item.grandTotal ?? 0));
-      const monthIdx = d.getMonth(); // 0 - 11
-      if (timeRange === 'FY 2025-26') {
-        const startFY = new Date(2025, 3, 1, 0, 0, 0);
-        const endFY = new Date(2026, 2, 31, 23, 59, 59, 999);
-        if (d >= startFY && d <= endFY) {
-          monthlyTotals[monthIdx] += gross;
-        }
-      } else if (d.getFullYear() === targetYear || timeRange === 'All Time') {
-        monthlyTotals[monthIdx] += gross;
-      }
+    const sales = filterTransactionsByRange(allTransactions, isFy || timeRange === 'All Time' ? timeRange : 'All Time');
+    sales.forEach((item) => {
+      const d = parseItemDate(item);
+      if (!d) return;
+      if (!isFy && timeRange !== 'All Time' && d.getFullYear() !== targetYear) return;
+      totals[d.getMonth()] += bookingAmount(item);
     });
-
-    return months.map((m, i) => ({
-      month: m,
-      revenue: Math.round(monthlyTotals[i])
-    }));
+    return order.map((i) => ({ month: MONTH_NAMES[i], revenue: Math.round(totals[i]) }));
   }, [allTransactions, timeRange]);
 
   // 1. Downloadable Excel (.csv) Export
@@ -94,7 +118,7 @@ export default function RevenueReportsPage() {
       const csvRows = [
         ['THE SHINE LOUNGE - EXECUTIVE FINANCIAL & GST AUDIT REPORT'],
         [`Business: ${cs.businessName || 'Shine N Sip Solutions Private Limited'}`, `GSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}`, `PAN: ${cs.pan || 'AABCT8742L'}`],
-        [`Time Range: ${timeRange}`, `Fiscal Year: ${cs.fiscalYear || 'FY 2025-26'}`, `Generated On: ${reportDate}`],
+        [`Time Range: ${timeRange}`, `Fiscal Year: ${reportFy}`, `Generated On: ${reportDate}`],
         [''],
         ['1. EXECUTIVE FINANCIAL SUMMARY'],
         ['Metric Name', 'Amount (INR)', 'Remarks / Computation Basis'],
@@ -103,9 +127,8 @@ export default function RevenueReportsPage() {
         [`Central GST (CGST @ ${(summary.effectiveTaxRate / 2).toFixed(1)}%)`, summary.cgst, 'Output Tax Liability'],
         [`State GST (SGST @ ${(summary.effectiveTaxRate / 2).toFixed(1)}%)`, summary.sgst, 'Output Tax Liability'],
         [`Total GST Output Liability (${summary.effectiveTaxRate}%)`, summary.totalGst, 'Statutory Tax Payable'],
-        ['Operating Overheads', summary.operatingOverheads, `${cs.operatingOverheadRate || 18.5}% of net base`],
-        ['Payment Gateway & Surcharge', summary.gatewayFees, `${cs.gatewaySurchargeRate || 1.8}% of gross turnover`],
-        ['Net Operating Profit (EBITDA)', summary.netProfit, `Margin: ${summary.netProfitMargin}%`],
+        ...summary.deductionRows.map((r) => [r.label, r.amount, r.basis]),
+        ['Net Operating Profit (EBITDA)', summary.netProfit, `Margin: ${summary.netProfitMargin}% · ${summary.profitBasisLabel}`],
         ['Average Order Value (AOV)', summary.aov, 'Per customer ticket'],
         [''],
         ['2. DEPARTMENT & SAC SCHEDULE BREAKDOWN'],
@@ -235,7 +258,7 @@ export default function RevenueReportsPage() {
                 <Filter className="w-3.5 h-3.5 text-gray-400" /> Filter Period:
               </span>
               <div className="flex items-center gap-1 bg-white p-1 rounded-xl text-xs font-bold text-gray-700 border border-gray-200 shadow-2xs">
-                {['Today', 'This Week', 'This Month', 'FY 2025-26'].map((r) => (
+                {['Today', 'This Week', 'This Month', fyLabel, 'All Time'].map((r) => (
                   <button
                     key={r}
                     onClick={() => setTimeRange(r)}
@@ -278,9 +301,16 @@ export default function RevenueReportsPage() {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Net Operating Profit</span>
-              <h3 className="text-2xl font-black text-emerald-600 mt-2">{formatINR(summary.netProfit)}</h3>
-              <p className="text-[11px] text-emerald-600 font-bold mt-1">
+              <h3 className={`text-2xl font-black mt-2 ${summary.netProfit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {summary.costsLoading ? '…' : formatINR(summary.netProfit)}
+              </h3>
+              <p className={`text-[11px] font-bold mt-1 ${summary.netProfit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                 Margin: {summary.netProfitMargin}% (EBITDA)
+              </p>
+              <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
+                {summary.profitBasisLabel}
+                {summary.profitMethod === 'actual' && !summary.costsLoading && ` · costs ${formatINR(summary.totalDeductions)}`}
+                {actualCosts.error && isActualProfit && ' · costs unavailable'}
               </p>
             </div>
           </div>

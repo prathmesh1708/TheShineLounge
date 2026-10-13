@@ -374,7 +374,7 @@ export default function ManageMembershipsPage() {
         const activeCount = memberships.filter(m => m.status === 'Active').length;
         const expiringCount = memberships.filter(m => m.status === 'Expiring Soon').length;
         const queuedCount = memberships.filter(m => m.status === 'Queued').length;
-        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 2499), 0);
+        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 0), 0);
 
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

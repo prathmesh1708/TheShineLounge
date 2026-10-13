@@ -92,7 +92,6 @@ export default function StaffDashboardPage() {
   const assignedCount = filteredJobs.length;
   const completedCount = filteredJobs.filter(isJobCompleted).length;
   const pendingCount = assignedCount - completedCount;
-  const jobValue = filteredJobs.reduce((sum, job) => sum + (Number(job.total || job.amount) || 0), 0);
 
   // Completed revenue
   const completedRevenue = filteredJobs
@@ -174,7 +173,7 @@ export default function StaffDashboardPage() {
     canSeePayments && {
       key: 'value',
       label: 'Collection',
-      value: `₹${(completedRevenue || jobValue).toLocaleString('en-IN')}`,
+      value: `₹${completedRevenue.toLocaleString('en-IN')}`,
       icon: IndianRupee,
       tone: 'purple'
     },

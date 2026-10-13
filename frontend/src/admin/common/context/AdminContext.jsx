@@ -18,7 +18,7 @@ import {
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
 import { toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
-import { isTransactionPaid, getBookingDate, buildRevenueTrend, buildServiceRevenue, buildPaymentModes } from '../utils/dashboardStats';
+import { isTransactionPaid, getBookingDate, bookingAmount, buildRevenueTrend, buildServiceRevenue, buildPaymentModes } from '../utils/dashboardStats';
 
 const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -492,6 +492,11 @@ export const AdminProvider = ({ children }) => {
               notes: b.notes || '',
               photos: b.photos || [],
               paymentMode: b.paymentMode || 'UPI',
+              // GST actually charged on this sale, for the revenue/CA reports.
+              includeGst: Boolean(b.includeGst),
+              gstRate: Number(b.gstRate) || 0,
+              subtotal: Number(b.subtotal) || 0,
+              gstAmount: Number(b.gstAmount) || 0,
               isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
               saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
               vehicleModel: b.vehicleModel || b.vehicleType || '',
@@ -1097,7 +1102,7 @@ export const AdminProvider = ({ children }) => {
     // Calculate dynamic revenue stats from real paid or completed bookings and offline sales
     const totalRev = (bookings || []).reduce((sum, b) => {
       if (!isTransactionPaid(b)) return sum;
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return sum + amt;
     }, 0);
 
@@ -1105,7 +1110,7 @@ export const AdminProvider = ({ children }) => {
       if (!isTransactionPaid(b)) return sum;
       const d = getBookingDate(b);
       const matchesToday = isSameDay(d, today);
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return matchesToday ? sum + amt : sum;
     }, 0);
 
@@ -1113,7 +1118,7 @@ export const AdminProvider = ({ children }) => {
       if (!isTransactionPaid(b)) return sum;
       const d = getBookingDate(b);
       const isCurrentMonth = d && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return isCurrentMonth ? sum + amt : sum;
     }, 0);
 
