@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Send, FileText, PenLine, AlertTriangle, Info, Loader2, ExternalLink, Copy, Check, Clock, FlaskConical, RefreshCw } from 'lucide-react';
+import { Send, FileText, PenLine, AlertTriangle, Info, Loader2, ExternalLink, Copy, Check, FlaskConical, RefreshCw } from 'lucide-react';
 import AdminModal from '../../common/components/AdminModal';
 import ContactPicker from './ContactPicker';
 import MessageComposer from './MessageComposer';
@@ -397,15 +397,6 @@ export default function ComposeTab({
             Dry-run mode is on (WHATSAPP_DRY_RUN=true): nothing is really sent to WhatsApp.
           </div>
         )}
-        <div>
-          <label className={label}>Campaign name (optional)</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Diwali offer — members" className={field} />
-        </div>
-        <div>
-          <label className={label}><Clock className="w-3 h-3 inline -mt-0.5" /> Schedule (optional)</label>
-          <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className={field} />
-          <p className="text-[10.5px] text-gray-400 font-semibold mt-1">Leave empty to start sending now.</p>
-        </div>
         {!isTemplate && !isBhash && repliedCount < recipients.length && (
           <p className="text-[11.5px] font-semibold text-amber-700">
             {recipients.length - repliedCount} contact(s) have not messaged you in 24h and will be skipped.
