@@ -29,11 +29,12 @@ const diskStorage = multer.diskStorage({
 });
 
 const fileFilter = (_req, file, cb) => {
-  const allowed = /^(image|video)\//;
-  if (allowed.test(file.mimetype)) {
+  // Audio and PDFs are for WhatsApp Hub voice notes and document messages.
+  const allowed = /^(image|video|audio)\//;
+  if (allowed.test(file.mimetype) || file.mimetype === 'application/pdf') {
     cb(null, true);
   } else {
-    cb(new Error('Only image and video files are allowed'), false);
+    cb(new Error('Only image, video, audio and PDF files are allowed'), false);
   }
 };
 
@@ -92,11 +93,21 @@ router.post('/', authMiddleware, staffOnly, upload.single('file'), async (req, r
 
     if (CLOUDINARY_CLOUD_NAME) {
       // Direct stream to Cloudinary
-      const isVideo = req.file.mimetype.startsWith('video/');
-      const result = await cloudinaryService.uploadStream(req.file.buffer, {
-        folder,
-        resource_type: isVideo ? 'video' : 'image'
-      });
+      // Cloudinary stores audio under the "video" resource type, and serves
+      // PDFs reliably only as "raw" (image-type PDFs are blocked by default).
+      const { mimetype } = req.file;
+      const resourceType = mimetype.startsWith('video/') || mimetype.startsWith('audio/')
+        ? 'video'
+        : (mimetype === 'application/pdf' ? 'raw' : 'image');
+      const uploadOptions = { folder, resource_type: resourceType };
+      if (resourceType === 'raw') {
+        // Raw files keep their extension only through the public id; WhatsApp
+        // shows this name on the document ("Invoice-TSL-1042.pdf").
+        const base = path.basename(req.file.originalname || 'document', path.extname(req.file.originalname || ''))
+          .replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'document';
+        uploadOptions.public_id = `${base}-${Date.now().toString(36)}.pdf`;
+      }
+      const result = await cloudinaryService.uploadStream(req.file.buffer, uploadOptions);
 
       return res.status(200).json({
         success: true,

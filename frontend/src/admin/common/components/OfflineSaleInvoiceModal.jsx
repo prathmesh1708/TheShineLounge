@@ -1,9 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Loader2, Copy, Check, Printer } from 'lucide-react';
+import { X, Download, Loader2, Printer } from 'lucide-react';
 import ReceiptDocument, { formatReceiptDate, getReceiptValidityRange } from '../../../common/components/ReceiptDocument';
-import { downloadReceiptPdf, getReceiptPdfBlob, copyReceiptImageToClipboard, printReceiptDocument } from '../../../common/utils/receiptPdfGenerator';
-import { apiClient } from '../../../common/utils/apiClient';
+import { downloadReceiptPdf, printReceiptDocument } from '../../../common/utils/receiptPdfGenerator';
+import {
+  getInvoiceWhatsAppConfig, sendReceiptOnWhatsApp, renderReceiptTemplate, saleTemplateValues, whatsappNumber
+} from '../../../common/services/whatsappInvoiceService';
 
 
 export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
@@ -30,39 +32,46 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     return String(sale.phone || sale.mobile || sale.customerPhone || '').trim();
   };
 
-  const getDefaultMessage = () => {
-    if (!sale) return '';
-    const isLocal = typeof window !== 'undefined' && (
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.')
-    );
-    const org = isLocal ? 'https://app.theshinelounge.in' : (window.location.origin || 'https://app.theshinelounge.in');
-    const rNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
-    const cName = sale.customerName || sale.customer || 'Valued Customer';
-    const pUrl = `${org}/receipt/${encodeURIComponent(rNo)}?download=pdf`;
-    return `Hello ${cName} ,\n\nThank you for choosing The Shine Lounge!\nPlease find your official tax invoice & receipt ${pUrl} attached.\n\n📍 The Shine Lounge`;
-  };
 
   const [targetPhone, setTargetPhone] = useState(getInitialPhone);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [isCopyingImage, setIsCopyingImage] = useState(false);
-  const [copiedSuccess, setCopiedSuccess] = useState(false);
   const [statusNotice, setStatusNotice] = useState(null);
-  const [editableMessageText, setEditableMessageText] = useState(getDefaultMessage);
+  // Business WhatsApp API (admin → WhatsApp Hub). null while loading. The
+  // receipt PDF is only ever sent from the business number — never by opening
+  // WhatsApp Web / wa.me in the browser.
+  const [waApi, setWaApi] = useState(null);
+  const [directError, setDirectError] = useState('');
+  const autoSendRef = useRef(null);
+  const autoHandledRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (isOpen) getInvoiceWhatsAppConfig().then((cfg) => { if (alive) setWaApi(cfg || { enabled: false }); });
+    return () => { alive = false; };
+  }, [isOpen]);
 
   useEffect(() => {
     setTargetPhone(getInitialPhone());
     setPhoneError('');
     setStatusNotice(null);
-    setCopiedSuccess(false);
-    setEditableMessageText(getDefaultMessage());
-    if (sale && sale.autoOpenWhatsApp) {
-      setShowWhatsAppModal(true);
-    }
+    setDirectError('');
+    setShowWhatsAppModal(false);
   }, [sale]);
+
+  // The row's "WhatsApp" button opens this modal with autoOpenWhatsApp: send
+  // right away once the receipt has painted (it is what becomes the PDF).
+  useEffect(() => {
+    if (!isOpen || !sale || !sale.autoOpenWhatsApp || waApi === null) return undefined;
+    if (autoHandledRef.current === sale) return undefined;
+    const t = setTimeout(() => {
+      if (autoHandledRef.current === sale) return;
+      autoHandledRef.current = sale;
+      if (autoSendRef.current) autoSendRef.current();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [isOpen, sale, waApi]);
 
   if (!isOpen || !sale) return null;
 
@@ -72,33 +81,6 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const receiptNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
   const issuedDate = formatReceiptDate(sale.date || sale.createdAt);
   const validityRange = getReceiptValidityRange(sale, issuedDate);
-
-  const customerName = sale.customerName || sale.customer || 'Valued Customer';
-  const isLocalhost = typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname.startsWith('192.168.')
-  );
-  const origin = isLocalhost ? 'https://app.theshinelounge.in' : (window.location.origin || 'https://app.theshinelounge.in');
-  const pdfUrl = `${origin}/receipt/${encodeURIComponent(receiptNo)}?download=pdf`;
-
-  // Requested WhatsApp message format
-  const messageText = `Hello ${customerName} ,\n\nThank you for choosing The Shine Lounge!\nPlease find your official tax invoice & receipt ${pdfUrl} attached.\n\n📍 The Shine Lounge`;
-
-  const cleanPhoneForWhatsApp = (raw) => {
-    if (!raw) return '';
-    let digits = String(raw).replace(/\D/g, '');
-    if (digits.length === 10) {
-      return `91${digits}`;
-    }
-    if (digits.length === 11 && digits.startsWith('0')) {
-      return `91${digits.slice(1)}`;
-    }
-    if (digits.length === 12 && digits.startsWith('91')) {
-      return digits;
-    }
-    return digits;
-  };
 
   const handleDownloadPdfOnly = async () => {
     if (!receiptRef.current || isGeneratingPdf) return;
@@ -115,161 +97,68 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
     }
   };
 
-  const handleCopyReceiptImage = async () => {
-    if (!receiptRef.current || isCopyingImage) return;
-    try {
-      setIsCopyingImage(true);
-      await copyReceiptImageToClipboard(receiptRef.current);
-      setCopiedSuccess(true);
-      setStatusNotice({
-        type: 'success',
-        message: '📋 Receipt image copied to clipboard! In WhatsApp, just press Cmd+V (or Ctrl+V) to send.'
-      });
-      setTimeout(() => {
-        setCopiedSuccess(false);
-      }, 4000);
-    } catch (err) {
-      console.error('Failed to copy receipt image:', err);
-      setStatusNotice({
-        type: 'error',
-        message: 'Could not copy image directly to clipboard. You can still download the PDF below.'
-      });
-    } finally {
-      setIsCopyingImage(false);
-    }
-  };
 
-  const handleSendWhatsApp = async (phoneToSend) => {
-    const rawNumber = phoneToSend !== undefined ? phoneToSend : targetPhone;
-    const sanitized = cleanPhoneForWhatsApp(rawNumber);
+  const apiOn = Boolean(waApi && waApi.enabled);
 
-    if (!sanitized || sanitized.length < 10) {
-      setPhoneError('Please enter a valid 10-digit mobile number');
+  // Direct send: PDF uploaded and delivered as a WhatsApp document by the API.
+  const sendDirect = async (number, template = waApi && waApi.template) => {
+    if (isProcessingRef.current) return;
+    if (!receiptRef.current) {
+      setDirectError('Receipt document is still preparing. Please try again in a moment.');
       setShowWhatsAppModal(true);
       return;
     }
-
-    if (isProcessingRef.current || isGeneratingPdf) return;
-    if (!receiptRef.current) {
-      alert('Receipt document is still preparing. Please try again in a moment.');
-      return;
-    }
-
     isProcessingRef.current = true;
     setIsGeneratingPdf(true);
-    setPhoneError('');
-
-    const textToSend = (editableMessageText && editableMessageText.trim()) ? editableMessageText : messageText;
-    const filename = `Invoice-${receiptNo}.pdf`;
-    // Direct WhatsApp URL formatted with client's phone number and the edited message text
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${sanitized}&text=${encodeURIComponent(textToSend)}`;
-
-    // 1. POPUP-SAFE REDIRECTION:
-    // Synchronously open a new tab immediately in the user gesture loop
-    // so Chrome popup blocker NEVER blocks it on desktop browsers.
-    let waWindow = null;
-    const isMobileDevice = typeof navigator !== 'undefined' &&
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (!isMobileDevice) {
-      waWindow = window.open('about:blank', '_blank');
-    }
-
+    setDirectError('');
+    setStatusNotice({ type: 'info', message: 'Sending the receipt PDF on WhatsApp…' });
     try {
-      // 2. Automatically copy receipt image to clipboard for instant Cmd+V pasting in WhatsApp
-      try {
-        await copyReceiptImageToClipboard(receiptRef.current);
-        setCopiedSuccess(true);
-      } catch (copyErr) {
-        console.warn('Auto-clipboard copy failed or unsupported:', copyErr);
-      }
-
-      // 3. Generate PDF Blob from the exact same ReceiptDocument
-      const pdfBlob = await getReceiptPdfBlob(receiptRef.current, filename);
-      const pdfFile = new File([pdfBlob], filename, {
-        type: 'application/pdf',
-        lastModified: Date.now()
+      const res = await sendReceiptOnWhatsApp({
+        kind: 'sale',
+        receiptNo,
+        lookupIds: [sale.bookingId, sale.id, sale._id].filter(Boolean),
+        phone: number,
+        receiptElement: receiptRef.current,
+        template
       });
-
-      // 4. Proactively save PDF to backend in background so direct streaming endpoint is immediately available
-      try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (reader.result) {
-            const base64data = reader.result.split(',')[1];
-            apiClient.post(`/bookings/receipt/${encodeURIComponent(receiptNo)}/pdf`, {
-              pdfBase64: base64data,
-              saleData: sale
-            }).catch(() => {});
-          }
-        };
-        reader.readAsDataURL(pdfBlob);
-      } catch (_) {}
-
-      // 5. Mobile Devices (Android / iPhone):
-      // Uses navigator.share with both files: [pdfFile] and text: textToSend.
-      // When shared to WhatsApp, it attaches the PDF document and sets the message caption.
-      if (isMobileDevice && typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          await navigator.share({
-            files: [pdfFile],
-            title: filename,
-            text: textToSend
-          });
-          setShowWhatsAppModal(false);
-          setStatusNotice({ type: 'success', message: 'Invoice PDF & message shared successfully!' });
-          setTimeout(() => setStatusNotice(null), 3000);
-          return;
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            setShowWhatsAppModal(false);
-            setStatusNotice({ type: 'info', message: 'Sharing cancelled.' });
-            setTimeout(() => setStatusNotice(null), 2500);
-            return;
-          }
-          console.warn('Native share failed, continuing to WhatsApp redirect flow:', err);
-        }
-      }
-
-      // 6. Desktop (Mac/PC Chrome):
-      // Generates and downloads Invoice-${receiptNo}.pdf locally to the admin's machine
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 1500);
-
-      // Redirect the pre-opened tab to whatsappUrl, opening WhatsApp Web with the client's number and pre-filled template message
-      if (waWindow) {
-        waWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      }
-
       setShowWhatsAppModal(false);
       setStatusNotice({
         type: 'success',
-        message: '✅ WhatsApp opened! Image copied to clipboard — press Cmd+V (or Ctrl+V) in WhatsApp to paste receipt image.'
+        message: res.dryRun ? `Test mode — the receipt PDF would be sent to ${res.phone}.` : `✅ Receipt PDF sent on WhatsApp to ${res.phone}.`
       });
-      setTimeout(() => setStatusNotice(null), 8000);
-    } catch (error) {
-      console.error('Error in WhatsApp PDF send:', error);
-      if (waWindow) {
-        waWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      }
-      setShowWhatsAppModal(false);
+    } catch (err) {
+      setStatusNotice(null);
+      setDirectError(err.message || 'WhatsApp send failed');
+      setShowWhatsAppModal(true);
     } finally {
       setIsGeneratingPdf(false);
       isProcessingRef.current = false;
     }
   };
+
+  // One click: with a valid number on file, send at once through the API;
+  // otherwise open the popup to ask for the number. If the API is not ready
+  // the popup says why — there is no browser fallback.
+  const handleWhatsAppClick = async () => {
+    setPhoneError('');
+    setDirectError('');
+    // Re-check a disabled config so a newly activated API works without a reload.
+    const cfg = apiOn ? waApi : await getInvoiceWhatsAppConfig({ force: true });
+    setWaApi(cfg || { enabled: false });
+    if (!cfg || !cfg.enabled) {
+      setDirectError((cfg && cfg.reason) || 'WhatsApp API is not available');
+      setShowWhatsAppModal(true);
+      return;
+    }
+    const number = whatsappNumber(targetPhone);
+    if (number) {
+      sendDirect(number, cfg.template);
+      return;
+    }
+    setPhoneError("Enter the customer's WhatsApp number to send the PDF");
+    setShowWhatsAppModal(true);
+  };
+  autoSendRef.current = handleWhatsAppClick;
 
 
   return createPortal(
@@ -308,15 +197,15 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
 
             {/* "Send via WhatsApp" Button */}
             <button
-              onClick={() => setShowWhatsAppModal(true)}
+              onClick={handleWhatsAppClick}
               disabled={isGeneratingPdf}
               className="px-4 sm:px-5 py-2 rounded-full text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 bg-[#1ea952] hover:bg-[#16a34a] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Send Receipt via WhatsApp with Image & PDF"
+              title="Send the receipt PDF on WhatsApp"
             >
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing...</span>
+                  <span>Sending...</span>
                 </>
               ) : (
                 <>
@@ -406,14 +295,14 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
 
             {/* Send via WhatsApp */}
             <button
-              onClick={() => setShowWhatsAppModal(true)}
+              onClick={handleWhatsAppClick}
               disabled={isGeneratingPdf}
               className="flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-bold text-white shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 bg-[#1ea952] hover:bg-[#16a34a] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing...</span>
+                  <span>Sending...</span>
                 </>
               ) : (
                 <>
@@ -453,7 +342,7 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                   </div>
                   <div>
                     <h4 className="text-xs font-black text-gray-900 leading-tight">Send via WhatsApp</h4>
-                    <p className="text-[10px] text-gray-500">Official Receipt Image & PDF</p>
+                    <p className="text-[10px] text-gray-500">PDF sent directly from The Shine Lounge number</p>
                   </div>
                 </div>
                 <button
@@ -465,33 +354,14 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
               </div>
 
               <div className="space-y-3 text-xs">
-                {/* Visual Direct Image tip box */}
-                <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2 text-amber-900">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                      <span>💡</span>
-                      <span>Send Direct Receipt Image:</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCopyReceiptImage}
-                      disabled={isCopyingImage}
-                      className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-bold text-amber-900 hover:bg-amber-100/50 shadow-2xs flex items-center gap-1 transition-colors active:scale-95"
-                    >
-                      {isCopyingImage ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : copiedSuccess ? (
-                        <Check className="w-3 h-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="w-3 h-3 text-amber-800" />
-                      )}
-                      <span>{copiedSuccess ? 'Image Copied!' : 'Copy Image Now'}</span>
-                    </button>
+                {directError && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-1">
+                    <p className="text-[11px] font-bold text-rose-700">Could not send: {directError}</p>
+                    {waApi && !waApi.enabled && (
+                      <p className="text-[10.5px] leading-relaxed text-rose-800">Direct sending starts once the WhatsApp API is active (Admin → WhatsApp Hub).</p>
+                    )}
                   </div>
-                  <p className="text-[10px] leading-relaxed text-amber-800">
-                    Clicking <strong>Send via WhatsApp</strong> automatically copies the receipt image to your clipboard. When WhatsApp opens, simply press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) to send the visual receipt directly into the chat!
-                  </p>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1">
@@ -547,32 +417,17 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                     <span className="text-emerald-700 font-black">₹{price.toLocaleString('en-IN')}</span>
                   </div>
 
-                  {/* Editable WhatsApp Message */}
-                  <div className="pt-2 border-t border-emerald-200/60">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide flex items-center gap-1">
-                        <span>WhatsApp Message</span>
-                        <span className="text-[9px] text-emerald-600 font-normal lowercase">(editable)</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setEditableMessageText(getDefaultMessage())}
-                        className="text-[10px] text-emerald-700 hover:text-emerald-950 font-bold hover:underline transition-colors"
-                        title="Reset to default message template"
-                      >
-                        Reset Template
-                      </button>
+                  {apiOn && (
+                    <div className="pt-2 border-t border-emerald-200/60">
+                      <p className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide mb-1.5">
+                        Message (approved template{waApi.template && waApi.template.headerType === 'document' ? ' + receipt PDF' : ''})
+                      </p>
+                      <div className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-[11px] text-gray-800 whitespace-pre-wrap leading-relaxed">
+                        {renderReceiptTemplate(waApi.template, saleTemplateValues(sale, receiptNo))}
+                      </div>
                     </div>
-                    <div className="relative">
-                      <textarea
-                        rows={4}
-                        value={editableMessageText}
-                        onChange={(e) => setEditableMessageText(e.target.value)}
-                        placeholder="Type your WhatsApp message..."
-                        className="w-full p-2.5 bg-white border border-emerald-300 rounded-xl text-[11px] text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none font-sans leading-relaxed shadow-2xs resize-y"
-                      />
-                    </div>
-                  </div>
+                  )}
+
                 </div>
               </div>
 
@@ -587,21 +442,28 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendWhatsApp(targetPhone)}
-                  disabled={isGeneratingPdf}
+                  onClick={() => {
+                    const number = whatsappNumber(targetPhone);
+                    if (!number) {
+                      setPhoneError('Please enter a valid 10-digit mobile number');
+                      return;
+                    }
+                    sendDirect(number);
+                  }}
+                  disabled={isGeneratingPdf || !apiOn}
                   className="flex-1 py-2.5 text-xs font-black text-white bg-[#1ea952] hover:bg-[#16a34a] rounded-full shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-60"
                 >
                   {isGeneratingPdf ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Preparing...</span>
+                      <span>Sending...</span>
                     </>
                   ) : (
                     <>
                       <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
                       </svg>
-                      <span>Send via WhatsApp</span>
+                      <span>Send PDF on WhatsApp</span>
                     </>
                   )}
                 </button>

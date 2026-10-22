@@ -36,6 +36,11 @@ const invoiceSchema = new mongoose.Schema(
     staffId: { type: String, default: '' },
     staffName: { type: String, default: '' },
     warrantyNo: { type: String, default: '' },
+    // Receipt PDF (Cloudinary) and the last WhatsApp delivery attempt.
+    receiptPdfUrl: { type: String, default: '' },
+    whatsappStatus: { type: String, default: '' },
+    whatsappError: { type: String, default: '' },
+    whatsappSentAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false }
   },
   { timestamps: true }

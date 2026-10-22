@@ -1,16 +1,17 @@
 const express = require('express');
 const crypto = require('crypto');
-const { BREAK_CRON_SECRET } = require('../common/config/env');
+const { BREAK_CRON_SECRET, WHATSAPP_CRON_SECRET } = require('../common/config/env');
 const { runBreakSchedulerTick } = require('../services/breakScheduler');
+const { runWhatsAppSenderTick } = require('../whatsapp/sender');
 
 const router = express.Router();
 
 // Machine-to-machine endpoints. Not behind JWT auth: an external cron service
 // authenticates with a shared secret header instead.
 
-const secretMatches = (provided) => {
+const secretMatches = (provided, expected = BREAK_CRON_SECRET) => {
   const a = Buffer.from(String(provided || ''));
-  const b = Buffer.from(BREAK_CRON_SECRET);
+  const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
@@ -28,6 +29,21 @@ router.post('/break-scheduler/tick', async (req, res) => {
     return res.status(200).json({ success: true, ...summary });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Scheduler tick failed' });
+  }
+});
+
+// One WhatsApp campaign batch, for serverless deployments. Same cron, same
+// header; WHATSAPP_CRON_SECRET falls back to BREAK_CRON_SECRET.
+router.post('/whatsapp/tick', async (req, res) => {
+  if (!WHATSAPP_CRON_SECRET) return res.status(404).json({ success: false, message: 'Not found' });
+  if (!secretMatches(req.headers['x-cron-secret'], WHATSAPP_CRON_SECRET)) {
+    return res.status(401).json({ success: false, message: 'Invalid cron secret' });
+  }
+  try {
+    const summary = await runWhatsAppSenderTick(new Date());
+    return res.status(200).json({ success: true, ...summary });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'WhatsApp tick failed' });
   }
 });
 

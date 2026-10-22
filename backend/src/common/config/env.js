@@ -72,5 +72,40 @@ module.exports = {
   // Only fire scheduled breaks for staff who are checked in today.
   BREAK_REQUIRE_CHECKIN: process.env.BREAK_REQUIRE_CHECKIN === 'true',
   // Shared secret for POST /api/internal/break-scheduler/tick. Unset = endpoint off.
-  BREAK_CRON_SECRET: process.env.BREAK_CRON_SECRET || ''
+  BREAK_CRON_SECRET: process.env.BREAK_CRON_SECRET || '',
+
+  // ── WhatsApp provider: 'bhashsms' (reseller HTTP API) or 'meta' (Cloud API) ──
+  WHATSAPP_PROVIDER: (process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase(),
+  BHASHSMS_BASE_URL: (process.env.BHASHSMS_BASE_URL || 'https://bhashsms.com/api').replace(/\/+$/, ''),
+  BHASHSMS_USER: process.env.BHASHSMS_USER || '',
+  BHASHSMS_PASS: process.env.BHASHSMS_PASS || '',
+  BHASHSMS_SENDER: process.env.BHASHSMS_SENDER || '',
+  // BhashSMS bills Utility and Marketing on separate scripts: Utility
+  // templates go through sendmsgutil.php, Marketing (and plain text) through sendmsg.php.
+  BHASHSMS_UTILITY_SCRIPT: process.env.BHASHSMS_UTILITY_SCRIPT || 'sendmsgutil.php',
+  BHASHSMS_MARKETING_SCRIPT: process.env.BHASHSMS_MARKETING_SCRIPT || 'sendmsg.php',
+  BHASHSMS_TEXT_SCRIPT: process.env.BHASHSMS_TEXT_SCRIPT || 'sendmsg.php',
+  // Template sends without variables go to this many numbers per API call.
+  BHASHSMS_MAX_NUMBERS_PER_CALL: positiveInt(process.env.BHASHSMS_MAX_NUMBERS_PER_CALL, 50),
+
+  // ── WhatsApp Hub (Meta WhatsApp Cloud API, src/whatsapp) ──
+  // Leave PHONE_NUMBER_ID / ACCESS_TOKEN empty and the hub still works in
+  // manual mode: the admin opens each chat through wa.me instead.
+  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+  WHATSAPP_BUSINESS_ACCOUNT_ID: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || '',
+  // Needed only to submit templates with an image/video/document header.
+  WHATSAPP_APP_ID: process.env.WHATSAPP_APP_ID || '',
+  WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || '',
+  WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v21.0',
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
+  WHATSAPP_SEND_BATCH: positiveInt(process.env.WHATSAPP_SEND_BATCH, 50),
+  // true = only contacts explicitly marked opted-in receive campaigns.
+  WHATSAPP_REQUIRE_OPT_IN: process.env.WHATSAPP_REQUIRE_OPT_IN === 'true',
+  // true = run the whole pipeline but never call Meta (fake message ids).
+  WHATSAPP_DRY_RUN: process.env.WHATSAPP_DRY_RUN === 'true',
+  WHATSAPP_SENDER_ENABLED: process.env.WHATSAPP_SENDER_ENABLED !== 'false',
+  // Shared secret for POST /api/internal/whatsapp/tick; falls back to the
+  // break scheduler's secret so one cron job can drive both.
+  WHATSAPP_CRON_SECRET: process.env.WHATSAPP_CRON_SECRET || process.env.BREAK_CRON_SECRET || ''
 };

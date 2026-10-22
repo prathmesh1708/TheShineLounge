@@ -1462,80 +1462,59 @@ export const AdminProvider = ({ children }) => {
     showToast(`Membership status changed to ${newStatus}`);
   };
 
-  const renewMembership = async (idOrPass) => {
+  // Renewing = selling a new pass period. It is recorded as its own membership
+  // sale (dated the day it is paid, at the price actually charged) that starts
+  // when the current pass ends. The original sale is never touched: rewriting
+  // its date used to move last month's revenue onto the renewal day, and the
+  // renewal payment itself was never recorded.
+  const renewMembership = async (idOrPass, payment = {}) => {
     const memId = typeof idOrPass === 'object' ? (idOrPass.id || idOrPass.bookingId || idOrPass._id) : idOrPass;
     const cleanId = String(memId || '').trim();
     const target = memberships.find(m => m.id === cleanId || m.bookingId === cleanId || m._id === cleanId) ||
                    (typeof idOrPass === 'object' ? idOrPass : null);
 
-    if (!target) return;
+    if (!target) return null;
+
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Enter the amount received for the renewal', 'error');
+      return null;
+    }
 
     const now = new Date();
     const currentExpiry = parseFlexibleDate(target.expiryDate);
     const start = currentExpiry && currentExpiry > now ? currentExpiry : startOfDay(now);
-    const expiry = addPassDuration(start, target.planName || target.packageName || 'Monthly Membership');
+    const planName = target.planName || target.packageName || 'Monthly Membership';
+    const expiry = addPassDuration(start, planName);
 
     const startISO = toISODateString(start);
     const expiryISO = toISODateString(expiry);
-    const renewedFrom = formatLongDate(start);
-    const renewedTo = formatLongDate(expiry);
-    const newStatus = start > now ? 'Queued' : 'Active';
+    const todayISO = toISODateString(now);
 
-    // 1. Update in-memory memberships state
-    setMemberships(prev => prev.map(m => {
-      const match = m.id === cleanId || m.bookingId === cleanId || m._id === cleanId ||
-                    (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo));
-      if (!match) return m;
-
-      return {
-        ...m,
-        status: newStatus,
-        statusLabel: start > now ? 'Upgraded (Scheduled)' : 'Active',
-        isQueued: start > now,
-        isExpired: false,
-        washesUsed: 0,
-        startDate: startISO,
-        expiryDate: expiryISO,
-        startDateLabel: renewedFrom,
-        expiryDateLabel: renewedTo
-      };
-    }));
-
-    // 2. Update underlying booking in bookings state
-    setBookings(prev => {
-      return prev.map(b => {
-        const bId = String(b.bookingId || b.id || b._id || '');
-        const normPassId = normalizeMembershipId(cleanId);
-        const normBId = normalizeMembershipId(bId);
-        const bPlate = normalizePlate(b.vehicleNo);
-        const tPlate = normalizePlate(target.vehicleNo);
-
-        const match = (normPassId && normBId && normPassId === normBId) ||
-                      bId === cleanId ||
-                      (tPlate && bPlate && tPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
-
-        if (match) {
-          return {
-            ...b,
-            date: renewedFrom,
-            saleDate: startISO,
-            membershipStartDate: startISO,
-            membershipExpiry: expiryISO,
-            membershipStatus: newStatus,
-            status: 'Confirmed',
-            washesUsed: 0
-          };
-        }
-        return b;
-      });
+    const sale = await addOfflineSale({
+      saleType: 'membership',
+      membershipName: planName,
+      serviceKey: target.serviceKey || 'car-wash',
+      serviceName: target.serviceName || 'Car Wash',
+      customerName: target.customerName,
+      customerEmail: target.customerEmail || target.email || '',
+      phone: target.phone || '',
+      vehicleNo: target.vehicleNo || '',
+      vehicleModel: target.vehicleModel || target.vehicleType || '',
+      price: amount,
+      paymentMode: payment.paymentMode || 'Cash',
+      saleDate: payment.saleDate || todayISO,
+      membershipStartDate: startISO,
+      membershipExpiryDate: expiryISO,
+      notes: `Renewal of ${target.bookingId || cleanId}`
     });
 
-    // 3. Persist renewal to backend MongoDB (both MembershipPass and Booking)
+    // Keep the standalone memberships collection's period in step (dates only).
     try {
       await apiClient.put(`/memberships/${cleanId}`, {
         startDate: startISO,
         expiryDate: expiryISO,
-        status: newStatus,
+        status: start > now ? 'Queued' : 'Active',
         washesUsed: 0,
         customerName: target.customerName,
         phone: target.phone,
@@ -1546,45 +1525,11 @@ export const AdminProvider = ({ children }) => {
       console.warn('Membership backend renewal notice:', e.message);
     }
 
-    try {
-      const bId = target.bookingId || cleanId;
-      await apiClient.put(`/bookings/${bId}`, {
-        startDate: startISO,
-        date: renewedFrom,
-        saleDate: startISO,
-        membershipStartDate: startISO,
-        membershipExpiry: expiryISO,
-        membershipStatus: newStatus,
-        washesUsed: 0,
-        status: 'Confirmed'
-      });
-    } catch (e) {
-      console.warn('Booking backend renewal notice:', e.message);
-    }
-
-    // 4. Update localStorage cache & dispatch cross-portal events
-    try {
-      const rawMem = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
-      const updatedMem = rawMem.map(m => {
-        if (m.id === cleanId || (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo))) {
-          return {
-            ...m,
-            startDate: startISO,
-            expiryDate: expiryISO,
-            status: newStatus,
-            washesUsed: 0
-          };
-        }
-        return m;
-      });
-      localStorage.setItem('tsl_admin_memberships', JSON.stringify(updatedMem));
-    } catch (e) {}
-
-    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: cleanId, status: newStatus } }));
+    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: cleanId } }));
     window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: { id: cleanId } }));
-    window.dispatchEvent(new Event('storage'));
 
-    showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
+    showToast(`Membership renewed: ${formatLongDate(start)} – ${formatLongDate(expiry)} (₹${amount.toLocaleString('en-IN')})`);
+    return sale;
   };
 
   const deleteMembership = async (membershipIdOrObj) => {
@@ -1830,6 +1775,17 @@ export const AdminProvider = ({ children }) => {
       membershipValidity = `${days} Days`;
     }
 
+    // A renewal sells a period that starts when the current pass ends, not on
+    // the day it is paid for; the caller passes that period explicitly.
+    let membershipStartDate = '';
+    if (formData.saleType === 'membership' && formData.membershipStartDate && formData.membershipExpiryDate) {
+      membershipStartDate = formData.membershipStartDate;
+      const s0 = new Date(`${formData.membershipStartDate}T12:00:00`);
+      const e0 = new Date(`${formData.membershipExpiryDate}T12:00:00`);
+      membershipExpiry = e0.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      membershipValidity = `${Math.round((e0 - s0) / (24 * 60 * 60 * 1000))} Days`;
+    }
+
     const cleanPrice = Number(String(formData.price || 0).replace(/[^0-9.]/g, '')) || 0;
     const pName = formData.saleType === 'membership'
       ? (formData.membershipName || 'Monthly Membership')
@@ -1859,6 +1815,7 @@ export const AdminProvider = ({ children }) => {
       membershipName: formData.saleType === 'membership' ? (formData.membershipName || pName) : '',
       membershipValidity,
       membershipExpiry,
+      ...(membershipStartDate ? { membershipStartDate } : {}),
       paymentMode: formData.paymentMode || 'Cash',
       notes: formData.notes || '',
       includeGst: Boolean(formData.includeGst),

@@ -33,7 +33,8 @@ import {
   ManageOfflineSalesPage,
   ManageExpensesPage,
   AdminCalculationSettingsPage,
-  ServiceModulePage
+  ServiceModulePage,
+  WhatsAppHubPage
 } from './admin';
 
 // Staff Application Mobile Layout & Pages
@@ -144,6 +145,7 @@ function MainAppContent() {
               <Route path="services" element={<ManageServicesPage />} />
               <Route path="banners" element={<ManageBannersPage />} />
               <Route path="notifications" element={<ManageNotificationsPage />} />
+              <Route path="whatsapp" element={<WhatsAppHubPage />} />
               <Route path="feedback" element={<AdminFeedbackPage />} />
               <Route path="memberships" element={<ManageMembershipsPage />} />
               <Route path="bookings" element={<ManageBookingsPage />} />

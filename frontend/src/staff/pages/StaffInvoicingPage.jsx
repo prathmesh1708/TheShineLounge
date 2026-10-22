@@ -14,6 +14,7 @@ import apiClient from '../../common/utils/apiClient';
 import { Link } from 'react-router-dom';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
 import { downloadReceiptPdf, copyReceiptImageToClipboard, getReceiptPdfBlob } from '../../common/utils/receiptPdfGenerator';
+import { getInvoiceWhatsAppConfig, renderInvoiceTemplate, sendInvoiceOnWhatsApp, whatsappNumber } from '../../common/services/whatsappInvoiceService';
 
 // Helper function to extract pure admin-configured services & packages from DB / cached service object
 const extractAdminServices = (serviceData) => {
@@ -366,6 +367,16 @@ export default function StaffInvoicingPage() {
   const [copiedSuccess, setCopiedSuccess] = useState(false);
   const [editableMessageText, setEditableMessageText] = useState('');
   const isProcessingRef = useRef(false);
+  // When the business WhatsApp API is set up (admin → WhatsApp Hub), the
+  // receipt PDF is sent directly from the business number instead.
+  const [waApi, setWaApi] = useState({ enabled: false, template: null });
+  const [apiSendError, setApiSendError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    getInvoiceWhatsAppConfig().then((cfg) => { if (alive) setWaApi(cfg || { enabled: false }); });
+    return () => { alive = false; };
+  }, []);
 
   // Drop the selection if that customer disappears from the DB list
   useEffect(() => {
@@ -422,8 +433,8 @@ export default function StaffInvoicingPage() {
     }
   };
 
-  // Send WhatsApp Action Handler
-  const handleSendWhatsApp = async (rawNumber) => {
+  // Send WhatsApp Action Handler. `manual` forces the old open-WhatsApp flow.
+  const handleSendWhatsApp = async (rawNumber, { manual = false } = {}) => {
     const sanitized = cleanPhoneForWhatsApp(rawNumber);
     if (!sanitized || sanitized.length < 10) {
       setPhoneError('Please enter a valid 10-digit mobile number');
@@ -440,6 +451,29 @@ export default function StaffInvoicingPage() {
     isProcessingRef.current = true;
     setIsGeneratingPdf(true);
     setPhoneError('');
+    setApiSendError('');
+
+    if (waApi.enabled && !manual) {
+      try {
+        const res = await sendInvoiceOnWhatsApp({
+          invoiceNo: generatedInvoice.id,
+          phone: sanitized,
+          receiptElement: receiptRef.current,
+          template: waApi.template
+        });
+        setShowWhatsAppModal(false);
+        showToast?.(res.dryRun
+          ? `Test mode: invoice ${generatedInvoice.id} would be sent to ${res.phone}`
+          : `✅ Invoice ${generatedInvoice.id} sent on WhatsApp to ${res.phone}`, 'success');
+      } catch (err) {
+        setApiSendError(err.message || 'WhatsApp send failed');
+        setShowWhatsAppModal(true);
+      } finally {
+        setIsGeneratingPdf(false);
+        isProcessingRef.current = false;
+      }
+      return;
+    }
 
     const messageText = (editableMessageText && editableMessageText.trim()) ? editableMessageText : getDefaultMessage(generatedInvoice);
     const filename = `Invoice-${generatedInvoice.id}.pdf`;
@@ -1235,8 +1269,17 @@ export default function StaffInvoicingPage() {
             <button
               type="button"
               onClick={() => {
-                setTargetPhone(generatedInvoice.phone || currentCust?.mobile || '');
+                const phoneOnFile = generatedInvoice.phone || currentCust?.mobile || '';
+                setTargetPhone(phoneOnFile);
                 setEditableMessageText(getDefaultMessage(generatedInvoice));
+                setApiSendError('');
+                setPhoneError('');
+                // One click: API ready + valid number on file → send the PDF now.
+                if (waApi.enabled && whatsappNumber(phoneOnFile)) {
+                  handleSendWhatsApp(phoneOnFile);
+                  return;
+                }
+                if (waApi.enabled) setPhoneError("Enter the customer's WhatsApp number to send the PDF");
                 setShowWhatsAppModal(true);
               }}
               disabled={isGeneratingPdf}
@@ -1245,7 +1288,7 @@ export default function StaffInvoicingPage() {
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing...</span>
+                  <span>{waApi.enabled ? 'Sending...' : 'Preparing...'}</span>
                 </>
               ) : (
                 <>
@@ -1285,7 +1328,7 @@ export default function StaffInvoicingPage() {
                 </div>
                 <div>
                   <h4 className="text-xs font-black text-gray-900 leading-tight">Send via WhatsApp</h4>
-                  <p className="text-[10px] text-gray-500">Official Receipt Image & PDF</p>
+                  <p className="text-[10px] text-gray-500">{waApi.enabled ? 'PDF sent directly from The Shine Lounge number' : 'Official Receipt Image & PDF'}</p>
                 </div>
               </div>
               <button
@@ -1297,7 +1340,14 @@ export default function StaffInvoicingPage() {
             </div>
 
             <div className="space-y-3 text-xs">
-              {/* Visual Direct Image tip box */}
+              {!waApi.enabled && waApi.reason && (
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-[10.5px] leading-relaxed text-sky-900">
+                  <p className="font-bold">Direct PDF sending is not active yet</p>
+                  <p>{waApi.reason}. Until then WhatsApp opens with the message and the PDF downloads for you to attach.</p>
+                </div>
+              )}
+              {/* Visual Direct Image tip box (manual flow only) */}
+              {!waApi.enabled && (
               <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2 text-amber-900">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-bold text-[11px]">
@@ -1324,6 +1374,7 @@ export default function StaffInvoicingPage() {
                   Clicking <strong>Send via WhatsApp</strong> automatically copies the receipt image to your clipboard. When WhatsApp opens, press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) to send the visual receipt directly into the chat!
                 </p>
               </div>
+              )}
 
               <div>
                 <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1">
@@ -1375,7 +1426,19 @@ export default function StaffInvoicingPage() {
                   <span className="text-emerald-700 font-black">₹{Number(generatedInvoice.total || 0).toLocaleString('en-IN')}</span>
                 </div>
 
-                {/* Editable WhatsApp Message */}
+                {waApi.enabled && (
+                  <div className="pt-2 border-t border-emerald-200/60">
+                    <p className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide mb-1.5">
+                      Message (approved template{waApi.template && waApi.template.headerType === 'document' ? ' + invoice PDF' : ''})
+                    </p>
+                    <div className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-[11px] text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      {renderInvoiceTemplate(waApi.template, { ...generatedInvoice, phone: targetPhone })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable WhatsApp Message (manual flow) */}
+                {!waApi.enabled && (
                 <div className="pt-2 border-t border-emerald-200/60">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide flex items-center gap-1">
@@ -1399,7 +1462,22 @@ export default function StaffInvoicingPage() {
                     className="w-full p-2.5 bg-white border border-emerald-300 rounded-xl text-[11px] text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none font-sans leading-relaxed shadow-2xs resize-y"
                   />
                 </div>
+                )}
               </div>
+
+              {apiSendError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 space-y-1.5">
+                  <p className="text-[11px] font-bold text-rose-700">Could not send: {apiSendError}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleSendWhatsApp(targetPhone, { manual: true })}
+                    disabled={isGeneratingPdf}
+                    className="text-[10.5px] font-bold text-rose-800 underline hover:text-rose-950"
+                  >
+                    Open WhatsApp and send it manually instead
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-2">
@@ -1420,14 +1498,14 @@ export default function StaffInvoicingPage() {
                 {isGeneratingPdf ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                    <span>Preparing...</span>
+                    <span>{waApi.enabled ? 'Sending...' : 'Preparing...'}</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
                       <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
                     </svg>
-                    <span>Send via WhatsApp</span>
+                    <span>{waApi.enabled ? 'Send PDF on WhatsApp' : 'Send via WhatsApp'}</span>
                   </>
                 )}
               </button>
