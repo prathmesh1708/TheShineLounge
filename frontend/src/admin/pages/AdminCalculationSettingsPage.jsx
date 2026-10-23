@@ -55,10 +55,10 @@ export default function AdminCalculationSettingsPage() {
   const simSgst = form.taxType === 'igst' ? 0 : simTax / 2;
   const simIgst = form.taxType === 'igst' ? simTax : 0;
 
-  const simOverhead = (simTaxable * Number(form.operatingOverheadRate || 18.5)) / 100;
-  const simGateway = (simGross * Number(form.gatewaySurchargeRate || 1.8)) / 100;
+  const simOverhead = (simTaxable * Number(form.operatingOverheadRate ?? 18.5)) / 100;
+  const simGateway = (simGross * Number(form.gatewaySurchargeRate ?? 1.8)) / 100;
   const simTotalDeductions = simOverhead + simGateway;
-  const simNetProfit = Math.max(0, simTaxable - simTotalDeductions);
+  const simNetProfit = simTaxable - simTotalDeductions;
   const simMargin = simTaxable > 0 ? ((simNetProfit / simTaxable) * 100).toFixed(1) : 0;
 
   return (
@@ -237,7 +237,65 @@ export default function AdminCalculationSettingsPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            {/* Net Profit method: the admin chooses */}
+            <div className="space-y-2 text-xs">
+              <span className="font-bold text-gray-700 block">Net Profit Calculation Method</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Net profit calculation method">
+                {[
+                  { value: 'estimate', title: 'Estimate (percentages)', desc: 'Net sales minus the overhead % and gateway % below.' },
+                  { value: 'actual', title: 'Actual recorded costs', desc: 'Net sales minus expenses and salaries recorded in the app.' }
+                ].map((opt) => {
+                  const selected = (form.profitMethod || 'estimate') === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`cursor-pointer rounded-xl border p-3 transition-colors ${selected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="profitMethod"
+                          value={opt.value}
+                          checked={selected}
+                          onChange={() => setForm({ ...form, profitMethod: opt.value })}
+                          className="accent-emerald-600"
+                        />
+                        <span className="font-extrabold text-gray-900">{opt.title}</span>
+                      </span>
+                      <span className="block text-[10px] text-gray-500 mt-1 ml-5">{opt.desc}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {form.profitMethod === 'actual' && (
+                <div className="flex flex-wrap gap-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.profitIncludeExpenses !== false}
+                      onChange={(e) => setForm({ ...form, profitIncludeExpenses: e.target.checked })}
+                      className="accent-emerald-600"
+                    />
+                    Subtract Misc. Expenses
+                  </label>
+                  <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.profitIncludePayroll !== false}
+                      onChange={(e) => setForm({ ...form, profitIncludePayroll: e.target.checked })}
+                      className="accent-emerald-600"
+                    />
+                    Subtract staff salaries
+                  </label>
+                  <p className="w-full text-[10px] text-gray-400">
+                    Salaries are pro-rated to the report period (e.g. a 7-day report carries 7 days of that month's payroll).
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs ${form.profitMethod === 'actual' ? 'opacity-50' : ''}`}>
               <div>
                 <label className="font-bold text-gray-700 block mb-1">
                   Operating Overhead Ratio (%)
@@ -246,6 +304,7 @@ export default function AdminCalculationSettingsPage() {
                   type="number"
                   step="0.1"
                   value={form.operatingOverheadRate}
+                  disabled={form.profitMethod === 'actual'}
                   onChange={(e) => setForm({ ...form, operatingOverheadRate: Number(e.target.value) })}
                   className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-emerald-500"
                 />
@@ -262,6 +321,7 @@ export default function AdminCalculationSettingsPage() {
                   type="number"
                   step="0.1"
                   value={form.gatewaySurchargeRate}
+                  disabled={form.profitMethod === 'actual'}
                   onChange={(e) => setForm({ ...form, gatewaySurchargeRate: Number(e.target.value) })}
                   className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-emerald-500"
                 />
@@ -345,6 +405,11 @@ export default function AdminCalculationSettingsPage() {
                 <span className="text-emerald-400">Net Profit (EBITDA):</span>
                 <span className="font-mono text-emerald-400">{formatINR(simNetProfit)} ({simMargin}%)</span>
               </div>
+              {form.profitMethod === 'actual' && (
+                <p className="text-[10px] text-amber-300 font-semibold">
+                  Simulator shows the % estimate. Reports use actual recorded costs for Net Profit.
+                </p>
+              )}
             </div>
 
             <button

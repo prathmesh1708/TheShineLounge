@@ -3,7 +3,7 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
 const { sendNotificationToUser } = require('../common/services/pushNotificationHelper');
-const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { tryUpsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 const { tryMirrorBooking, trySoftDeleteMirrors } = require('../services/salesRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
 const { toDisplayDate } = require('../utils/dateFormat');
@@ -154,7 +154,8 @@ const createBooking = async (req, res) => {
             plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
             model: v.model || v.vehicleModel || '',
             brand: v.brand || '',
-            category: v.category || 'Car'
+            category: v.category || 'Car',
+            imageUrl: v.imageUrl || ''
           })).filter(v => Boolean(v.plateNumber))
         : (vehicleNo ? [{
             plateNumber: String(vehicleNo).toUpperCase().trim(),
@@ -232,6 +233,7 @@ const createBooking = async (req, res) => {
             model: v.model || vehicleType || 'Car',
             brand: v.brand || '',
             category: v.category || 'Car',
+            imageUrl: v.imageUrl || '',
             addedVia: 'staff'
           })),
           membership: isMembership ? {
@@ -264,6 +266,7 @@ const createBooking = async (req, res) => {
                 model: v.model || vehicleType || 'Car',
                 brand: v.brand || '',
                 category: v.category || 'Car',
+                imageUrl: v.imageUrl || '',
                 addedVia: 'staff'
               }))
             }
@@ -293,8 +296,11 @@ const createBooking = async (req, res) => {
             ownerName: cleanName,
             ownerEmail: cleanEmail,
             ownerPhone: cleanPhone,
-            addedVia: 'staff'
+            addedVia: 'staff',
+            imageUrl: v.imageUrl || ''
           });
+          // Also reaches an existing plate's profile, past bookings and passes.
+          if (v.imageUrl) await syncVehicleImage(v.plateNumber, v.imageUrl);
         }
       }
     } catch (syncErr) {

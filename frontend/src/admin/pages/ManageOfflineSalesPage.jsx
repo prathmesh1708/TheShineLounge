@@ -1,3 +1,4 @@
+import { isTransactionPaid, bookingAmount } from '../common/utils/dashboardStats';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus,
@@ -129,7 +130,7 @@ export default function ManageOfflineSalesPage() {
   }, [bookings]);
 
   // KPI Stats
-  const totalVolume = offlineSales.reduce((sum, s) => sum + (Number(s.price) || Number(s.total) || Number(s.amount) || 0), 0);
+  const totalVolume = offlineSales.reduce((sum, s) => sum + (isTransactionPaid(s) ? bookingAmount(s) : 0), 0);
   const totalTransactions = offlineSales.length;
   const offlineMemberships = offlineSales.filter(s => s.saleType === 'membership').length;
   const uniquePlates = new Set(offlineSales.map(s => (s.vehicleNo || '').toUpperCase().trim()).filter(Boolean)).size;
@@ -282,7 +283,7 @@ export default function ManageOfflineSalesPage() {
   }, [offlineSales]);
 
   const todayTotalAmount = useMemo(() => {
-    return todaySales.reduce((sum, s) => sum + (Number(s.price) || Number(s.total) || 0), 0);
+    return todaySales.reduce((sum, s) => sum + (isTransactionPaid(s) ? bookingAmount(s) : 0), 0);
   }, [todaySales]);
   const todayCount = todaySales.length;
 
@@ -309,7 +310,7 @@ export default function ManageOfflineSalesPage() {
 
   // Dynamic KPI Stats based on Date Scope
   const scopedKPIs = useMemo(() => {
-    const sum = salesForDateScope.reduce((acc, s) => acc + (Number(s.price) || Number(s.total) || Number(s.amount) || 0), 0);
+    const sum = salesForDateScope.reduce((acc, s) => acc + (isTransactionPaid(s) ? bookingAmount(s) : 0), 0);
     const memberships = salesForDateScope.filter(s => s.saleType === 'membership').length;
     const plates = new Set(
       salesForDateScope.flatMap(s => {
@@ -450,7 +451,7 @@ export default function ManageOfflineSalesPage() {
   }, [offlineSales, searchTerm, startDate, endDate, selectedPaymentMode, selectedSaleType, sortOrder]);
 
   const filteredTotalAmount = useMemo(() => {
-    return filteredSales.reduce((sum, s) => sum + (Number(s.price) || Number(s.total) || 0), 0);
+    return filteredSales.reduce((sum, s) => sum + (isTransactionPaid(s) ? bookingAmount(s) : 0), 0);
   }, [filteredSales]);
 
   const handleClearAllFilters = () => {
@@ -497,6 +498,7 @@ export default function ManageOfflineSalesPage() {
       vehicle: {
         plate,
         model: sale.vehicleModel || sale.vehicleType || '',
+        imageUrl: (sale.vehicles || []).find(x => x && x.imageUrl)?.imageUrl || '',
         ownerName: sale.customerName || '',
         ownerEmail: sale.customerEmail || '',
         ownerPhone: sale.phone || '',
@@ -1323,6 +1325,13 @@ export default function ManageOfflineSalesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
+                       <div className="flex items-center gap-2">
+                        {(sale.vehicles || []).find(x => x && x.imageUrl) && (
+                          <a href={(sale.vehicles || []).find(x => x && x.imageUrl).imageUrl} target="_blank" rel="noreferrer" title="View vehicle photo">
+                            <img src={(sale.vehicles || []).find(x => x && x.imageUrl).imageUrl} alt="Vehicle" className="w-9 h-9 rounded-lg object-cover border border-gray-200 shrink-0" />
+                          </a>
+                        )}
+                        <div className="min-w-0">
                         {Array.isArray(sale.vehicles) && sale.vehicles.length > 1 ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1350,6 +1359,8 @@ export default function ManageOfflineSalesPage() {
                             )}
                           </div>
                         )}
+                        </div>
+                       </div>
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-bold text-gray-800">{sale.packageName || sale.membershipName || '—'}</p>

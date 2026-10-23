@@ -452,7 +452,7 @@ export default function DriveThroughCafePage() {
                   </svg>
                 </div>
 
-                <div className="confirm-section-card" style={{ width: '100%', background: 'rgba(255,255,255,0.4)', textAlign: 'left' }}>
+                <div className="confirm-section-card" style={{ width: '100%', background: 'var(--bg-card-secondary)', textAlign: 'left' }}>
                   <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Order Details</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9rem' }}>
                     {cart.map((i, idx) => (
@@ -530,7 +530,7 @@ export default function DriveThroughCafePage() {
                 <div className="confirm-details-list">
                   <div className="confirm-detail-item">
                     <span className="confirm-detail-label">
-                      {vehicleOptions.length > 0 ? 'Vehicle Registered' : 'Arriving In'}
+                      {vehicleOptions.length > 0 ? 'Vehicle Registered' : 'Vehicle No.'}
                     </span>
                     {vehicleOptions.length > 0 ? (
                       <select
@@ -538,7 +538,7 @@ export default function DriveThroughCafePage() {
                         onChange={(e) => setSelectedPlate(e.target.value)}
                         style={{
                           border: '1px solid var(--border-color)',
-                          background: '#ffffff',
+                          background: 'var(--bg-card-secondary)',
                           borderRadius: '0.5rem',
                           padding: '0.4rem',
                           fontSize: '0.85rem',
@@ -562,7 +562,7 @@ export default function DriveThroughCafePage() {
                         placeholder="e.g. MH 02 TX 9999"
                         style={{
                           border: '1px solid var(--border-color)',
-                          background: '#ffffff',
+                          background: 'var(--bg-card-secondary)',
                           borderRadius: '0.5rem',
                           padding: '0.4rem',
                           fontSize: '0.85rem',
@@ -582,7 +582,7 @@ export default function DriveThroughCafePage() {
                       onChange={(e) => setPickupTime(e.target.value)}
                       style={{ 
                         border: '1px solid var(--border-color)', 
-                        background: '#ffffff', 
+                        background: 'var(--bg-card-secondary)', 
                         borderRadius: '0.5rem', 
                         padding: '0.4rem', 
                         fontSize: '0.85rem',
@@ -768,7 +768,7 @@ export default function DriveThroughCafePage() {
                       <button 
                         className={`grid-item-save-btn ${cartQty > 0 ? 'saved' : ''}`}
                         onClick={(e) => addToCart(item, e)}
-                        style={{ background: cartQty > 0 ? '#f38200' : 'rgba(255,255,255,0.7)', color: cartQty > 0 ? '#ffffff' : 'var(--text-main)', border: 'none' }}
+                        style={{ background: cartQty > 0 ? '#f38200' : 'rgba(0,0,0,0.55)', color: '#ffffff', border: 'none' }}
                       >
                         {cartQty > 0 ? (
                           <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>+{cartQty}</span>
@@ -799,8 +799,9 @@ export default function DriveThroughCafePage() {
       </AnimatePresence>
 
       {/* Cart Indicator / Checkout Floating Bar - Rendered via React Portal directly into body with margin centering */}
-      {cart.length > 0 && orderStep < 2 && createPortal(
+      {cart.length > 0 && orderStep < 2 && !showCheckout && createPortal(
         <motion.div 
+          className="dt-cart-bar"
           initial={{ y: 80, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           style={{ 

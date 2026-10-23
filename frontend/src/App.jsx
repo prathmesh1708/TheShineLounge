@@ -3,10 +3,11 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { ThemeProvider } from './common/context/ThemeContext';
-import { AuthProvider } from './common/context/AuthContext';
+import { AuthProvider, useAuth } from './common/context/AuthContext';
 import { NotificationProvider } from './common/context/NotificationContext';
-import { AdminRoute, StaffRoute } from './common/components/ProtectedRoute';
-import { initializePushNotifications, setupForegroundNotificationHandler } from './common/services/pushNotificationService';
+import { AdminRoute, StaffRoute, StaffPermissionRoute } from './common/components/ProtectedRoute';
+import { initializePushNotifications, setupForegroundNotificationHandler, registerFCMToken } from './common/services/pushNotificationService';
+import PushPermissionPrompt from './common/components/PushPermissionPrompt';
 
 // Common Components & Layout
 import Navbar from './common/components/Navbar';
@@ -32,7 +33,8 @@ import {
   ManageOfflineSalesPage,
   ManageExpensesPage,
   AdminCalculationSettingsPage,
-  ServiceModulePage
+  ServiceModulePage,
+  WhatsAppHubPage
 } from './admin';
 
 // Staff Application Mobile Layout & Pages
@@ -42,9 +44,12 @@ import {
   StaffDashboardPage,
   StaffAttendancePage,
   StaffBookingsPage,
+  StaffOrdersPage,
   StaffCustomersPage,
   StaffMembershipsPage,
   StaffInvoicingPage,
+  StaffInventoryPage,
+  StaffReportsPage,
   StaffSchedulePage,
   StaffNotificationsPage,
   StaffProfilePage
@@ -102,8 +107,18 @@ function MainAppContent() {
     });
   }, []);
 
+  // Already-granted devices: re-sync the token whenever a session exists (page
+  // reloads restore the session without going through login()).
+  const { user: sessionUser } = useAuth();
+  React.useEffect(() => {
+    if (sessionUser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      registerFCMToken(true).catch(() => {});
+    }
+  }, [sessionUser?._id, sessionUser?.id]);
+
   return (
     <div className="app-container">
+      {!isAuthRoute && !isAdminRoute && !isStaffRoute && !isReceiptRoute && <PushPermissionPrompt className="text-white" />}
       {!isCleanLayout && <Navbar />}
       
       <main className={isCleanLayout ? "w-full min-h-screen p-0 m-0" : "main-content"}>
@@ -130,6 +145,7 @@ function MainAppContent() {
               <Route path="services" element={<ManageServicesPage />} />
               <Route path="banners" element={<ManageBannersPage />} />
               <Route path="notifications" element={<ManageNotificationsPage />} />
+              <Route path="whatsapp" element={<WhatsAppHubPage />} />
               <Route path="feedback" element={<AdminFeedbackPage />} />
               <Route path="memberships" element={<ManageMembershipsPage />} />
               <Route path="bookings" element={<ManageBookingsPage />} />
@@ -157,10 +173,14 @@ function MainAppContent() {
               <Route index element={<StaffDashboardPage />} />
               <Route path="dashboard" element={<StaffDashboardPage />} />
               <Route path="attendance" element={<StaffAttendancePage />} />
-              <Route path="bookings" element={<StaffBookingsPage />} />
-              <Route path="customers" element={<StaffCustomersPage />} />
-              <Route path="memberships" element={<StaffMembershipsPage />} />
-              <Route path="invoicing" element={<StaffInvoicingPage />} />
+              <Route path="bookings" element={<StaffPermissionRoute><StaffBookingsPage /></StaffPermissionRoute>} />
+              <Route path="orders" element={<StaffPermissionRoute><StaffOrdersPage /></StaffPermissionRoute>} />
+              <Route path="customers" element={<StaffPermissionRoute><StaffCustomersPage /></StaffPermissionRoute>} />
+              <Route path="memberships" element={<StaffPermissionRoute><StaffMembershipsPage /></StaffPermissionRoute>} />
+              <Route path="invoicing" element={<StaffPermissionRoute><StaffInvoicingPage /></StaffPermissionRoute>} />
+              <Route path="payments" element={<StaffPermissionRoute><StaffInvoicingPage /></StaffPermissionRoute>} />
+              <Route path="inventory" element={<StaffPermissionRoute><StaffInventoryPage /></StaffPermissionRoute>} />
+              <Route path="reports" element={<StaffReportsPage />} />
               <Route path="schedule" element={<StaffSchedulePage />} />
               <Route path="notifications" element={<StaffNotificationsPage />} />
               <Route path="profile" element={<StaffProfilePage />} />

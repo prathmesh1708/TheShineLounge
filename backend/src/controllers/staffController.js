@@ -1,7 +1,13 @@
 const Staff = require('../models/Staff');
 const User = require('../models/User');
+const BreakLog = require('../models/BreakLog');
 const payroll = require('../services/payroll');
+const staffBreaks = require('../services/staffBreaks');
+const { processStaffBreaks } = require('../services/breakScheduler');
 const { parseSalaryText, formatSalaryText } = require('../utils/salaryAmount');
+const { normalizeBreakSchedule } = require('../utils/breakSchedule');
+const { normalizeShiftTiming } = require('../utils/shiftTiming');
+const { dayKey } = require('../utils/siteTime');
 
 // Staff accounts may read the roster (e.g. to hand jobs over) but never another
 // person's pay. Their own salary is served only by /api/salary/me.
@@ -11,6 +17,16 @@ const forClient = (req, staffDoc) => {
   const obj = typeof staffDoc.toJSON === 'function' ? staffDoc.toJSON() : { ...staffDoc };
   const requesterRole = String(req.user?.role || '').toLowerCase();
   if (requesterRole === 'staff') PAYROLL_FIELDS.forEach((field) => delete obj[field]);
+
+  const normalized = normalizeShiftTiming({
+    shiftStartTime: obj.shiftStartTime,
+    shiftEndTime: obj.shiftEndTime,
+    shiftTiming: obj.shiftTiming
+  });
+  obj.shiftStartTime = normalized.shiftStartTime;
+  obj.shiftEndTime = normalized.shiftEndTime;
+  obj.shiftTiming = normalized.shiftTiming;
+
   return obj;
 };
 
@@ -45,62 +61,69 @@ const buildStaffSearch = (idParam, reqUser) => {
   return { $or: conditions };
 };
 
-// Derive authoritative break status
-const resolveBreakStatus = (staff) => {
-  if (staff.breakStatus === 'pending' && !staff.isOnBreak) return 'pending';
-  if (staff.isOnBreak || staff.breakStatus === 'active') {
-    if (staff.breakEndTime && new Date(staff.breakEndTime) <= new Date()) {
-      return 'idle';
+// Break-lifecycle rules live in services/staffBreaks so the scheduler and this
+// controller record breaks identically.
+const { resolveBreakStatus, liveBreakFields } = staffBreaks;
+
+const isAdminRole = (user) => ['admin', 'superadmin', 'manager'].includes(String(user?.role || '').toLowerCase());
+
+// Who may drive someone else's break. Narrower than canManageStaff on purpose:
+// 'orders'/'bookings' are default permissions for ordinary staff, and break
+// records now feed overtime reports, so only admins and real department
+// managers (explicit 'staff' permission or a management department) qualify.
+const canManageBreaks = (user) => {
+  if (isAdminRole(user)) return true;
+  const dept = String(user?.department || '').toLowerCase();
+  return String(user?.role || '').toLowerCase() === 'staff' && (
+    user.permissions?.includes('staff') || dept === 'management' || dept === 'manager'
+  );
+};
+
+const isSelf = (staff, user) => {
+  if (!staff || !user) return false;
+  if (user._id && String(staff._id) === String(user._id)) return true;
+  return !!user.email && staff.email === String(user.email).toLowerCase().trim();
+};
+
+// Ending your own break counts as 'staff' even for a manager.
+const endedByFor = (staff, user) => (isSelf(staff, user) ? 'staff' : 'admin');
+
+// Today's break totals for a page of staff, in one aggregate (no per-row
+// query). A break running past its end right now counts its live overtime.
+const todayBreakSummaries = async (staffList, now) => {
+  const result = new Map();
+  for (const stf of staffList) {
+    const live = liveBreakFields(stf, now);
+    result.set(String(stf._id), {
+      overtimeSeconds: live.overtimeSeconds,
+      // The live part on its own, so a ticking client can add its own clock
+      // to the finished total without counting this snapshot twice.
+      liveOvertimeSeconds: live.overtimeSeconds,
+      completedCount: 0,
+      missedCount: 0
+    });
+  }
+  if (!staffList.length) return result;
+
+  const rows = await BreakLog.aggregate([
+    { $match: { staff: { $in: staffList.map((s) => s._id) }, date: dayKey(now) } },
+    {
+      $group: {
+        _id: '$staff',
+        overtimeSeconds: { $sum: { $cond: [{ $in: ['$status', ['completed', 'cancelled']] }, '$overtimeSeconds', 0] } },
+        completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        missedCount: { $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] } }
+      }
     }
-    return 'active';
+  ]);
+  for (const row of rows) {
+    const entry = result.get(String(row._id));
+    if (!entry) continue;
+    entry.overtimeSeconds += row.overtimeSeconds;
+    entry.completedCount = row.completedCount;
+    entry.missedCount = row.missedCount;
   }
-  return staff.breakStatus === 'pending' ? 'pending' : 'idle';
-};
-
-// Logs the active break into breakHistory and resets the staff member to idle
-const closeActiveBreak = (staff, { endTime = new Date(), endedBy = 'admin', completedNaturally = true } = {}) => {
-  if (staff.breakStartTime && Array.isArray(staff.breakHistory)) {
-    staff.breakHistory.push({
-      startTime: staff.breakStartTime,
-      endTime,
-      duration: Math.round((new Date(endTime).getTime() - new Date(staff.breakStartTime).getTime()) / 60000),
-      reason: staff.breakReason || 'Rest / Lunch Break',
-      startedBy: 'admin',
-      endedBy,
-      completedNaturally
-    });
-  }
-  staff.breakStatus = 'idle';
-  staff.isOnBreak = false;
-  staff.breakStartTime = null;
-  staff.breakEndTime = null;
-};
-
-// Returns true if an active break had run out and was closed
-const expireFinishedBreak = (staff, now = new Date()) => {
-  if ((staff.isOnBreak || staff.breakStatus === 'active') && staff.breakEndTime && new Date(staff.breakEndTime) <= now) {
-    closeActiveBreak(staff, { endTime: staff.breakEndTime, endedBy: 'system_timer', completedNaturally: true });
-    return true;
-  }
-  return false;
-};
-
-const notifyStaffAboutBreak = async (staff, { title, message, priority }) => {
-  try {
-    const Notification = require('../models/Notification');
-    await Notification.create({
-      title,
-      message,
-      recipientType: 'staff',
-      targetUserId: staff._id,
-      serviceKey: staff.serviceKey || 'car-wash',
-      category: 'service_update',
-      priority,
-      actionUrl: '/staff/dashboard'
-    });
-  } catch (err) {
-    console.warn('Failed to insert break notification:', err);
-  }
+  return result;
 };
 
 // @desc    Get all staff members
@@ -120,16 +143,15 @@ const getStaffList = async (req, res) => {
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
 
-    // Auto-expire any finished breaks in MongoDB
+    // Breaks are no longer closed when their time runs out: an overdue break
+    // stays active so its overtime can be measured when the staff ends it.
     const now = new Date();
-    const updatedStaff = await Promise.all(
-      staffList.map(async (stf) => {
-        if (expireFinishedBreak(stf, now)) {
-          await stf.save().catch(() => {});
-        }
-        return stf;
-      })
-    );
+    const summaries = await todayBreakSummaries(staffList, now);
+    const updatedStaff = staffList.map((stf) => {
+      const obj = forClient(req, stf);
+      obj.todayBreakSummary = summaries.get(String(stf._id));
+      return obj;
+    });
 
     res.status(200).json({
       success: true,
@@ -140,7 +162,7 @@ const getStaffList = async (req, res) => {
         limit: Number(limit),
         pages
       },
-      staff: updatedStaff.map((stf) => forClient(req, stf))
+      staff: updatedStaff
     });
   } catch (error) {
     res.status(500).json({
@@ -167,11 +189,6 @@ const getStaffById = async (req, res) => {
         success: false,
         message: 'Staff member not found'
       });
-    }
-
-    // Auto-expire break if time elapsed
-    if (expireFinishedBreak(staff)) {
-      await staff.save().catch(() => {});
     }
 
     res.status(200).json({
@@ -217,6 +234,11 @@ const createStaff = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Monthly salary must be a number in rupees' });
     }
 
+    const { value: breakSchedule, error: scheduleError } = normalizeBreakSchedule(req.body.breakSchedule);
+    if (scheduleError) {
+      return res.status(400).json({ success: false, message: scheduleError });
+    }
+
     const cleanEmail = email.toLowerCase().trim();
 
     const existingStaff = await Staff.findOne({ email: cleanEmail });
@@ -226,6 +248,12 @@ const createStaff = async (req, res) => {
         message: 'Staff member with this email already exists'
       });
     }
+
+    const { shiftStartTime, shiftEndTime, shiftTiming } = normalizeShiftTiming({
+      shiftStartTime: req.body.shiftStartTime,
+      shiftEndTime: req.body.shiftEndTime,
+      shiftTiming: req.body.shiftTiming
+    });
 
     const staffId = `STF-${Math.floor(100 + Math.random() * 900)}`;
 
@@ -240,11 +268,15 @@ const createStaff = async (req, res) => {
       staffRole: staffRole || 'Staff Specialist',
       monthlySalary: initialSalary,
       salary: formatSalaryText(initialSalary),
-      leaveBalance: leaveBalance !== undefined ? Number(leaveBalance) : 12,
+      leaveBalance: leaveBalance !== undefined ? Number(leaveBalance) : 0,
       photo: photo || '',
       profileImage: photo || '',
       permissions: permissions || [],
-      branch: branch || 'Main Branch'
+      branch: branch || 'Main Branch',
+      shiftStartTime,
+      shiftEndTime,
+      shiftTiming,
+      breakSchedule
     });
 
     // Also sync/create in legacy User collection to keep backward compatibility
@@ -263,14 +295,22 @@ const createStaff = async (req, res) => {
           serviceKey: serviceKey || 'car-wash',
           staffRole: staffRole || 'Staff Specialist',
           salary: formatSalaryText(initialSalary),
-          leaveBalance: leaveBalance !== undefined ? Number(leaveBalance) : 12,
+          leaveBalance: leaveBalance !== undefined ? Number(leaveBalance) : 0,
           photo: photo || '',
           permissions: permissions || [],
-          branch: branch || 'Main Branch'
+          branch: branch || 'Main Branch',
+          shiftStartTime,
+          shiftEndTime,
+          shiftTiming,
+          // Only mirrored if the legacy schema ever grows the field.
+          ...(User.schema.path('breakSchedule') ? { breakSchedule } : {})
         });
       } else {
         existingUser.role = 'staff';
         existingUser.password = password;
+        existingUser.shiftStartTime = shiftStartTime;
+        existingUser.shiftEndTime = shiftEndTime;
+        existingUser.shiftTiming = shiftTiming;
         await existingUser.save();
       }
     } catch (userSyncErr) {
@@ -342,7 +382,7 @@ const updateStaff = async (req, res) => {
         serviceKey: legacyUser.serviceKey || 'car-wash',
         staffRole: legacyUser.staffRole || 'Staff Specialist',
         salary: legacyUser.salary || '',
-        leaveBalance: legacyUser.leaveBalance || 12,
+        leaveBalance: legacyUser.leaveBalance || 0,
         permissions: legacyUser.permissions || [],
         photo: legacyUser.photo || '',
         branch: legacyUser.branch || 'Main Branch',
@@ -404,6 +444,22 @@ const updateStaff = async (req, res) => {
       if (legacyUser) legacyUser.branch = branch;
     }
 
+    if (req.body.shiftStartTime !== undefined || req.body.shiftEndTime !== undefined || req.body.shiftTiming !== undefined) {
+      const shiftData = normalizeShiftTiming({
+        shiftStartTime: req.body.shiftStartTime !== undefined ? req.body.shiftStartTime : staff.shiftStartTime,
+        shiftEndTime: req.body.shiftEndTime !== undefined ? req.body.shiftEndTime : staff.shiftEndTime,
+        shiftTiming: req.body.shiftTiming
+      });
+      staff.shiftStartTime = shiftData.shiftStartTime;
+      staff.shiftEndTime = shiftData.shiftEndTime;
+      staff.shiftTiming = shiftData.shiftTiming;
+      if (legacyUser) {
+        legacyUser.shiftStartTime = shiftData.shiftStartTime;
+        legacyUser.shiftEndTime = shiftData.shiftEndTime;
+        legacyUser.shiftTiming = shiftData.shiftTiming;
+      }
+    }
+
     if (password && String(password).trim()) {
       if (String(password).trim().length < 6) {
         return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
@@ -417,6 +473,16 @@ const updateStaff = async (req, res) => {
     const requestedSalary = readSalaryInput(req.body);
     if (requestedSalary === null) {
       return res.status(400).json({ success: false, message: 'Monthly salary must be a number in rupees' });
+    }
+
+    // Only touched when the form sent it, so older edit forms keep the schedule.
+    if (req.body.breakSchedule !== undefined) {
+      const { value, error: scheduleError } = normalizeBreakSchedule(req.body.breakSchedule);
+      if (scheduleError) {
+        return res.status(400).json({ success: false, message: scheduleError });
+      }
+      staff.breakSchedule = value;
+      if (legacyUser && User.schema.path('breakSchedule')) legacyUser.breakSchedule = value;
     }
 
     await staff.save();
@@ -557,39 +623,48 @@ const resetStaffPassword = async (req, res) => {
   }
 };
 
-// @desc    Drive the staff break lifecycle: assign -> start -> end (or cancel while pending)
+// Loads the staff a break request targets and applies the ownership rule:
+// ordinary staff may only touch their own record. Sends the error response and
+// returns null when the request must stop.
+const loadBreakTarget = async (req, res) => {
+  const search = buildStaffSearch(req.params.id, req.user);
+  const staff = await Staff.findOne({ ...search, isDeleted: { $ne: true } });
+  if (!staff) {
+    res.status(404).json({ success: false, message: 'Staff member not found' });
+    return null;
+  }
+  if (!canManageBreaks(req.user) && !isSelf(staff, req.user)) {
+    res.status(403).json({ success: false, message: 'You can only view or change your own break.' });
+    return null;
+  }
+  return staff;
+};
+
+const SELF_SERVICE_BREAK_ACTIONS = new Set(['start', 'start_active', 'end', 'complete']);
+
+// @desc    Drive the staff break lifecycle: assign -> start -> end (or cancel)
 // @route   POST /api/staff/:id/break
-// @access  Private (Admin or Staff)
+// @access  Private (Staff: own start/end only; Admin/manager: everything)
 const updateStaffBreak = async (req, res) => {
   try {
-    const { action, duration = 30, reason = 'Rest / Lunch Break' } = req.body;
-    const search = buildStaffSearch(req.params.id, req.user);
-    let staff = await Staff.findOne(search);
+    const { action, duration = 30, reason = staffBreaks.DEFAULT_REASON } = req.body;
 
-    if (!staff) {
-      return res.status(404).json({ success: false, message: 'Staff member not found' });
+    if (!canManageBreaks(req.user) && !SELF_SERVICE_BREAK_ACTIONS.has(action)) {
+      return res.status(403).json({ success: false, message: 'Only an admin or manager can assign or cancel breaks.' });
     }
+
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
 
     const now = new Date();
-    if (expireFinishedBreak(staff, now)) {
-      await staff.save();
-    }
     const currentStatus = resolveBreakStatus(staff);
 
     if (action === 'assign' || action === 'request') {
-      const durationNum = Number(duration) || 30;
-      staff.breakStatus = 'pending';
-      staff.isOnBreak = false;
-      staff.breakDuration = durationNum;
-      staff.breakReason = reason || 'Rest / Lunch Break';
-      staff.breakStartTime = null;
-      staff.breakEndTime = null;
-      await staff.save();
-
-      await notifyStaffAboutBreak(staff, {
-        title: `☕ ${durationNum}-Minute Break Assigned`,
-        message: `Admin has assigned you a ${durationNum}-minute break (${staff.breakReason}). Open the app and tap Start when you are ready.`,
-        priority: 'high'
+      const { durationNum } = await staffBreaks.assignManualBreak(staff, {
+        duration,
+        reason,
+        now,
+        endedBy: endedByFor(staff, req.user)
       });
 
       return res.status(200).json({
@@ -601,15 +676,20 @@ const updateStaffBreak = async (req, res) => {
     }
 
     if (action === 'start' || action === 'start_active') {
-      const durationNum = Number(staff.breakDuration) || Number(duration) || 30;
-      const breakReasonStr = staff.breakReason || reason || 'Rest / Lunch Break';
-      staff.breakStatus = 'active';
-      staff.isOnBreak = true;
-      staff.breakDuration = durationNum;
-      staff.breakReason = breakReasonStr;
-      staff.breakStartTime = now;
-      staff.breakEndTime = new Date(now.getTime() + durationNum * 60 * 1000);
-      await staff.save();
+      if (currentStatus === 'active') {
+        // Starting twice (double tap, two tabs) must not reset the clock.
+        return res.status(200).json({
+          success: true,
+          message: 'Break is already running.',
+          breakStatus: 'active',
+          staff: forClient(req, staff)
+        });
+      }
+      if (currentStatus !== 'pending') {
+        return res.status(409).json({ success: false, message: 'There is no assigned break to start.' });
+      }
+
+      const { durationNum } = await staffBreaks.startBreak(staff, { now });
 
       return res.status(200).json({
         success: true,
@@ -619,55 +699,59 @@ const updateStaffBreak = async (req, res) => {
       });
     }
 
-    if (action === 'cancel') {
-      if (currentStatus === 'active') {
-        closeActiveBreak(staff, {
-          endTime: now,
-          endedBy: req.user?.role || 'admin',
-          completedNaturally: false
-        });
-      } else {
-        staff.breakStatus = 'idle';
-        staff.isOnBreak = false;
-        staff.breakStartTime = null;
-        staff.breakEndTime = null;
-      }
-      await staff.save();
+    // An admin pressing "End" on a break the staff never started means "call
+    // it off" — the old controller treated it that way too.
+    const isAdminEndOfPending = (action === 'end' || action === 'complete')
+      && currentStatus === 'pending' && canManageBreaks(req.user);
 
-      await notifyStaffAboutBreak(staff, {
+    if (action === 'cancel' || isAdminEndOfPending) {
+      const result = await staffBreaks.cancelBreak(staff, { now, endedBy: endedByFor(staff, req.user) });
+
+      await staffBreaks.notifyStaff(staff, {
         title: '❌ Break Request Revoked',
         message: 'Your assigned break has been cancelled by admin. Please continue with your duties.',
-        priority: 'high'
+        priority: 'high',
+        data: { type: 'break_cancelled' }
       });
 
       return res.status(200).json({
         success: true,
         message: `Break request for ${staff.fullName} cancelled.`,
         breakStatus: 'idle',
+        overtimeSeconds: result.overtimeSeconds,
+        actualSeconds: result.actualSeconds,
         staff: forClient(req, staff)
       });
     }
 
     if (action === 'end' || action === 'complete') {
-      closeActiveBreak(staff, {
-        endTime: now,
-        endedBy: req.user?.role || 'staff',
-        completedNaturally: action === 'complete'
-      });
-      await staff.save();
-
-      if (currentStatus === 'active') {
-        await notifyStaffAboutBreak(staff, {
-          title: '⏰ Break Completed',
-          message: 'Your break is over. Please return to your workstation.',
-          priority: 'urgent'
-        });
+      if (currentStatus !== 'active') {
+        return res.status(409).json({ success: false, message: 'There is no running break to end.' });
       }
+
+      const allowedMinutes = Number(staff.breakDuration) || 0;
+      const { actualSeconds, overtimeSeconds } = await staffBreaks.endActiveBreak(staff, {
+        now,
+        endedBy: endedByFor(staff, req.user),
+        completedNaturally: true
+      });
+
+      await staffBreaks.notifyStaff(staff, {
+        title: '⏰ Break Completed',
+        message: overtimeSeconds > 0
+          ? `Your break ran ${Math.ceil(overtimeSeconds / 60)} min over. Please return to your workstation.`
+          : 'Your break is over. Please return to your workstation.',
+        priority: 'urgent',
+        data: { type: 'break_completed' }
+      });
 
       return res.status(200).json({
         success: true,
         message: `Break ended for ${staff.fullName}. Status reset to active.`,
         breakStatus: 'idle',
+        actualSeconds,
+        overtimeSeconds,
+        allowedMinutes,
         staff: forClient(req, staff)
       });
     }
@@ -681,41 +765,131 @@ const updateStaffBreak = async (req, res) => {
   }
 };
 
-// @desc    Get staff break status
+// @desc    Get staff break status (plus today's breaks and the schedule)
 // @route   GET /api/staff/:id/break
-// @access  Private (Staff/Admin)
+// @access  Private (Staff: own only; Admin/manager)
 const getStaffBreakStatus = async (req, res) => {
   try {
-    const search = buildStaffSearch(req.params.id, req.user);
-    let staff = await Staff.findOne(search);
-
-    if (!staff) {
-      return res.status(404).json({ success: false, message: 'Staff member not found' });
-    }
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
 
     const now = new Date();
-    if (expireFinishedBreak(staff, now)) {
-      await staff.save();
+    // The staff app polls this every few seconds, so running the scheduler's
+    // per-staff step here makes the break popup appear on time even when no
+    // background timer is running (serverless). Never fail the read over it.
+    try {
+      await processStaffBreaks(staff, now);
+    } catch (err) {
+      console.warn('[breakScheduler] lazy check failed:', err.message);
     }
+    const live = liveBreakFields(staff, now);
 
-    const breakStatus = resolveBreakStatus(staff);
-    const remainingSeconds = breakStatus === 'active' && staff.breakEndTime
-      ? Math.max(0, Math.floor((new Date(staff.breakEndTime).getTime() - now.getTime()) / 1000))
-      : 0;
+    const [currentLog, todayLogs] = await Promise.all([
+      staff.currentBreakLogId ? BreakLog.findById(staff.currentBreakLogId).lean() : null,
+      BreakLog.find({ staff: staff._id, date: dayKey(now) }).sort({ createdAt: 1 }).lean()
+    ]);
 
     res.status(200).json({
       success: true,
-      breakStatus,
-      isOnBreak: breakStatus === 'active',
+      breakStatus: live.breakStatus,
+      isOnBreak: live.breakStatus === 'active',
       breakStartTime: staff.breakStartTime,
       breakEndTime: staff.breakEndTime,
       breakDuration: staff.breakDuration,
       breakReason: staff.breakReason,
-      remainingSeconds,
+      remainingSeconds: live.remainingSeconds,
+      isOvertime: live.isOvertime,
+      overtimeSeconds: live.overtimeSeconds,
+      currentSlot: staff.currentBreakSlot ?? null,
+      label: currentLog?.label || staff.breakReason,
+      scheduledTime: currentLog?.scheduledTime || '',
+      source: currentLog?.source || null,
+      breakSchedule: staff.breakSchedule || [],
+      todayLogs,
+      serverNow: now.toISOString(),
       staff: forClient(req, staff)
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message || 'Server error getting break status' });
+  }
+};
+
+// @desc    Replace a staff member's daily break schedule
+// @route   PUT /api/staff/:id/break-schedule
+// @access  Private (Admin / staff managers)
+const updateStaffBreakSchedule = async (req, res) => {
+  try {
+    const { value, error } = normalizeBreakSchedule(req.body.breakSchedule);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    const search = buildStaffSearch(req.params.id);
+    const staff = await Staff.findOne({ ...search, isDeleted: { $ne: true } });
+    if (!staff) return res.status(404).json({ success: false, message: 'Staff member not found' });
+
+    // A break already handed out stays as it is even if its slot was just
+    // disabled; the change applies from the next occurrence.
+    staff.breakSchedule = value;
+    await staff.save();
+
+    if (User.schema.path('breakSchedule')) {
+      await User.updateOne({ _id: staff._id }, { $set: { breakSchedule: value } }).catch(() => {});
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Break schedule updated for ${staff.fullName}`,
+      breakSchedule: staff.breakSchedule,
+      staff: forClient(req, staff)
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Server error updating break schedule' });
+  }
+};
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_LOG_RANGE_DAYS = 92;
+const shiftDayKey = (key, days) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+const daysBetweenKeys = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+// @desc    Break history for one staff member, with overtime totals
+// @route   GET /api/staff/:id/break-logs?from=YYYY-MM-DD&to=YYYY-MM-DD
+// @access  Private (Staff: own only; Admin/manager)
+const getStaffBreakLogs = async (req, res) => {
+  try {
+    const today = dayKey(new Date());
+    const to = req.query.to ? String(req.query.to) : today;
+    const from = req.query.from ? String(req.query.from) : shiftDayKey(to, -6);
+    if (!DAY_KEY.test(from) || !DAY_KEY.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
+      return res.status(400).json({ success: false, message: 'from and to must be YYYY-MM-DD' });
+    }
+    const span = daysBetweenKeys(from, to);
+    if (span < 0) return res.status(400).json({ success: false, message: '"from" must be on or before "to"' });
+    if (span + 1 > MAX_LOG_RANGE_DAYS) {
+      return res.status(400).json({ success: false, message: `Range is limited to ${MAX_LOG_RANGE_DAYS} days` });
+    }
+
+    const staff = await loadBreakTarget(req, res);
+    if (!staff) return;
+
+    const logs = await BreakLog.find({ staff: staff._id, date: { $gte: from, $lte: to } })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+
+    const summary = { totalOvertimeSeconds: 0, overtimeCount: 0, completedCount: 0, missedCount: 0, totalBreakSeconds: 0 };
+    for (const log of logs) {
+      summary.totalOvertimeSeconds += log.overtimeSeconds || 0;
+      summary.totalBreakSeconds += log.actualSeconds || 0;
+      if ((log.overtimeSeconds || 0) > 0) summary.overtimeCount += 1;
+      if (log.status === 'completed') summary.completedCount += 1;
+      if (log.status === 'missed') summary.missedCount += 1;
+    }
+
+    return res.status(200).json({ success: true, from, to, logs, summary });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Server error fetching break logs' });
   }
 };
 
@@ -728,6 +902,8 @@ module.exports = {
   toggleStaffStatus,
   resetStaffPassword,
   updateStaffBreak,
-  getStaffBreakStatus
+  getStaffBreakStatus,
+  updateStaffBreakSchedule,
+  getStaffBreakLogs
 };
 

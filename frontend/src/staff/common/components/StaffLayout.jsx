@@ -5,10 +5,14 @@ import StaffHeader from './StaffHeader';
 import StaffBottomNav from './StaffBottomNav';
 import CameraCapture from './CameraCapture';
 import StaffBreakAlertModal from './StaffBreakAlertModal';
+import StaffBreakTimerBar from './StaffBreakTimerBar';
+import PushPermissionPrompt from '../../../common/components/PushPermissionPrompt';
 
 function StaffLayoutInner() {
   const location = useLocation();
   const isLoginPage = location.pathname === '/staff/login';
+  // The dashboard already shows the full break timer widget.
+  const isDashboard = /^\/staff\/?(dashboard\/?)?$/.test(location.pathname);
 
   if (isLoginPage) {
     return (
@@ -25,6 +29,10 @@ function StaffLayoutInner() {
         
         {/* Navy Blue Mobile Top Bar */}
         <StaffHeader />
+        <PushPermissionPrompt className="bg-amber-50 text-amber-900 border-b border-amber-100" />
+
+        {/* Compact break timer + End button on every other staff page */}
+        {!isDashboard && <StaffBreakTimerBar />}
 
         {/* Scrollable Page Body */}
         <main className="flex-1 pb-24 px-4 pt-4 bg-gray-50/60 overflow-y-auto">

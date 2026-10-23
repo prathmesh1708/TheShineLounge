@@ -55,10 +55,61 @@ export default function ManageMembershipsPage() {
     updateMembershipStatus,
     renewMembership,
     logMembershipWash,
-    deleteMembership
+    deleteMembership,
+    vehicles: registryVehicles,
+    bookings: allBookings,
+    fetchVehiclesList
   } = useAdmin();
 
+  React.useEffect(() => { if (fetchVehiclesList) fetchVehiclesList(); }, []);
+
+  const plateKey = (p) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const vehicleImageFor = (member) => {
+    const key = plateKey(member?.vehicleNo || (Array.isArray(member?.boundVehicles) ? member.boundVehicles[0] : ''));
+    if (!key) return '';
+    const fromRegistry = (registryVehicles || []).find(v => plateKey(v.plateNumber) === key)?.imageUrl;
+    if (fromRegistry) return fromRegistry;
+    // Fall back to the photo saved on the sale itself.
+    for (const b of allBookings || []) {
+      const hit = (b.vehicles || []).find(x => x && x.imageUrl && plateKey(x.plateNumber) === key);
+      if (hit) return hit.imageUrl;
+    }
+    return '';
+  };
+
   const [selectedMember, setSelectedMember] = useState(null);
+
+  // Renewal = a new paid sale, so it needs the amount actually received.
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [renewTarget, setRenewTarget] = useState(null);
+  const [renewForm, setRenewForm] = useState({ amount: '', paymentMode: 'Cash', saleDate: '' });
+  const [renewSaving, setRenewSaving] = useState(false);
+  const openRenew = (member) => {
+    setRenewTarget(member);
+    setRenewForm({
+      amount: String(Number(member?.amount) || Number(member?.price) || ''),
+      paymentMode: member?.paymentMode && !/pass|membership/i.test(member.paymentMode) ? member.paymentMode : 'Cash',
+      saleDate: todayIso()
+    });
+  };
+  const submitRenew = async (e) => {
+    e.preventDefault();
+    if (!renewTarget || renewSaving) return;
+    setRenewSaving(true);
+    try {
+      const sale = await renewMembership(renewTarget, {
+        amount: Number(renewForm.amount),
+        paymentMode: renewForm.paymentMode,
+        saleDate: renewForm.saleDate
+      });
+      if (sale) setRenewTarget(null);
+    } finally {
+      setRenewSaving(false);
+    }
+  };
   const [editMember, setEditMember] = useState(null);
   const [editForm, setEditForm] = useState({
     customerName: '',
@@ -215,7 +266,13 @@ export default function ManageMembershipsPage() {
       accessorKey: 'vehicleNo',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
-          <Car className="w-3.5 h-3.5 text-amber-500" />
+          {vehicleImageFor(row) ? (
+            <a href={vehicleImageFor(row)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
+              <img src={vehicleImageFor(row)} alt="Vehicle" className="w-9 h-9 rounded-lg object-cover border border-gray-200" />
+            </a>
+          ) : (
+            <Car className="w-3.5 h-3.5 text-amber-500" />
+          )}
           <div>
             <span className="font-extrabold text-gray-800 block">{row.vehicleNo || (Array.isArray(row.boundVehicles) ? row.boundVehicles[0] : '—')}</span>
             <span className="text-[10px] text-gray-400">{row.vehicleModel}</span>
@@ -320,7 +377,7 @@ export default function ManageMembershipsPage() {
           </button>
           {(row.status === 'Expired' || row.status === 'Expiring Soon') && (
             <button
-              onClick={() => renewMembership(row)}
+              onClick={() => openRenew(row)}
               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
               title="Quick Renew"
             >
@@ -349,7 +406,7 @@ export default function ManageMembershipsPage() {
         const activeCount = memberships.filter(m => m.status === 'Active').length;
         const expiringCount = memberships.filter(m => m.status === 'Expiring Soon').length;
         const queuedCount = memberships.filter(m => m.status === 'Queued').length;
-        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 2499), 0);
+        const totalAmount = memberships.reduce((sum, m) => sum + (Number(m.amount) || Number(m.price) || 0), 0);
 
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -659,6 +716,11 @@ export default function ManageMembershipsPage() {
       >
         {selectedMember && (
           <div className="space-y-4 text-xs">
+            {vehicleImageFor(selectedMember) && (
+              <a href={vehicleImageFor(selectedMember)} target="_blank" rel="noreferrer" className="block">
+                <img src={vehicleImageFor(selectedMember)} alt="Vehicle" className="w-full max-h-48 object-cover rounded-xl border border-gray-200" />
+              </a>
+            )}
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <span className="text-gray-400 font-bold block">Customer Phone</span>
@@ -740,7 +802,7 @@ export default function ManageMembershipsPage() {
                 </button>
                 <button
                   onClick={() => {
-                    renewMembership(selectedMember);
+                    openRenew(selectedMember);
                     setSelectedMember(null);
                   }}
                   className="py-2 px-2 text-xs font-bold text-white rounded-xl shadow-xs text-center active:scale-95 transition-all"
@@ -769,6 +831,65 @@ export default function ManageMembershipsPage() {
               </div>
             </div>
           </div>
+        )}
+      </AdminModal>
+
+      {/* Renew: records a new membership sale for the amount received */}
+      <AdminModal
+        isOpen={!!renewTarget}
+        onClose={() => !renewSaving && setRenewTarget(null)}
+        title="Renew Membership"
+        subtitle={renewTarget ? `${renewTarget.customerName || ''} · ${renewTarget.vehicleNo || ''} · ${renewTarget.planName || renewTarget.packageName || ''}` : ''}
+      >
+        {renewTarget && (
+          <form onSubmit={submitRenew} className="space-y-3 text-xs">
+            <p className="text-gray-500">
+              The renewal is saved as a new sale on the date below. The original purchase stays on its own date, so past revenue is not moved.
+            </p>
+            <label className="block">
+              <span className="font-bold text-gray-700 block mb-1">Amount received (₹)</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                required
+                value={renewForm.amount}
+                onChange={(e) => setRenewForm({ ...renewForm, amount: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:border-amber-500"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="font-bold text-gray-700 block mb-1">Payment mode</span>
+                <select
+                  value={renewForm.paymentMode}
+                  onChange={(e) => setRenewForm({ ...renewForm, paymentMode: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl font-bold text-gray-900 bg-white"
+                >
+                  {['Cash', 'UPI', 'Card', 'Net Banking'].map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="font-bold text-gray-700 block mb-1">Payment date</span>
+                <input
+                  type="date"
+                  required
+                  max={todayIso()}
+                  value={renewForm.saleDate}
+                  onChange={(e) => setRenewForm({ ...renewForm, saleDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl font-bold text-gray-900"
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" disabled={renewSaving} onClick={() => setRenewTarget(null)} className="px-4 py-2 rounded-xl border border-gray-200 font-bold text-gray-600">
+                Cancel
+              </button>
+              <button type="submit" disabled={renewSaving} className="px-4 py-2 rounded-xl font-bold text-white disabled:opacity-60" style={{ backgroundColor: '#e07b2a' }}>
+                {renewSaving ? 'Saving…' : 'Record renewal'}
+              </button>
+            </div>
+          </form>
         )}
       </AdminModal>
     </div>

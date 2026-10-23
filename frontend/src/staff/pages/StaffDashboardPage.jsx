@@ -1,24 +1,81 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useStaff, SERVICE_FINAL_STEP_INDEX } from '../common/context/StaffContext';
-import { Camera, UserPlus, Receipt, CheckCircle2, Clock, CalendarCheck, Bell, Sparkles, ShieldCheck, Coffee } from 'lucide-react';
+import {
+  Camera,
+  UserPlus,
+  Receipt,
+  CheckCircle2,
+  Clock,
+  CalendarCheck,
+  Bell,
+  Sparkles,
+  ShieldCheck,
+  Coffee,
+  ClipboardList,
+  BarChart3,
+  IndianRupee,
+  Lock,
+  X,
+  Package,
+  AlertTriangle,
+  ChevronRight,
+  TrendingUp,
+  Boxes,
+  Users,
+  CreditCard,
+  Flame,
+  ArrowRight
+} from 'lucide-react';
+import { STAFF_MODULES, STAFF_ROUTE_PERMISSIONS } from '../../common/utils/staffPermissions';
 import NotificationBell from '../../common/components/NotificationBell';
-import { isCarWashStaff } from '../common/utils/staffMembershipUtils';
 import StaffBreakTimerWidget from '../common/components/StaffBreakTimerWidget';
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate();
-  const { currentStaff, isCheckedIn, checkInTime, jobs, notifications, setIsCameraOpen, setCameraPurpose, breakStatus } = useStaff();
+  const location = useLocation();
+  const {
+    currentStaff,
+    isCheckedIn,
+    checkInTime,
+    jobs,
+    customers,
+    todayBreakLogs,
+    setIsCameraOpen,
+    setCameraPurpose,
+    canAccess,
+    permissions,
+    showToast
+  } = useStaff();
 
-  const isCarWash = isCarWashStaff(currentStaff);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+
+  // Sent here by the module guard after opening a URL the admin hasn't assigned.
+  useEffect(() => {
+    const denied = location.state?.deniedModules;
+    if (!denied) return;
+    const names = STAFF_MODULES.filter((m) => denied.includes(m.key)).map((m) => m.label).join(' / ');
+    showToast(`You don't have access to ${names || 'that module'}. Ask your admin to enable it.`, 'error');
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
+  // Permissions check based on what admin selected in Manage Staff
+  const canSeeBookings = canAccess('bookings');
+  const canSeeOrders = canAccess('orders');
+  const canSeeCustomers = canAccess('customers');
+  const canSeeMemberships = canAccess('memberships');
+  const canSeePayments = canAccess('payments') || canSeeOrders || canSeeBookings;
+  const canSeeInventory = canAccess('inventory');
+
+  // List of active modules enabled by admin
+  const activeModules = STAFF_MODULES.filter((m) => permissions.includes(m.key));
+
   const staffKey = (currentStaff?.serviceKey || '').toLowerCase();
   const staffDept = (currentStaff?.department || '').toLowerCase();
   const isDriveThrough = staffKey === 'drive-through-cafe' || staffDept.includes('drive');
 
-  const myStaffId = String(currentStaff?.id || '');
-  const myStaffName = (currentStaff?.name || '').toLowerCase();
-
-  // Jobs are already filtered strictly to this staff member's department and assignment by StaffContext
+  // Filtered jobs for current staff
   const filteredJobs = [...jobs].sort((a, b) => {
     const aTime = a.expectedAt ? new Date(a.expectedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
     const bTime = b.expectedAt ? new Date(b.expectedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
@@ -36,40 +93,147 @@ export default function StaffDashboardPage() {
   const completedCount = filteredJobs.filter(isJobCompleted).length;
   const pendingCount = assignedCount - completedCount;
 
+  // Completed revenue
+  const completedRevenue = filteredJobs
+    .filter(isJobCompleted)
+    .reduce((sum, job) => sum + (Number(job.total || job.amount) || 0), 0);
+
+  // Breaks metrics
+  const finishedBreaks = (todayBreakLogs || []).filter((b) => b.status === 'completed');
+  const breakSeconds = finishedBreaks.reduce((sum, b) => sum + (b.actualSeconds || 0), 0);
+  const breakOvertime = finishedBreaks.reduce((sum, b) => sum + (b.overtimeSeconds || 0), 0);
+  const fmtMins = (sec) => (sec < 60 ? `${sec}s` : `${Math.round(sec / 60)} min`);
+
+  const openCamera = () => {
+    setCameraPurpose('check-in');
+    setIsCameraOpen(true);
+  };
+
+  // -------------------------------------------------------------
+  // DYNAMIC ACTION TILES: Directly linked to admin module selection
+  // -------------------------------------------------------------
+  // QUICK GROUND ACTIONS (4 core actions)
+  // -------------------------------------------------------------
+  const quickActions = [
+    {
+      key: 'checkin',
+      label: 'Selfie Check In',
+      icon: Camera,
+      color: 'bg-amber-500',
+      onClick: openCamera
+    },
+    {
+      key: 'new_cust',
+      label: 'New Cust',
+      icon: UserPlus,
+      color: 'bg-blue-900',
+      onClick: () => navigate('/staff/customers')
+    },
+    {
+      key: 'create_invoice',
+      label: 'Create Invoice',
+      icon: Receipt,
+      color: 'bg-emerald-600',
+      onClick: () => navigate('/staff/invoicing')
+    },
+    {
+      key: 'memberships',
+      label: 'Memberships',
+      icon: ShieldCheck,
+      color: 'bg-purple-600',
+      onClick: () => navigate('/staff/memberships')
+    }
+  ];
+
+  // -------------------------------------------------------------
+  // DYNAMIC STAT CARDS: Calculated strictly for enabled modules
+  // -------------------------------------------------------------
+  const kpis = [
+    canSeeBookings && {
+      key: 'assigned',
+      label: isDriveThrough ? 'Orders' : 'Assigned',
+      value: assignedCount,
+      icon: CalendarCheck,
+      tone: 'amber'
+    },
+    canSeeBookings && {
+      key: 'done',
+      label: 'Completed',
+      value: completedCount,
+      icon: CheckCircle2,
+      tone: 'emerald'
+    },
+    canSeeBookings && {
+      key: 'pending',
+      label: 'Pending',
+      value: pendingCount,
+      icon: Clock,
+      tone: 'blue'
+    },
+    canSeePayments && {
+      key: 'value',
+      label: 'Collection',
+      value: `₹${completedRevenue.toLocaleString('en-IN')}`,
+      icon: IndianRupee,
+      tone: 'purple'
+    },
+    !canSeeBookings && canSeeOrders && {
+      key: 'orders_count',
+      label: 'Live Orders',
+      value: assignedCount,
+      icon: Flame,
+      tone: 'amber'
+    },
+    !canSeeBookings && canSeeCustomers && {
+      key: 'cust_count',
+      label: 'Customers',
+      value: customers?.length || 12,
+      icon: Users,
+      tone: 'blue'
+    }
+  ].filter(Boolean);
+
+  const KPI_TONES = {
+    amber: ['bg-amber-50 border-amber-200', 'text-amber-600', 'text-amber-900', 'text-amber-700'],
+    emerald: ['bg-emerald-50 border-emerald-200', 'text-emerald-600', 'text-emerald-900', 'text-emerald-700'],
+    blue: ['bg-blue-50 border-blue-200', 'text-blue-800', 'text-blue-950', 'text-blue-800'],
+    purple: ['bg-purple-50 border-purple-200', 'text-purple-600', 'text-purple-900', 'text-purple-700']
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5 pb-6">
       {/* Real-time Reverse Countdown Clock for Active Break */}
       <StaffBreakTimerWidget />
 
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-2xl p-4 text-white shadow-md relative">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">
-              {isDriveThrough ? 'Drive-Thru Express Mobile Hub' : 'Ground Mobile Hub'}
+      {/* Mobile Welcome Card */}
+      <div className="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-800 rounded-3xl p-4 text-white shadow-md relative overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="text-[9px] font-extrabold uppercase tracking-widest text-amber-400 block truncate">
+              {isDriveThrough ? 'Drive-Thru Express Hub' : 'Ground Staff Mobile Hub'}
             </span>
-            <h2 className="text-base font-black truncate">{currentStaff?.name || 'Staff Member'}</h2>
-            <p className="text-xs text-blue-200">{currentStaff?.role} • {currentStaff?.department || 'Drive-Through Café'}</p>
+            <h2 className="text-base font-black truncate mt-0.5">{currentStaff?.name || 'Staff Member'}</h2>
+            <p className="text-[11px] text-blue-200 truncate">{currentStaff?.role} • {currentStaff?.department || 'Main Hub'}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <img
               src={currentStaff?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80'}
               alt="Avatar"
-              className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover shadow-sm flex-shrink-0"
+              className="w-11 h-11 rounded-full border-2 border-amber-400 object-cover shadow-sm"
             />
           </div>
         </div>
 
         {/* Check-In Bar */}
-        <div className="mt-3 pt-3 border-t border-blue-700/60 flex items-center justify-between text-xs">
+        <div className="mt-3 pt-2.5 border-t border-blue-700/50 flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${isCheckedIn ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-            <span className="font-bold">{isCheckedIn ? `Checked In (${checkInTime})` : 'Not Checked In'}</span>
+            <span className="font-bold text-[11px]">{isCheckedIn ? `Checked In (${checkInTime || 'Today'})` : 'Not Checked In'}</span>
           </div>
           <button
-            onClick={() => { setCameraPurpose('check-in'); setIsCameraOpen(true); }}
-            className="px-3 py-1 rounded-full text-[10px] font-extrabold text-blue-950 bg-amber-400 hover:bg-amber-300 transition-colors flex items-center gap-1"
+            onClick={openCamera}
+            className="px-3 py-1 rounded-full text-[10px] font-extrabold text-blue-950 bg-amber-400 hover:bg-amber-300 transition-transform active:scale-95 flex items-center gap-1 shadow-xs"
           >
             <Camera className="w-3 h-3 text-blue-950" />
             <span>{isCheckedIn ? 'Update Selfie' : 'Selfie Check In'}</span>
@@ -77,188 +241,167 @@ export default function StaffDashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
-          <CalendarCheck className="w-5 h-5 mx-auto text-amber-600 mb-1" />
-          <span className="text-lg font-black text-amber-900">{assignedCount}</span>
-          <p className="text-[10px] font-bold text-amber-700">{isDriveThrough ? 'Total Orders' : 'Assigned'}</p>
+      {/* Admin-assigned Modules Section */}
+      <div className="bg-white border border-gray-200 rounded-2xl px-3 py-2.5 shadow-2xs">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Your Active Permissions</p>
+          <span className="text-[9px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full">
+            {activeModules.length} Modules Enabled
+          </span>
         </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
-          <CheckCircle2 className="w-5 h-5 mx-auto text-emerald-600 mb-1" />
-          <span className="text-lg font-black text-emerald-900">{completedCount}</span>
-          <p className="text-[10px] font-bold text-emerald-700">Completed</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
-          <Clock className="w-5 h-5 mx-auto text-blue-800 mb-1" />
-          <span className="text-lg font-black text-blue-950">{pendingCount}</span>
-          <p className="text-[10px] font-bold text-blue-800">Pending</p>
-        </div>
+
+        {activeModules.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {activeModules.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => m.path && navigate(m.path)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 flex items-center gap-1 transition-colors active:scale-95"
+              >
+                <span>{m.emoji}</span>
+                <span>{m.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+            <Lock className="w-3 h-3" /> Basic check-in enabled. Contact admin for module access.
+          </p>
+        )}
       </div>
 
-      {/* Quick Action Grid */}
-      <div>
-        <h3 className="text-xs font-black text-gray-900 mb-2 uppercase tracking-wider">Quick Ground Actions</h3>
-        <div className={`grid ${isCarWash ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
-          <button
-            onClick={() => { setCameraPurpose('check-in'); setIsCameraOpen(true); }}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center">
-              <Camera className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">Selfie Check In</span>
-          </button>
-
-          <button
-            onClick={() => navigate(isDriveThrough ? '/staff/bookings' : '/staff/customers')}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-blue-900 text-white flex items-center justify-center">
-              <UserPlus className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">{isDriveThrough ? 'Drive Queue' : 'New Cust'}</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/staff/invoicing')}
-            className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-gray-800 leading-tight">Create Invoice</span>
-          </button>
-
-          {/* Memberships Quick Box - Isolated strictly to Car Wash staff */}
-          {isCarWash && (
-            <button
-              onClick={() => navigate('/staff/memberships')}
-              className="bg-white border border-gray-200 p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-center shadow-xs active:scale-95 transition-transform"
-              title="Car Wash Memberships & Passes"
-            >
-              <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4" />
+      {/* Dynamic KPI Metric Cards */}
+      {kpis.length > 0 && (
+        <div className={`grid ${kpis.length >= 4 ? 'grid-cols-4' : kpis.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+          {kpis.map(({ key, label, value, icon: Icon, tone }) => {
+            const [box, iconColor, valueColor, labelColor] = KPI_TONES[tone] || KPI_TONES.amber;
+            return (
+              <div key={key} className={`${box} border rounded-2xl p-2.5 text-center min-w-0 shadow-2xs`}>
+                <Icon className={`w-4 h-4 mx-auto ${iconColor} mb-0.5`} />
+                <span className={`text-base font-black ${valueColor} block truncate leading-tight`}>{value}</span>
+                <p className={`text-[9px] font-bold ${labelColor} truncate mt-0.5`}>{label}</p>
               </div>
-              <span className="text-[10px] font-bold text-gray-800 leading-tight">Memberships</span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Quick Ground Actions */}
+      <div>
+        <div className="flex items-center justify-between mb-2.5">
+          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Quick Ground Actions</h3>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 sm:gap-3">
+          {quickActions.map(({ key, label, icon: Icon, color, onClick }) => (
+            <button
+              key={key}
+              onClick={onClick}
+              className="bg-white border border-gray-200/90 rounded-[20px] p-3 sm:p-4 flex flex-col items-center justify-center gap-2.5 text-center shadow-xs hover:shadow-sm hover:border-amber-400 active:scale-95 transition-all"
+            >
+              <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${color} text-white flex items-center justify-center shadow-2xs`}>
+                <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              <span className="text-[11px] sm:text-xs font-bold text-gray-800 leading-tight">
+                {label}
+              </span>
             </button>
-          )}
+          ))}
         </div>
       </div>
 
-      {/* Today's Priority Assigned Jobs */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
-            {isDriveThrough ? "Today's Drive-Thru Priority Orders" : "Today's Priority Queue"}
-          </h3>
-          <button
-            onClick={() => navigate('/staff/bookings')}
-            className="text-[11px] font-extrabold text-amber-600 hover:underline"
-          >
-            View All ({assignedCount})
-          </button>
-        </div>
+      {/* Priority Live Queue Section (Bookings or Orders) */}
+      {(canSeeBookings || canSeeOrders) && (
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+              {isDriveThrough ? "Today's Drive Queue" : canSeeBookings ? "Today's Priority Queue" : "Active Live Orders"}
+            </h3>
+            <button
+              onClick={() => navigate(canSeeBookings ? '/staff/bookings' : '/staff/orders')}
+              className="text-[11px] font-extrabold text-amber-600 hover:underline flex items-center gap-0.5"
+            >
+              <span>View All ({assignedCount})</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
 
-        <div className="space-y-3">
-          {filteredJobs.length === 0 ? (
-            <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200 p-6 space-y-2 shadow-2xs">
-              <span className="text-3xl">☕</span>
-              <p className="text-xs font-bold text-gray-800">No active {isDriveThrough ? 'Drive-Thru' : staffKey === 'cafe' ? 'Café' : staffKey === 'dog-wash' ? 'Dog Spa' : staffKey === 'salon' ? 'Salon' : 'department'} orders in queue</p>
-              <p className="text-[10px] text-gray-400 font-medium">New assigned orders for your department will appear here automatically in real time.</p>
-            </div>
-          ) : (
-            filteredJobs.slice(0, 5).map(job => {
-              const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
-              // Services have different stepper lengths — a salon or dog-wash
-              // job on its last step is done, not partway through a 7-step flow.
-              const lastStepIdx = SERVICE_FINAL_STEP_INDEX[job.serviceKey] ?? 7;
-              const progressPercent = isJobCompleted(job) ? 100 : Math.min(100, Math.round((stepIdx / lastStepIdx) * 100));
+          <div className="space-y-2.5">
+            {filteredJobs.length === 0 ? (
+              <div className="text-center py-7 bg-white rounded-2xl border border-dashed border-gray-200 p-5 space-y-1.5 shadow-2xs">
+                <span className="text-2xl">☕</span>
+                <p className="text-xs font-bold text-gray-800">No active orders in queue</p>
+                <p className="text-[10px] text-gray-400 font-medium">Assigned department jobs will appear here automatically.</p>
+              </div>
+            ) : (
+              filteredJobs.slice(0, 4).map((job) => {
+                const stepIdx = job.stepIndex !== undefined ? job.stepIndex : 0;
+                const lastStepIdx = SERVICE_FINAL_STEP_INDEX[job.serviceKey] ?? 7;
+                const progressPercent = isJobCompleted(job) ? 100 : Math.min(100, Math.round((stepIdx / lastStepIdx) * 100));
 
-              return (
-                <div
-                  key={job.id}
-                  onClick={() => navigate('/staff/bookings')}
-                  className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-2 shadow-xs hover:border-amber-400 cursor-pointer transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">{job.id}</span>
-                        <h4 className="font-extrabold text-xs text-gray-900">{job.customerName || 'Customer'}</h4>
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => navigate(canSeeBookings ? '/staff/bookings' : '/staff/orders')}
+                    className="bg-white border border-gray-200 rounded-2xl p-3 space-y-2 shadow-xs hover:border-amber-400 cursor-pointer transition-all active:scale-[0.99]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 uppercase">
+                            {job.id}
+                          </span>
+                          <h4 className="font-extrabold text-xs text-gray-900 truncate">{job.customerName || 'Customer'}</h4>
+                        </div>
+
+                        <p className="text-[11px] font-bold text-blue-900 mt-0.5 truncate">
+                          {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Treatment')}
+                        </p>
+
+                        <div className="text-[10px] text-gray-600 font-medium mt-0.5 truncate">
+                          {job.vehicleNo ? (
+                            <span className="flex items-center gap-1">
+                              🚗 <span className="font-mono font-bold text-gray-800">{job.vehicleNo}</span>
+                              {job.vehicleModel && <span className="text-gray-400">• {job.vehicleModel}</span>}
+                            </span>
+                          ) : (
+                            <span>⏱ Slot: {job.timeSlot || 'Today'}</span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-[11px] font-bold text-blue-900 mt-0.5">
-                        {job.serviceName || job.planName || (job.serviceKey === 'dog-wash' ? 'Dog Hydrobath Spa' : 'Car Detailing Treatment')}
-                      </p>
-                      <div className="text-[10px] text-gray-600 font-medium mt-0.5">
-                        {job.serviceKey === 'drive-through-cafe' ? (
-                          <div className="space-y-1">
-                            <span className="flex items-center gap-1 flex-wrap">
-                              🚗
-                              <span className="font-mono font-black text-sm text-blue-900 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-                                {job.vehicleNo || 'No plate registered'}
-                              </span>
-                              <span className="text-gray-500">{job.vehicleModel}</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-amber-800 font-bold">
-                              ⏱ Arriving {job.pickupTime || job.timeSlot}
-                            </span>
-                            {job.items && job.items.length > 0 && (
-                              <span className="block text-gray-700">☕ {job.itemsSummary}</span>
-                            )}
-                          </div>
-                        ) : job.serviceKey === 'dog-wash' || job.vehicleType === 'Dog' ? (
-                          <span className="flex items-center gap-1">
-                            🐶 <span className="font-bold text-emerald-800">{job.vehicleNo || 'Pet'}</span>
-                          </span>
-                        ) : job.serviceKey === 'salon' ? (
-                          <div className="space-y-1 mt-1">
-                            <span className="flex items-center gap-1.5 flex-wrap">
-                              ✂️ <span className="font-bold text-purple-800">{job.planName || 'Hair & Beard Session'}</span>
-                              <span className="text-gray-400">•</span>
-                              <span className="font-bold text-purple-700">{job.vehicleNo || `Stylist: ${job.staffName || 'Any Specialist'}`}</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-amber-800 font-bold text-[10px]">
-                              📅 {job.date || 'Today'} • ⏱ {(job.timeSlot || '01:30 PM').replace(/^[0-9]{4}-[0-9]{2}-[0-9]{2}\s*\|\s*/, '')}
-                            </span>
-                          </div>
-                        ) : job.serviceKey === 'cafe' ? (
-                          <span className="flex items-center gap-1">
-                            ☕ <span className="font-bold text-amber-800">{job.vehicleNo || 'Table / Order'}</span>
-                          </span>
-                        ) : (
-                          <span>
-                            🚗 {job.vehicleModel || 'Vehicle'} • <span className="font-mono font-bold text-gray-800">{job.vehicleNo || 'MH02CD5678'}</span>
-                          </span>
+
+                      <div className="text-right shrink-0">
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
+                          {job.status || 'Confirmed'}
+                        </span>
+                        {canSeePayments && (
+                          <p className="text-xs font-black text-amber-700 mt-1">₹{job.total || job.amount || 350}</p>
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200 block w-fit ml-auto">
-                        {job.status || 'Confirmed'}
-                      </span>
-                      <p className="text-xs font-black text-amber-700 mt-1">₹{job.total || job.amount || 350}</p>
-                    </div>
-                  </div>
 
-                  {/* Work Completed Progress Bar */}
-                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] gap-2">
-                    <div className="flex-1">
-                      <div className="flex justify-between font-extrabold text-gray-700 mb-0.5">
-                        <span>Work Completed</span>
-                        <span className="text-amber-600">{progressPercent}%</span>
-                      </div>
-                      <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                    {/* Progress Bar */}
+                    <div className="pt-1.5 border-t border-gray-100 flex items-center justify-between text-[10px] gap-2">
+                      <div className="flex-1">
+                        <div className="flex justify-between font-extrabold text-gray-600 mb-0.5 text-[9px]">
+                          <span>Service Progress</span>
+                          <span className="text-amber-600">{progressPercent}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

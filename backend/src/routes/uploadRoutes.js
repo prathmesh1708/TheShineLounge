@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const cloudinaryService = require('../common/services/cloudinaryService');
 const { CLOUDINARY_CLOUD_NAME } = require('../common/config/env');
+const authMiddleware = require('../middleware/authMiddleware');
+const { staffOnly } = require('../middleware/roleMiddleware');
 
 // Local fallback uploads directory — used only when Cloudinary env keys are omitted
 const UPLOADS_DIR = path.resolve(__dirname, '../../../frontend/public/uploads');
@@ -27,11 +29,12 @@ const diskStorage = multer.diskStorage({
 });
 
 const fileFilter = (_req, file, cb) => {
-  const allowed = /^(image|video)\//;
-  if (allowed.test(file.mimetype)) {
+  // Audio and PDFs are for WhatsApp Hub voice notes and document messages.
+  const allowed = /^(image|video|audio)\//;
+  if (allowed.test(file.mimetype) || file.mimetype === 'application/pdf') {
     cb(null, true);
   } else {
-    cb(new Error('Only image and video files are allowed'), false);
+    cb(new Error('Only image, video, audio and PDF files are allowed'), false);
   }
 };
 
@@ -41,17 +44,23 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100 MB max
 });
 
+const VEHICLE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const isVehicleFolder = (folder) => String(folder || '').includes('/vehicles');
+
 /**
  * POST /api/upload
  * Supports multipart file upload (req.file) OR JSON base64 upload (req.body.base64)
  * Returns Cloudinary secure CDN URL or local static URL fallback
  */
-router.post('/', upload.single('file'), async (req, res) => {
+router.post('/', authMiddleware, staffOnly, upload.single('file'), async (req, res) => {
   try {
     const folder = req.query.folder || req.body.folder || 'shine-lounge/uploads';
 
     // 1. Base64 Upload Handling
     if (req.body && req.body.base64) {
+      if (isVehicleFolder(folder) && (!/^data:image\//.test(req.body.base64) || req.body.base64.length > VEHICLE_IMAGE_MAX_BYTES * 1.4)) {
+        return res.status(400).json({ success: false, message: 'Vehicle photos must be images up to 10 MB' });
+      }
       if (CLOUDINARY_CLOUD_NAME) {
         const result = await cloudinaryService.uploadBase64(req.body.base64, { folder });
         return res.status(200).json({
@@ -78,14 +87,27 @@ router.post('/', upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file provided' });
     }
+    if (isVehicleFolder(folder) && (!req.file.mimetype.startsWith('image/') || req.file.size > VEHICLE_IMAGE_MAX_BYTES)) {
+      return res.status(400).json({ success: false, message: 'Vehicle photos must be images up to 10 MB' });
+    }
 
     if (CLOUDINARY_CLOUD_NAME) {
       // Direct stream to Cloudinary
-      const isVideo = req.file.mimetype.startsWith('video/');
-      const result = await cloudinaryService.uploadStream(req.file.buffer, {
-        folder,
-        resource_type: isVideo ? 'video' : 'image'
-      });
+      // Cloudinary stores audio under the "video" resource type, and serves
+      // PDFs reliably only as "raw" (image-type PDFs are blocked by default).
+      const { mimetype } = req.file;
+      const resourceType = mimetype.startsWith('video/') || mimetype.startsWith('audio/')
+        ? 'video'
+        : (mimetype === 'application/pdf' ? 'raw' : 'image');
+      const uploadOptions = { folder, resource_type: resourceType };
+      if (resourceType === 'raw') {
+        // Raw files keep their extension only through the public id; WhatsApp
+        // shows this name on the document ("Invoice-TSL-1042.pdf").
+        const base = path.basename(req.file.originalname || 'document', path.extname(req.file.originalname || ''))
+          .replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'document';
+        uploadOptions.public_id = `${base}-${Date.now().toString(36)}.pdf`;
+      }
+      const result = await cloudinaryService.uploadStream(req.file.buffer, uploadOptions);
 
       return res.status(200).json({
         success: true,
@@ -121,7 +143,7 @@ router.post('/', upload.single('file'), async (req, res) => {
  * DELETE /api/upload
  * Deletes asset from Cloudinary by publicId
  */
-router.delete('/', async (req, res) => {
+router.delete('/', authMiddleware, staffOnly, async (req, res) => {
   try {
     const { publicId, resourceType = 'image' } = req.body;
     if (!publicId) {

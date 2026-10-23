@@ -6,6 +6,7 @@ import {
   normalizeEmail
 } from '../utils/userScopedStorage';
 import { registerFCMToken, removeFCMToken } from '../services/pushNotificationService';
+import { normalizePermissions, permissionsAllow } from '../utils/staffPermissions';
 
 const AuthContext = createContext(null);
 
@@ -210,16 +211,21 @@ export function AuthProvider({ children }) {
   const updateUser = useCallback((updatedUser) => {
     setUser(updatedUser);
     localStorage.setItem('tsl_user', JSON.stringify(updatedUser));
+    // Keep the per-role copy in step so a reload restores the same profile.
+    if (updatedUser?.role === 'staff') localStorage.setItem('tsl_staff_user', JSON.stringify(updatedUser));
   }, []);
 
-  const hasPermission = useCallback(
-    (permissionName) => {
+  // `required` is one permission key or a list meaning "any of". Staff use the
+  // shared module rules (dashboard is always on); admins can open everything.
+  const canAccess = useCallback(
+    (required) => {
       if (!user) return false;
       if (user.role === 'admin') return true;
-      return user.permissions && user.permissions.includes(permissionName);
+      return permissionsAllow(user.permissions, required);
     },
     [user]
   );
+  const hasPermission = canAccess;
 
   const value = {
     user,
@@ -230,13 +236,14 @@ export function AuthProvider({ children }) {
     isStaff: !!user && !!token && user.role === 'staff',
     isAdmin: !!user && !!token && user.role === 'admin',
     role: user?.role || null,
-    permissions: user?.permissions || [],
+    permissions: user?.role === 'staff' ? normalizePermissions(user.permissions) : (user?.permissions || []),
     login,
     register,
     logout,
     clearAuth,
     updateUser,
-    hasPermission
+    hasPermission,
+    canAccess
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

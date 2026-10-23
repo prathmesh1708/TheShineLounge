@@ -24,7 +24,8 @@ import {
   Phone,
   Mail,
   MapPin,
-  Car
+  Car,
+  Coffee
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,6 +43,9 @@ import { buildServiceStats } from '../../common/utils/serviceStats';
 import StatsCard from '../../common/components/StatsCard';
 import DataTable from '../../common/components/DataTable';
 import AdminModal from '../../common/components/AdminModal';
+import BreakScheduleFields, { DEFAULT_BREAK_SCHEDULE } from '../../common/components/BreakScheduleFields';
+import BreakStatusBadge from '../../common/components/BreakStatusBadge';
+import StaffBreaksModal from '../../common/components/StaffBreaksModal';
 import RegisteredVehicleDetailModal from '../../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleModal from '../../common/components/OfflineSaleModal';
 import OfflineSaleInvoiceModal from '../../common/components/OfflineSaleInvoiceModal';
@@ -238,6 +242,7 @@ export default function CarDetailingAdminHubPage() {
       if (!registeredVehiclesMap[key]) {
         registeredVehiclesMap[key] = {
           plate: rawPlate || cleanPlate,
+          imageUrl: (Array.isArray(b.vehicles) ? b.vehicles : []).find(x => x && x.imageUrl && normalizePlate(x.plateNumber) === cleanPlate)?.imageUrl || '',
           model: model,
           customerId: matchedCust?._id || matchedCust?.id || null,
           ownerName: name,
@@ -252,6 +257,9 @@ export default function CarDetailingAdminHubPage() {
         registeredVehiclesMap[key].totalBookings += 1;
         if (b.date) {
           registeredVehiclesMap[key].lastServiceDate = b.date;
+        }
+        if (!registeredVehiclesMap[key].imageUrl) {
+          registeredVehiclesMap[key].imageUrl = (Array.isArray(b.vehicles) ? b.vehicles : []).find(x => x && x.imageUrl && normalizePlate(x.plateNumber) === cleanPlate)?.imageUrl || '';
         }
         if (!registeredVehiclesMap[key].ownerPhone && custPhone) {
           registeredVehiclesMap[key].ownerPhone = custPhone;
@@ -448,13 +456,15 @@ export default function CarDetailingAdminHubPage() {
     mobile: '',
     staffRole: 'Detailing Specialist',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    permissions: ['bookings', 'orders']
+    permissions: ['bookings'],
+    breakSchedule: DEFAULT_BREAK_SCHEDULE
   });
 
   // Edit Staff Modal States
   const [editStaffModal, setEditStaffModal] = useState(false);
+  const [breaksStaff, setBreaksStaff] = useState(null);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [editStaffForm, setEditStaffForm] = useState({
     fullName: '',
@@ -463,7 +473,7 @@ export default function CarDetailingAdminHubPage() {
     mobile: '',
     staffRole: 'Detailing Specialist',
     salary: '',
-    leaveBalance: 12,
+    leaveBalance: 0,
     photo: '',
     permissions: []
   });
@@ -527,9 +537,10 @@ export default function CarDetailingAdminHubPage() {
       staffRole: staffForm.staffRole || 'Detailing Specialist',
       role: 'staff',
       salary: staffForm.salary,
-      leaveBalance: Number(staffForm.leaveBalance || 12),
+      leaveBalance: Number(staffForm.leaveBalance || 0),
       photo: staffForm.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      permissions: staffForm.permissions || ['bookings', 'orders'],
+      permissions: staffForm.permissions || ['bookings'],
+      breakSchedule: staffForm.breakSchedule,
       isActive: true,
       status: 'Active'
     };
@@ -560,9 +571,10 @@ export default function CarDetailingAdminHubPage() {
       mobile: '',
       staffRole: 'Detailing Specialist',
       salary: '',
-      leaveBalance: 12,
+      leaveBalance: 0,
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      permissions: ['bookings', 'orders']
+      permissions: ['bookings'],
+      breakSchedule: DEFAULT_BREAK_SCHEDULE
     });
   };
 
@@ -575,7 +587,7 @@ export default function CarDetailingAdminHubPage() {
       mobile: stf.mobile || '',
       staffRole: stf.staffRole || stf.role || 'Detailing Specialist',
       salary: stf.monthlySalary || '',
-      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 12,
+      leaveBalance: stf.leaveBalance !== undefined ? stf.leaveBalance : 0,
       photo: stf.photo || stf.avatar || stf.profileImage || '',
       permissions: stf.permissions || []
     });
@@ -791,6 +803,17 @@ export default function CarDetailingAdminHubPage() {
     setAddPlanModal(false);
     setPlanForm({ name: '', price: '', description: '', billing: 'per service' });
   };
+
+  // Keep break badges (pending / on break / overtime) current while the
+  // staff tab is open.
+  useEffect(() => {
+    if (activeTab !== 'staff') return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchLiveStaff();
+    }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   return (
     <div className="space-y-6">
@@ -1245,9 +1268,13 @@ export default function CarDetailingAdminHubPage() {
                   <div>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
+                        {v.imageUrl ? (
+                          <img src={v.imageUrl} alt={v.plate} className="w-10 h-10 rounded-2xl object-cover border border-amber-500/20" />
+                        ) : (
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-lg">
                           🚗
                         </div>
+                        )}
                         <div>
                           <h4 className="font-extrabold text-sm text-gray-900">{v.model}</h4>
                           <span className="text-xs font-black text-amber-600 tracking-wider block">{v.plate}</span>
@@ -1488,6 +1515,18 @@ export default function CarDetailingAdminHubPage() {
                         <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" /> {stf.email || 'staff@theshinelounge.com'}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
+                    <BreakStatusBadge staff={stf} />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setBreaksStaff(stf); }}
+                      className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                      title="Break schedule, live timer & overtime"
+                    >
+                      <Coffee className="w-3.5 h-3.5" /> Breaks
+                    </button>
                   </div>
 
                   <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[11px]">
@@ -2102,7 +2141,7 @@ export default function CarDetailingAdminHubPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+              <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
               <input
                 type="number"
                 value={staffForm.leaveBalance}
@@ -2137,7 +2176,6 @@ export default function CarDetailingAdminHubPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-xl border">
               {[
                 { id: 'bookings', label: 'Service Bookings' },
-                { id: 'orders', label: 'Live Orders' },
                 { id: 'inventory', label: 'Inventory Stock' },
                 { id: 'customers', label: 'Customer CRM' }
               ].map(perm => (
@@ -2154,6 +2192,11 @@ export default function CarDetailingAdminHubPage() {
             </div>
           </div>
 
+          <BreakScheduleFields
+            value={staffForm.breakSchedule}
+            onChange={(breakSchedule) => setStaffForm(prev => ({ ...prev, breakSchedule }))}
+          />
+
           <div className="pt-2">
             <button
               type="submit"
@@ -2164,6 +2207,14 @@ export default function CarDetailingAdminHubPage() {
           </div>
         </form>
       </AdminModal>
+
+      {/* Modal: per-staff breaks (schedule, live timer, overtime history) */}
+      <StaffBreaksModal
+        isOpen={!!breaksStaff}
+        onClose={() => setBreaksStaff(null)}
+        staff={breaksStaff}
+        onSaved={() => fetchLiveStaff()}
+      />
 
       {/* Modal: Edit Existing Staff Member & Shift Attendance Logs */}
       <AdminModal 
@@ -2282,7 +2333,7 @@ export default function CarDetailingAdminHubPage() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Annual Leave (Days)</label>
+                  <label className="block font-bold text-gray-700 mb-1">Monthly Leave (Days)</label>
                   <input
                     type="number"
                     value={editStaffForm.leaveBalance}

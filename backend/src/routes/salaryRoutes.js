@@ -3,6 +3,7 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const { adminOnly } = require('../middleware/roleMiddleware');
 const {
+  getSalaryCost,
   getSalaryOverview,
   getStaffSalary,
   addStaffDeduction,
@@ -21,6 +22,7 @@ const staffAccountOnly = (req, res, next) => {
 router.get('/me', authMiddleware, staffAccountOnly, getMySalary);
 
 router.get('/overview', authMiddleware, adminOnly, getSalaryOverview);
+router.get('/cost', authMiddleware, adminOnly, getSalaryCost);
 router.get('/staff/:id', authMiddleware, adminOnly, getStaffSalary);
 router.post('/staff/:id/deductions', authMiddleware, adminOnly, addStaffDeduction);
 router.put('/staff/:id/base', authMiddleware, adminOnly, changeStaffBaseSalary);

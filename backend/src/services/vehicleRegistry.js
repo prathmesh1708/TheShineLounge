@@ -21,7 +21,8 @@ const upsertRegisteredVehicle = async ({
   ownerEmail,
   ownerPhone,
   customerId,
-  addedVia
+  addedVia,
+  imageUrl
 } = {}) => {
   const cleanPlate = String(plateNumber || '').toUpperCase().trim();
   if (!cleanPlate) return null;
@@ -51,6 +52,8 @@ const upsertRegisteredVehicle = async ({
       existing.brand = '';
     }
     if (category) existing.category = category;
+    // A newer photo replaces the old one; a blank never wipes an existing one.
+    if (imageUrl) existing.imageUrl = String(imageUrl).trim();
     if (year) existing.year = year;
     if (ownerName && existing.ownerName === 'Customer') existing.ownerName = ownerName;
     if (ownerEmail && !existing.ownerEmail) existing.ownerEmail = ownerEmail;
@@ -67,6 +70,7 @@ const upsertRegisteredVehicle = async ({
     brand: cleanBrand,
     model: cleanModel,
     category: category || 'Car',
+    imageUrl: imageUrl ? String(imageUrl).trim() : '',
     year: year || '',
     ownerName: ownerName || 'Customer',
     ownerEmail: (ownerEmail || '').toLowerCase().trim(),
@@ -87,4 +91,53 @@ const tryUpsertRegisteredVehicle = async (payload) => {
   }
 };
 
-module.exports = { upsertRegisteredVehicle, tryUpsertRegisteredVehicle };
+// The photo of a car is saved on every record that carries the plate -- the
+// registry, the owner's profile, sales/bookings and membership passes -- so each
+// screen can show it without a join. Failure here must never fail a save.
+const syncVehicleImage = async (plateNumber, imageUrl) => {
+  const url = String(imageUrl || '').trim();
+  const plateNorm = normalizePlate(plateNumber);
+  if (!url || !plateNorm) return;
+  try {
+    const Booking = require('../models/Booking');
+    const OfflineSale = require('../models/OfflineSale');
+    const MembershipPass = require('../models/MembershipPass');
+    const User = require('../models/User');
+    const matches = (p) => normalizePlate(p) === plateNorm;
+    // Narrows the scan to documents whose plate could match, ignoring separators.
+    const plateRx = new RegExp(plateNorm.split('').join('[^A-Za-z0-9]*'), 'i');
+
+    await RegisteredVehicle.updateMany({ plateNormalized: plateNorm }, { $set: { imageUrl: url } });
+
+    // Embedded arrays are matched on the normalised plate in JS because stored
+    // plates carry whatever separators the operator typed.
+    const patchDocs = async (Model, filterKey) => {
+      const docs = await Model.find({ [`${filterKey}.plateNumber`]: plateRx }).select(filterKey);
+      for (const d of docs) {
+        let changed = false;
+        for (const v of d[filterKey] || []) {
+          if (matches(v.plateNumber) && v.imageUrl !== url) {
+            v.imageUrl = url;
+            changed = true;
+          }
+        }
+        if (changed) await d.save({ validateBeforeSave: false });
+      }
+    };
+    await patchDocs(Booking, 'vehicles');
+    await patchDocs(OfflineSale, 'vehicles');
+    await patchDocs(User, 'vehicles');
+
+    const passes = await MembershipPass.find({ isDeleted: { $ne: true }, boundVehicles: plateRx });
+    for (const pass of passes) {
+      if (!(pass.boundVehicles || []).some((b) => plateRx.test(b))) continue;
+      const others = (pass.vehicleImages || []).filter((x) => !matches(x.plateNumber));
+      pass.vehicleImages = [...others, { plateNumber: String(plateNumber).toUpperCase().trim(), imageUrl: url }];
+      await pass.save({ validateBeforeSave: false });
+    }
+  } catch (err) {
+    console.warn('Could not sync vehicle image:', err.message);
+  }
+};
+
+module.exports = { upsertRegisteredVehicle, tryUpsertRegisteredVehicle, syncVehicleImage };

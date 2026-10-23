@@ -1,3 +1,4 @@
+import { mirrorToastToDevice } from '../../../common/services/pushNotificationService';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import serviceApi from '../../../common/services/serviceApi';
 import apiClient from '../../../common/utils/apiClient';
@@ -16,8 +17,9 @@ import {
   normalizeMembershipId
 } from '../../../common/utils/membershipUtils';
 import { readAllScoped } from '../../../common/utils/userScopedStorage';
-import { getSaleDate, parseSaleDate, toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
+import { toDisplayDate, toIsoDate } from '../../../common/utils/dateFormat';
 import { defaultCalculationSettings } from '../utils/calculationUtils';
+import { isTransactionPaid, getBookingDate, bookingAmount, buildRevenueTrend, buildServiceRevenue, buildPaymentModes } from '../utils/dashboardStats';
 
 const normalizePlate = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -219,6 +221,7 @@ export const AdminProvider = ({ children }) => {
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
+    mirrorToastToDevice(message, type);
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
@@ -469,6 +472,7 @@ export const AdminProvider = ({ children }) => {
               customerEmail: b.customerEmail || b.email || '',
               vehicleNo: b.vehicleNo || b.vehiclePlate || '',
               vehicleType: b.vehicleType || b.vehicleModel || '',
+              vehicles: Array.isArray(b.vehicles) ? b.vehicles : [],
               location: b.location || 'Main Branch',
               phone: b.phone || b.mobile || b.customerPhone || '',
               serviceKey: b.serviceKey,
@@ -491,6 +495,11 @@ export const AdminProvider = ({ children }) => {
               notes: b.notes || '',
               photos: b.photos || [],
               paymentMode: b.paymentMode || 'UPI',
+              // GST actually charged on this sale, for the revenue/CA reports.
+              includeGst: Boolean(b.includeGst),
+              gstRate: Number(b.gstRate) || 0,
+              subtotal: Number(b.subtotal) || 0,
+              gstAmount: Number(b.gstAmount) || 0,
               isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && String(b.bookingId).startsWith('OFS-')),
               saleType: b.saleType || (b.membershipName ? 'membership' : 'service'),
               vehicleModel: b.vehicleModel || b.vehicleType || '',
@@ -1084,11 +1093,6 @@ export const AdminProvider = ({ children }) => {
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
 
-    const getBookingDate = (b) => {
-      if (!b) return null;
-      return getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
-    };
-
     const isSameDay = (d1, d2) => {
       if (!d1 || !d2) return false;
       return (
@@ -1098,23 +1102,10 @@ export const AdminProvider = ({ children }) => {
       );
     };
 
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
     // Calculate dynamic revenue stats from real paid or completed bookings and offline sales
     const totalRev = (bookings || []).reduce((sum, b) => {
       if (!isTransactionPaid(b)) return sum;
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return sum + amt;
     }, 0);
 
@@ -1122,7 +1113,7 @@ export const AdminProvider = ({ children }) => {
       if (!isTransactionPaid(b)) return sum;
       const d = getBookingDate(b);
       const matchesToday = isSameDay(d, today);
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return matchesToday ? sum + amt : sum;
     }, 0);
 
@@ -1130,7 +1121,7 @@ export const AdminProvider = ({ children }) => {
       if (!isTransactionPaid(b)) return sum;
       const d = getBookingDate(b);
       const isCurrentMonth = d && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
+      const amt = bookingAmount(b);
       return isCurrentMonth ? sum + amt : sum;
     }, 0);
 
@@ -1154,132 +1145,13 @@ export const AdminProvider = ({ children }) => {
     });
   }, [bookings, inventory, customers, staffList, memberships]);
 
-  // Dynamic 12-Month Revenue Trend calculated from real bookings
-  const dynamicRevenueTrendData = React.useMemo(() => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentYear = new Date().getFullYear();
-    const map = {};
-    monthNames.forEach(m => {
-      map[m] = { month: m, revenue: 0, bookings: 0 };
-    });
-
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const d = getSaleDate(b) || parseSaleDate(b.bookedAt) || parseSaleDate(b.appointmentDate) || parseSaleDate(b.date) || parseSaleDate(b.createdAt);
-      if (!d || isNaN(d.getTime())) return;
-      if (d.getFullYear() === currentYear) {
-        const mName = monthNames[d.getMonth()];
-        if (map[mName]) {
-          const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-          map[mName].revenue += amt;
-          map[mName].bookings += 1;
-        }
-      }
-    });
-
-    return Object.values(map);
-  }, [bookings]);
-
-  // Dynamic Service-wise Revenue Distribution
-  const dynamicServiceRevenueData = React.useMemo(() => {
-    const colorMap = {
-      'car-wash': '#e07b2a',
-      'car-detailing': '#1e4a7e',
-      'cafe': '#f59e0b',
-      'drive-through-cafe': '#3b82f6',
-      'dog-wash': '#10b981',
-      'salon': '#8b5cf6'
-    };
-    const titleMap = {
-      'car-wash': 'Car Wash',
-      'car-detailing': 'Car Detailing',
-      'cafe': 'Café',
-      'drive-through-cafe': 'Drive-Through Café',
-      'dog-wash': 'Dog Bath',
-      'salon': "Men's Salon"
-    };
-
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    const map = {};
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const key = b.serviceKey || (b.category ? String(b.category).toLowerCase().replace(/\s+/g, '-') : 'car-wash');
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      if (!map[key]) {
-        map[key] = {
-          name: titleMap[key] || b.service || b.serviceName || key,
-          value: 0,
-          color: colorMap[key] || '#6366f1'
-        };
-      }
-      map[key].value += amt;
-    });
-
-    const activeList = Object.values(map).filter(item => item.value > 0);
-    return activeList.length > 0 ? activeList : [
-      { name: 'Car Wash', value: 0, color: '#e07b2a' },
-      { name: 'Car Detailing', value: 0, color: '#1e4a7e' }
-    ];
-  }, [bookings]);
-
-  // Dynamic Payment Mode Distribution
-  const dynamicPaymentModeData = React.useMemo(() => {
-    const isTransactionPaid = (b) => {
-      if (!b || b.isDeleted) return false;
-      if (b.id === 'OFS-MTJX5GRW-3986' || b.bookingId === 'OFS-MTJX5GRW-3986') return false;
-      return (
-        b.status === 'Completed' ||
-        b.paymentStatus === 'Completed' ||
-        b.isOfflineSale === true ||
-        (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
-        (b.id && String(b.id).startsWith('OFS-')) ||
-        Boolean(b.paymentMode)
-      );
-    };
-
-    const map = {};
-    (bookings || []).forEach(b => {
-      if (!isTransactionPaid(b)) return;
-      const mode = b.paymentMode || 'Cash';
-      const amt = Number(b.total ?? b.price ?? b.amount ?? 0);
-      if (!map[mode]) {
-        map[mode] = { mode, amount: 0, count: 0 };
-      }
-      map[mode].amount += amt;
-      map[mode].count += 1;
-    });
-
-    const result = Object.values(map);
-    return result.length > 0 ? result : [
-      { mode: 'UPI', amount: 0, count: 0 },
-      { mode: 'Cash', amount: 0, count: 0 }
-    ];
-  }, [bookings]);
+  // Dashboard charts; the same rules back the Global Dashboard's month filter.
+  const dynamicRevenueTrendData = React.useMemo(
+    () => buildRevenueTrend(bookings, new Date().getFullYear()),
+    [bookings]
+  );
+  const dynamicServiceRevenueData = React.useMemo(() => buildServiceRevenue(bookings), [bookings]);
+  const dynamicPaymentModeData = React.useMemo(() => buildPaymentModes(bookings), [bookings]);
 
 
   // --- CRUD ACTIONS ---
@@ -1593,80 +1465,59 @@ export const AdminProvider = ({ children }) => {
     showToast(`Membership status changed to ${newStatus}`);
   };
 
-  const renewMembership = async (idOrPass) => {
+  // Renewing = selling a new pass period. It is recorded as its own membership
+  // sale (dated the day it is paid, at the price actually charged) that starts
+  // when the current pass ends. The original sale is never touched: rewriting
+  // its date used to move last month's revenue onto the renewal day, and the
+  // renewal payment itself was never recorded.
+  const renewMembership = async (idOrPass, payment = {}) => {
     const memId = typeof idOrPass === 'object' ? (idOrPass.id || idOrPass.bookingId || idOrPass._id) : idOrPass;
     const cleanId = String(memId || '').trim();
     const target = memberships.find(m => m.id === cleanId || m.bookingId === cleanId || m._id === cleanId) ||
                    (typeof idOrPass === 'object' ? idOrPass : null);
 
-    if (!target) return;
+    if (!target) return null;
+
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Enter the amount received for the renewal', 'error');
+      return null;
+    }
 
     const now = new Date();
     const currentExpiry = parseFlexibleDate(target.expiryDate);
     const start = currentExpiry && currentExpiry > now ? currentExpiry : startOfDay(now);
-    const expiry = addPassDuration(start, target.planName || target.packageName || 'Monthly Membership');
+    const planName = target.planName || target.packageName || 'Monthly Membership';
+    const expiry = addPassDuration(start, planName);
 
     const startISO = toISODateString(start);
     const expiryISO = toISODateString(expiry);
-    const renewedFrom = formatLongDate(start);
-    const renewedTo = formatLongDate(expiry);
-    const newStatus = start > now ? 'Queued' : 'Active';
+    const todayISO = toISODateString(now);
 
-    // 1. Update in-memory memberships state
-    setMemberships(prev => prev.map(m => {
-      const match = m.id === cleanId || m.bookingId === cleanId || m._id === cleanId ||
-                    (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo));
-      if (!match) return m;
-
-      return {
-        ...m,
-        status: newStatus,
-        statusLabel: start > now ? 'Upgraded (Scheduled)' : 'Active',
-        isQueued: start > now,
-        isExpired: false,
-        washesUsed: 0,
-        startDate: startISO,
-        expiryDate: expiryISO,
-        startDateLabel: renewedFrom,
-        expiryDateLabel: renewedTo
-      };
-    }));
-
-    // 2. Update underlying booking in bookings state
-    setBookings(prev => {
-      return prev.map(b => {
-        const bId = String(b.bookingId || b.id || b._id || '');
-        const normPassId = normalizeMembershipId(cleanId);
-        const normBId = normalizeMembershipId(bId);
-        const bPlate = normalizePlate(b.vehicleNo);
-        const tPlate = normalizePlate(target.vehicleNo);
-
-        const match = (normPassId && normBId && normPassId === normBId) ||
-                      bId === cleanId ||
-                      (tPlate && bPlate && tPlate === bPlate && isMembershipRecord(b));
-
-        if (match) {
-          return {
-            ...b,
-            date: renewedFrom,
-            saleDate: startISO,
-            membershipStartDate: startISO,
-            membershipExpiry: expiryISO,
-            membershipStatus: newStatus,
-            status: 'Confirmed',
-            washesUsed: 0
-          };
-        }
-        return b;
-      });
+    const sale = await addOfflineSale({
+      saleType: 'membership',
+      membershipName: planName,
+      serviceKey: target.serviceKey || 'car-wash',
+      serviceName: target.serviceName || 'Car Wash',
+      customerName: target.customerName,
+      customerEmail: target.customerEmail || target.email || '',
+      phone: target.phone || '',
+      vehicleNo: target.vehicleNo || '',
+      vehicleModel: target.vehicleModel || target.vehicleType || '',
+      price: amount,
+      paymentMode: payment.paymentMode || 'Cash',
+      saleDate: payment.saleDate || todayISO,
+      membershipStartDate: startISO,
+      membershipExpiryDate: expiryISO,
+      notes: `Renewal of ${target.bookingId || cleanId}`
     });
 
-    // 3. Persist renewal to backend MongoDB (both MembershipPass and Booking)
+    // Keep the standalone memberships collection's period in step (dates only).
     try {
       await apiClient.put(`/memberships/${cleanId}`, {
         startDate: startISO,
         expiryDate: expiryISO,
-        status: newStatus,
+        status: start > now ? 'Queued' : 'Active',
         washesUsed: 0,
         customerName: target.customerName,
         phone: target.phone,
@@ -1677,45 +1528,11 @@ export const AdminProvider = ({ children }) => {
       console.warn('Membership backend renewal notice:', e.message);
     }
 
-    try {
-      const bId = target.bookingId || cleanId;
-      await apiClient.put(`/bookings/${bId}`, {
-        startDate: startISO,
-        date: renewedFrom,
-        saleDate: startISO,
-        membershipStartDate: startISO,
-        membershipExpiry: expiryISO,
-        membershipStatus: newStatus,
-        washesUsed: 0,
-        status: 'Confirmed'
-      });
-    } catch (e) {
-      console.warn('Booking backend renewal notice:', e.message);
-    }
-
-    // 4. Update localStorage cache & dispatch cross-portal events
-    try {
-      const rawMem = JSON.parse(localStorage.getItem('tsl_admin_memberships') || '[]');
-      const updatedMem = rawMem.map(m => {
-        if (m.id === cleanId || (target.vehicleNo && m.vehicleNo && normalizePlate(m.vehicleNo) === normalizePlate(target.vehicleNo))) {
-          return {
-            ...m,
-            startDate: startISO,
-            expiryDate: expiryISO,
-            status: newStatus,
-            washesUsed: 0
-          };
-        }
-        return m;
-      });
-      localStorage.setItem('tsl_admin_memberships', JSON.stringify(updatedMem));
-    } catch (e) {}
-
-    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: cleanId, status: newStatus } }));
+    window.dispatchEvent(new CustomEvent('tsl_admin_memberships_updated', { detail: { id: cleanId } }));
     window.dispatchEvent(new CustomEvent('tsl_customer_updated', { detail: { id: cleanId } }));
-    window.dispatchEvent(new Event('storage'));
 
-    showToast(renewedFrom ? `Membership renewed: ${renewedFrom} – ${renewedTo}` : 'Membership renewed!');
+    showToast(`Membership renewed: ${formatLongDate(start)} – ${formatLongDate(expiry)} (₹${amount.toLocaleString('en-IN')})`);
+    return sale;
   };
 
   const deleteMembership = async (membershipIdOrObj) => {
@@ -1961,6 +1778,17 @@ export const AdminProvider = ({ children }) => {
       membershipValidity = `${days} Days`;
     }
 
+    // A renewal sells a period that starts when the current pass ends, not on
+    // the day it is paid for; the caller passes that period explicitly.
+    let membershipStartDate = '';
+    if (formData.saleType === 'membership' && formData.membershipStartDate && formData.membershipExpiryDate) {
+      membershipStartDate = formData.membershipStartDate;
+      const s0 = new Date(`${formData.membershipStartDate}T12:00:00`);
+      const e0 = new Date(`${formData.membershipExpiryDate}T12:00:00`);
+      membershipExpiry = e0.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      membershipValidity = `${Math.round((e0 - s0) / (24 * 60 * 60 * 1000))} Days`;
+    }
+
     const cleanPrice = Number(String(formData.price || 0).replace(/[^0-9.]/g, '')) || 0;
     const pName = formData.saleType === 'membership'
       ? (formData.membershipName || 'Monthly Membership')
@@ -1990,6 +1818,7 @@ export const AdminProvider = ({ children }) => {
       membershipName: formData.saleType === 'membership' ? (formData.membershipName || pName) : '',
       membershipValidity,
       membershipExpiry,
+      ...(membershipStartDate ? { membershipStartDate } : {}),
       paymentMode: formData.paymentMode || 'Cash',
       notes: formData.notes || '',
       includeGst: Boolean(formData.includeGst),
@@ -2010,6 +1839,7 @@ export const AdminProvider = ({ children }) => {
       }
       fetchBookingsList(true);
       fetchCustomersList(true);
+      fetchVehiclesList();
     } catch (err) {
       console.error('Offline sale MongoDB save error:', err.response?.data || err.message);
     }

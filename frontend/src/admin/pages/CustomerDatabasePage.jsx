@@ -562,10 +562,17 @@ export default function CustomerDatabasePage() {
                         <span className="text-[11px] font-bold text-gray-500">No Registered Vehicles</span>
                       </div>
                     )}
-                    {(selectedCustomer.vehicles || []).map((v, i) => (
+                    {(selectedCustomer.vehicles || []).map((v, i) => {
+                      const vKey = String(typeof v === 'string' ? v.split(' ')[0] : '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                      const vImage = (selectedCustomer.rawVehicles || []).find(r => r && r.imageUrl && String(r.plateNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === vKey)?.imageUrl;
+                      return (
                       <div key={i} className="p-2.5 bg-gray-100 rounded-xl font-bold text-gray-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          {vImage ? (
+                            <a href={vImage} target="_blank" rel="noreferrer"><img src={vImage} alt="Vehicle" className="w-9 h-9 rounded-lg object-cover border border-gray-200" /></a>
+                          ) : (
                           <Car className="w-4 h-4 text-amber-500" />
+                          )}
                           <span>{v}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -582,7 +589,8 @@ export default function CustomerDatabasePage() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Add Vehicle Form */}

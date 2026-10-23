@@ -4,6 +4,21 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+// The upload route is staff/admin only. Mirrors the token choice in apiClient.
+function getAuthToken() {
+  try {
+    const path = window.location.pathname;
+    const admin = localStorage.getItem('tsl_admin_token');
+    const staff = localStorage.getItem('tsl_staff_token');
+    const generic = localStorage.getItem('tsl_token');
+    if (path.startsWith('/admin')) return admin || generic;
+    if (path.startsWith('/staff')) return staff || admin || generic;
+    return generic || admin || staff;
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Upload a File object or Base64 string to the backend Cloudinary endpoint
  * @param {File|string} fileOrBase64 - File object or Base64 data URI string
@@ -18,7 +33,10 @@ export async function uploadToCloudinary(fileOrBase64, folder = 'shine-lounge/up
   if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
     const response = await fetch(targetUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
+      },
       body: JSON.stringify({ base64: fileOrBase64, folder })
     });
 
@@ -38,6 +56,8 @@ export async function uploadToCloudinary(fileOrBase64, folder = 'shine-lounge/up
       formData.append('folder', folder);
 
       xhr.open('POST', targetUrl, true);
+      const token = getAuthToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
       if (onProgress && xhr.upload) {
         xhr.upload.onprogress = (e) => {

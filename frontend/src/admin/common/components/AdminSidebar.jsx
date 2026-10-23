@@ -30,6 +30,7 @@ import {
   Cpu,
   HelpCircle,
   MessageSquare,
+  MessageCircle,
   ShoppingBag,
   Wallet,
   X
@@ -51,7 +52,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
 
   // Determine current active service key from URL path
   const currentServiceKey = location.pathname.startsWith('/admin/') && 
-    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'calculations', 'coupons', 'settings', 'services', 'banners', 'notifications', 'feedback', 'offline-sales'].includes(location.pathname.replace('/admin/', ''))
+    !['dashboard', 'bookings', 'memberships', 'customers', 'staff', 'inventory', 'reports', 'calculations', 'coupons', 'settings', 'services', 'banners', 'notifications', 'whatsapp', 'feedback', 'offline-sales', 'expenses'].includes(location.pathname.replace('/admin/', ''))
       ? location.pathname.replace('/admin/', '')
       : null;
 
@@ -73,6 +74,7 @@ export default function AdminSidebar({ isCollapsed, toggleSidebar, mobileOpen, c
     { label: 'Offline Sales', path: '/admin/offline-sales', icon: ShoppingBag },
     { label: 'Memberships', path: '/admin/memberships', icon: CreditCard },
     { label: 'Notification Hub', path: '/admin/notifications', icon: Bell },
+    { label: 'WhatsApp Hub', path: '/admin/whatsapp', icon: MessageCircle },
     { label: 'Misc. Expenses', path: '/admin/expenses', icon: Wallet },
     { label: 'Feedback & Support', path: '/admin/feedback', icon: HelpCircle },
     { label: 'Customer CRM', path: '/admin/customers', icon: Users },

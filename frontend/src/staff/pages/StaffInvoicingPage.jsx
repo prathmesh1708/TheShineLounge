@@ -10,8 +10,11 @@ import {
 } from '../../car-detailing/services/warrantyApi';
 import { Receipt, Plus, Trash2, Printer, Tag, Sparkles, CheckCircle2, ShieldCheck, Calculator, X, Loader2, Check, Copy } from 'lucide-react';
 import serviceApi from '../../common/services/serviceApi';
+import apiClient from '../../common/utils/apiClient';
+import { Link } from 'react-router-dom';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
 import { downloadReceiptPdf, copyReceiptImageToClipboard, getReceiptPdfBlob } from '../../common/utils/receiptPdfGenerator';
+import { getInvoiceWhatsAppConfig, renderInvoiceTemplate, sendInvoiceOnWhatsApp, whatsappNumber } from '../../common/services/whatsappInvoiceService';
 
 // Helper function to extract pure admin-configured services & packages from DB / cached service object
 const extractAdminServices = (serviceData) => {
@@ -96,7 +99,8 @@ const getCachedServiceData = (deptSlug) => {
 };
 
 export default function StaffInvoicingPage() {
-  const { customers, currentStaff, showToast } = useStaff();
+  // Any staff member may bill any customer, so use the unfiltered DB list.
+  const { allCustomers: customers, currentStaff, showToast } = useStaff();
 
   // Dynamic Admin Calculation Settings from localStorage / AdminContext
   const [calcSettings, setCalcSettings] = useState(() => {
@@ -323,13 +327,13 @@ export default function StaffInvoicingPage() {
     }
   }, [deptServices, selectedServiceId]);
 
-  // Robust resolved customer profiles with guaranteed fallbacks
+  // Real customers from MongoDB only (no demo fallbacks)
   const resolvedCustomers = React.useMemo(() => {
-    const list = (customers || []).map(c => {
+    const list = (customers || []).filter(c => c && (c._id || c.email || c.mobile || c.phone)).map(c => {
       const primaryPlate = c.vehicles?.[0]?.registrationNumber || c.vehicles?.[0]?.plateNumber || c.carPlate || '';
       const primaryModel = c.vehicles?.[0]?.model || c.vehicles?.[0]?.brand || c.carModel || '';
       return {
-        id: c.id || c._id || c.email || `cust-${c.name || 'user'}`,
+        id: String(c.id || c._id || c.email),
         _id: c._id,
         name: c.name || c.fullName || 'Customer',
         fullName: c.name || c.fullName || 'Customer',
@@ -342,70 +346,11 @@ export default function StaffInvoicingPage() {
       };
     });
 
-    if (list.length === 0) {
-      return [
-        {
-          id: 'walkin-01',
-          name: 'Walk-in Customer',
-          fullName: 'Walk-in Customer',
-          mobile: '+91 98000 00000',
-          phone: '+91 98000 00000',
-          email: 'walkin@theshinelounge.com',
-          carPlate: 'HR26DK9999',
-          carModel: 'General Vehicle',
-          vehicles: [{ registrationNumber: 'HR26DK9999', model: 'General Vehicle' }]
-        },
-        {
-          id: 'prathmesh@gmail.com',
-          name: 'Prathmesh Jawade',
-          fullName: 'Prathmesh Jawade',
-          mobile: '+91 98210 12345',
-          phone: '+91 98210 12345',
-          email: 'prathmesh@gmail.com',
-          carPlate: 'MP09GG8790',
-          carModel: 'Hyundai i20',
-          vehicles: [{ registrationNumber: 'MP09GG8790', model: 'Hyundai i20' }]
-        },
-        {
-          id: 'amit.sharma@gmail.com',
-          name: 'Amit Sharma',
-          fullName: 'Amit Sharma',
-          mobile: '+91 98765 43210',
-          phone: '+91 98765 43210',
-          email: 'amit.sharma@gmail.com',
-          carPlate: 'MH02CP4455',
-          carModel: 'Tesla Model S',
-          vehicles: [{ registrationNumber: 'MH02CP4455', model: 'Tesla Model S' }]
-        },
-        {
-          id: 'neha.k@gmail.com',
-          name: 'Neha Kapoor',
-          fullName: 'Neha Kapoor',
-          mobile: '+91 98111 22334',
-          phone: '+91 98111 22334',
-          email: 'neha.k@gmail.com',
-          carPlate: 'MH01AB1234',
-          carModel: 'BMW 3 Series',
-          vehicles: [{ registrationNumber: 'MH01AB1234', model: 'BMW 3 Series' }]
-        },
-        {
-          id: 'rahul.verma@gmail.com',
-          name: 'Rahul Verma',
-          fullName: 'Rahul Verma',
-          mobile: '+91 99223 34455',
-          phone: '+91 99223 34455',
-          email: 'rahul.verma@gmail.com',
-          carPlate: 'MH12FG5678',
-          carModel: 'Audi A6',
-          vehicles: [{ registrationNumber: 'MH12FG5678', model: 'Audi A6' }]
-        }
-      ];
-    }
-
     return list;
   }, [customers]);
 
-  const [selectedCustomer, setSelectedCustomer] = useState(() => resolvedCustomers[0]?.id || '');
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -422,17 +367,37 @@ export default function StaffInvoicingPage() {
   const [copiedSuccess, setCopiedSuccess] = useState(false);
   const [editableMessageText, setEditableMessageText] = useState('');
   const isProcessingRef = useRef(false);
+  // When the business WhatsApp API is set up (admin → WhatsApp Hub), the
+  // receipt PDF is sent directly from the business number instead.
+  const [waApi, setWaApi] = useState({ enabled: false, template: null });
+  const [apiSendError, setApiSendError] = useState('');
 
-  // Keep selectedCustomer synchronized when resolvedCustomers list updates
   useEffect(() => {
-    if (resolvedCustomers && resolvedCustomers.length > 0) {
-      if (!selectedCustomer || !resolvedCustomers.some(c => c.id === selectedCustomer)) {
-        setSelectedCustomer(resolvedCustomers[0].id);
-      }
+    let alive = true;
+    getInvoiceWhatsAppConfig().then((cfg) => { if (alive) setWaApi(cfg || { enabled: false }); });
+    return () => { alive = false; };
+  }, []);
+
+  // Drop the selection if that customer disappears from the DB list
+  useEffect(() => {
+    if (selectedCustomer && !resolvedCustomers.some(c => c.id === selectedCustomer)) {
+      setSelectedCustomer('');
     }
   }, [resolvedCustomers, selectedCustomer]);
 
-  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || resolvedCustomers[0] || {};
+  const filteredCustomers = React.useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return resolvedCustomers;
+    const qDigits = q.replace(/\D/g, '');
+    return resolvedCustomers.filter(c =>
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (qDigits && String(c.mobile || '').replace(/\D/g, '').includes(qDigits)) ||
+      (c.vehicles || []).some(v => String(v.registrationNumber || '').toLowerCase().includes(q))
+    );
+  }, [resolvedCustomers, customerSearch]);
+
+  const currentCust = resolvedCustomers.find(c => c.id === selectedCustomer) || null;
 
   // Helper to generate default WhatsApp receipt message
   const getDefaultMessage = useCallback((inv) => {
@@ -468,8 +433,8 @@ export default function StaffInvoicingPage() {
     }
   };
 
-  // Send WhatsApp Action Handler
-  const handleSendWhatsApp = async (rawNumber) => {
+  // Send WhatsApp Action Handler. `manual` forces the old open-WhatsApp flow.
+  const handleSendWhatsApp = async (rawNumber, { manual = false } = {}) => {
     const sanitized = cleanPhoneForWhatsApp(rawNumber);
     if (!sanitized || sanitized.length < 10) {
       setPhoneError('Please enter a valid 10-digit mobile number');
@@ -486,6 +451,29 @@ export default function StaffInvoicingPage() {
     isProcessingRef.current = true;
     setIsGeneratingPdf(true);
     setPhoneError('');
+    setApiSendError('');
+
+    if (waApi.enabled && !manual) {
+      try {
+        const res = await sendInvoiceOnWhatsApp({
+          invoiceNo: generatedInvoice.id,
+          phone: sanitized,
+          receiptElement: receiptRef.current,
+          template: waApi.template
+        });
+        setShowWhatsAppModal(false);
+        showToast?.(res.dryRun
+          ? `Test mode: invoice ${generatedInvoice.id} would be sent to ${res.phone}`
+          : `✅ Invoice ${generatedInvoice.id} sent on WhatsApp to ${res.phone}`, 'success');
+      } catch (err) {
+        setApiSendError(err.message || 'WhatsApp send failed');
+        setShowWhatsAppModal(true);
+      } finally {
+        setIsGeneratingPdf(false);
+        isProcessingRef.current = false;
+      }
+      return;
+    }
 
     const messageText = (editableMessageText && editableMessageText.trim()) ? editableMessageText : getDefaultMessage(generatedInvoice);
     const filename = `Invoice-${generatedInvoice.id}.pdf`;
@@ -633,9 +621,13 @@ export default function StaffInvoicingPage() {
       showToast?.('Please add at least one line item to generate an invoice', 'error');
       return;
     }
+    if (!currentCust) {
+      showToast?.('Please select a customer', 'error');
+      return;
+    }
 
     const inv = {
-      id: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: '',
       department: currentDeptLabel,
       departmentKey: currentDeptKey,
       sacCode: sacCode,
@@ -664,6 +656,20 @@ export default function StaffInvoicingPage() {
       pan: calcSettings?.pan || 'AABCT8742L',
       registeredAddress: calcSettings?.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'
     };
+    // Save to MongoDB first; the invoice number is allocated by the server.
+    try {
+      const res = await apiClient.post('/invoices', {
+        ...inv,
+        customerId: currentCust._id || currentCust.id,
+        customerEmail: currentCust.email || ''
+      });
+      inv.id = res.data.invoice.invoiceNo;
+      inv.date = new Date(res.data.invoice.createdAt).toLocaleString();
+    } catch (err) {
+      showToast?.(err?.response?.data?.message || 'Could not save the invoice. Nothing was billed — please retry.', 'error');
+      return;
+    }
+
     // The warranty is persisted, not just printed: the customer has to be able
     // to produce it years later, long after this invoice is gone from screen.
     if (isDetailing && warrantyYears > 0) {
@@ -683,6 +689,7 @@ export default function StaffInvoicingPage() {
           notes: warrantyNote
         });
         inv.warranty = warranty;
+        apiClient.patch(`/invoices/${encodeURIComponent(inv.id)}/warranty`, { warrantyNo: warranty.warrantyNo }).catch(() => {});
         showToast?.(`🛡️ Warranty ${warranty.warrantyNo} issued — valid to ${formatWarrantyDate(warranty.expiryDate)}`, 'success');
       } catch (err) {
         // The sale itself is still valid; say plainly that the warranty is not.
@@ -740,17 +747,35 @@ export default function StaffInvoicingPage() {
               </span>
             )}
           </div>
-          <select
-            value={selectedCustomer}
-            onChange={e => setSelectedCustomer(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-          >
-            {resolvedCustomers.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.carPlate || c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile || c.phone || 'No Phone'}
-              </option>
-            ))}
-          </select>
+          {resolvedCustomers.length === 0 ? (
+            <div className="text-xs font-semibold text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-xl px-3 py-3">
+              No customers in the database yet.{' '}
+              <Link to="/staff/customers" className="font-extrabold text-amber-700 underline">Register a customer</Link> to bill them.
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+                placeholder="Search name, phone, email or plate…"
+                className="w-full mb-1.5 px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+              <select
+                value={selectedCustomer}
+                onChange={e => setSelectedCustomer(e.target.value)}
+                required
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+              >
+                <option value="">— Select customer ({filteredCustomers.length}) —</option>
+                {filteredCustomers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.carPlate || c.vehicles?.[0]?.registrationNumber || 'No Reg'}) — {c.mobile || c.phone || 'No Phone'}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         {/* Department Service Dropdown Selector */}
@@ -1244,8 +1269,17 @@ export default function StaffInvoicingPage() {
             <button
               type="button"
               onClick={() => {
-                setTargetPhone(generatedInvoice.phone || currentCust?.mobile || '');
+                const phoneOnFile = generatedInvoice.phone || currentCust?.mobile || '';
+                setTargetPhone(phoneOnFile);
                 setEditableMessageText(getDefaultMessage(generatedInvoice));
+                setApiSendError('');
+                setPhoneError('');
+                // One click: API ready + valid number on file → send the PDF now.
+                if (waApi.enabled && whatsappNumber(phoneOnFile)) {
+                  handleSendWhatsApp(phoneOnFile);
+                  return;
+                }
+                if (waApi.enabled) setPhoneError("Enter the customer's WhatsApp number to send the PDF");
                 setShowWhatsAppModal(true);
               }}
               disabled={isGeneratingPdf}
@@ -1254,7 +1288,7 @@ export default function StaffInvoicingPage() {
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Preparing...</span>
+                  <span>{waApi.enabled ? 'Sending...' : 'Preparing...'}</span>
                 </>
               ) : (
                 <>
@@ -1294,7 +1328,7 @@ export default function StaffInvoicingPage() {
                 </div>
                 <div>
                   <h4 className="text-xs font-black text-gray-900 leading-tight">Send via WhatsApp</h4>
-                  <p className="text-[10px] text-gray-500">Official Receipt Image & PDF</p>
+                  <p className="text-[10px] text-gray-500">{waApi.enabled ? 'PDF sent directly from The Shine Lounge number' : 'Official Receipt Image & PDF'}</p>
                 </div>
               </div>
               <button
@@ -1306,7 +1340,14 @@ export default function StaffInvoicingPage() {
             </div>
 
             <div className="space-y-3 text-xs">
-              {/* Visual Direct Image tip box */}
+              {!waApi.enabled && waApi.reason && (
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-[10.5px] leading-relaxed text-sky-900">
+                  <p className="font-bold">Direct PDF sending is not active yet</p>
+                  <p>{waApi.reason}. Until then WhatsApp opens with the message and the PDF downloads for you to attach.</p>
+                </div>
+              )}
+              {/* Visual Direct Image tip box (manual flow only) */}
+              {!waApi.enabled && (
               <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2 text-amber-900">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-bold text-[11px]">
@@ -1333,6 +1374,7 @@ export default function StaffInvoicingPage() {
                   Clicking <strong>Send via WhatsApp</strong> automatically copies the receipt image to your clipboard. When WhatsApp opens, press <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Cmd + V</kbd> (Mac) or <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded font-mono text-[9px] font-bold text-amber-900 shadow-2xs">Ctrl + V</kbd> (Windows) to send the visual receipt directly into the chat!
                 </p>
               </div>
+              )}
 
               <div>
                 <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1">
@@ -1384,7 +1426,19 @@ export default function StaffInvoicingPage() {
                   <span className="text-emerald-700 font-black">₹{Number(generatedInvoice.total || 0).toLocaleString('en-IN')}</span>
                 </div>
 
-                {/* Editable WhatsApp Message */}
+                {waApi.enabled && (
+                  <div className="pt-2 border-t border-emerald-200/60">
+                    <p className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide mb-1.5">
+                      Message (approved template{waApi.template && waApi.template.headerType === 'document' ? ' + invoice PDF' : ''})
+                    </p>
+                    <div className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-[11px] text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      {renderInvoiceTemplate(waApi.template, { ...generatedInvoice, phone: targetPhone })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable WhatsApp Message (manual flow) */}
+                {!waApi.enabled && (
                 <div className="pt-2 border-t border-emerald-200/60">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide flex items-center gap-1">
@@ -1408,7 +1462,22 @@ export default function StaffInvoicingPage() {
                     className="w-full p-2.5 bg-white border border-emerald-300 rounded-xl text-[11px] text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none font-sans leading-relaxed shadow-2xs resize-y"
                   />
                 </div>
+                )}
               </div>
+
+              {apiSendError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 space-y-1.5">
+                  <p className="text-[11px] font-bold text-rose-700">Could not send: {apiSendError}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleSendWhatsApp(targetPhone, { manual: true })}
+                    disabled={isGeneratingPdf}
+                    className="text-[10.5px] font-bold text-rose-800 underline hover:text-rose-950"
+                  >
+                    Open WhatsApp and send it manually instead
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-2">
@@ -1429,14 +1498,14 @@ export default function StaffInvoicingPage() {
                 {isGeneratingPdf ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                    <span>Preparing...</span>
+                    <span>{waApi.enabled ? 'Sending...' : 'Preparing...'}</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
                       <path d="M17.472 14.382c-.301-.15-1.781-.879-2.056-.979-.275-.1-.475-.15-.675.15-.2.301-.775.979-.95 1.179-.175.2-.351.225-.651.075-.3-.15-1.268-.467-2.417-1.492-.894-.798-1.497-1.784-1.673-2.084-.175-.301-.019-.464.131-.613.136-.135.301-.351.451-.526.15-.175.2-.301.3-.501.1-.2.05-.376-.025-.526-.075-.15-.676-1.63-.926-2.233-.243-.587-.49-.508-.675-.518-.175-.009-.375-.01-.575-.01-.2 0-.526.075-.802.376-.275.301-1.052 1.028-1.052 2.508 0 1.48 1.078 2.909 1.228 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.278.496 1.714.635.722.23 1.378.198 1.9.12.58-.088 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.126-.275-.201-.575-.351zM12.04 2C6.52 2 2.035 6.485 2.035 12.005c0 1.954.564 3.784 1.542 5.337L2 22l4.82-1.53c1.49.85 3.208 1.335 5.22 1.335 5.52 0 10.005-4.485 10.005-10.005C22.045 6.485 17.56 2 12.04 2zm0 18.27c-1.72 0-3.32-.49-4.68-1.34l-.33-.2-3.13.99.99-3.05-.22-.35c-.93-1.48-1.47-3.23-1.47-5.115 0-4.56 3.71-8.27 8.27-8.27 4.56 0 8.27 3.71 8.27 8.27 0 4.56-3.71 8.27-8.27 8.27z"/>
                     </svg>
-                    <span>Send via WhatsApp</span>
+                    <span>{waApi.enabled ? 'Send PDF on WhatsApp' : 'Send via WhatsApp'}</span>
                   </>
                 )}
               </button>

@@ -4152,3 +4152,40 @@ html[data-theme="dark"] #printable-tsl-receipt table td,
   background: transparent !important;
   background-color: transparent !important;
 }
+
+/* --- Drive-Through Cafe: dark theme readability fixes --- */
+[data-theme="dark"] .dt-cart-bar {
+  background: #1D2027 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #2A2E36 !important;
+}
+[data-theme="dark"] .subcat-pill-btn {
+  background-color: #1D2027;
+  color: #D1D5DB;
+  border-color: #2A2E36;
+}
+[data-theme="dark"] .subcat-pill-btn.active {
+  background-color: #FF8C1A;
+  color: #FFFFFF;
+  border-color: #FF8C1A;
+}
+[data-theme="dark"] .catalog-search-input {
+  background-color: #1D2027;
+  color: #FFFFFF;
+}
+[data-theme="dark"] .catalog-search-input::placeholder,
+[data-theme="dark"] .drive-through-container input::placeholder {
+  color: #9CA3AF;
+}
+[data-theme="dark"] .confirm-back-btn {
+  background-color: #1D2027;
+  color: #FFFFFF;
+}
+[data-theme="dark"] .grid-item-save-btn {
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #FFFFFF;
+}
+[data-theme="dark"] .confirm-section-card select,
+[data-theme="dark"] .confirm-section-card input {
+  color-scheme: dark;
+}

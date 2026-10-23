@@ -1,8 +1,11 @@
 import React from 'react';
+import { useStaff } from '../../common/context/StaffContext';
 import { Car, Clock, Phone, IndianRupee, ArrowRight, Camera } from 'lucide-react';
 import CarWashJobStepper, { CAR_WASH_STEPS } from './carWashJobStepper';
 
 export default function CarWashStaffCard({ job, onUpdateStatus, onAddPhoto }) {
+  const { getVehicleImage } = useStaff();
+  const carImage = job.vehicleImageUrl || (getVehicleImage ? getVehicleImage(job.vehicleNo, job.vehicles) : '');
   const currentStep = CAR_WASH_STEPS[job.stepIndex || 0] || CAR_WASH_STEPS[0];
   const isFinished = (job.stepIndex || 0) >= CAR_WASH_STEPS.length - 1;
 
@@ -36,7 +39,11 @@ export default function CarWashStaffCard({ job, onUpdateStatus, onAddPhoto }) {
       {/* Vehicle Info Badge */}
       <div className="bg-gray-50 rounded-xl p-2.5 flex items-center justify-between border border-gray-100">
         <div className="flex items-center gap-2">
-          <Car className="w-4 h-4 text-blue-900" />
+          {carImage ? (
+            <a href={carImage} target="_blank" rel="noreferrer"><img src={carImage} alt={job.vehicleNo} className="w-12 h-12 rounded-lg object-cover border border-gray-200" /></a>
+          ) : (
+            <Car className="w-4 h-4 text-blue-900" />
+          )}
           <span className="font-black text-xs text-gray-900">{job.vehicleNo}</span>
           <span className="text-xs text-gray-500">({job.vehicleModel})</span>
         </div>

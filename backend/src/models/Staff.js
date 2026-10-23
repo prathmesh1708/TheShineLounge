@@ -63,7 +63,7 @@ const staffSchema = new mongoose.Schema(
     },
     leaveBalance: {
       type: Number,
-      default: 12
+      default: 0
     },
     permissions: {
       type: [String],
@@ -81,6 +81,21 @@ const staffSchema = new mongoose.Schema(
       type: String,
       default: 'Main Branch'
     },
+    shiftStartTime: {
+      type: String,
+      default: '09:00'
+    },
+    shiftEndTime: {
+      type: String,
+      default: '18:00'
+    },
+    shiftTiming: {
+      type: String,
+      default: '09:00 AM - 06:00 PM'
+    },
+    // FCM Push Notification Tokens
+    fcmTokens: { type: [String], default: [] },
+    fcmTokenMobile: { type: [String], default: [] },
     isActive: {
       type: Boolean,
       default: true
@@ -128,9 +143,40 @@ const staffSchema = new mongoose.Schema(
         reason: { type: String },
         startedBy: { type: String, default: 'admin' },
         endedBy: { type: String, default: 'system' },
-        completedNaturally: { type: Boolean, default: true }
+        completedNaturally: { type: Boolean, default: true },
+        overtimeSeconds: { type: Number, default: 0 }
       }
-    ]
+    ],
+    // Daily break plan set by the admin. The scheduler (services/breakScheduler)
+    // turns each enabled slot into a pending break at startTime, site timezone.
+    breakSchedule: {
+      type: [
+        {
+          _id: false,
+          slot: { type: Number, enum: [1, 2, 3], required: true },
+          label: { type: String, trim: true, default: '' },
+          startTime: { type: String, default: '' }, // 'HH:mm' 24h, '' = not set
+          durationMinutes: { type: Number, min: 1, max: 120, required: true },
+          enabled: { type: Boolean, default: true }
+        }
+      ],
+      default: () => [
+        { slot: 1, label: 'Break 1', startTime: '', durationMinutes: 30, enabled: true },
+        { slot: 2, label: 'Break 2', startTime: '', durationMinutes: 30, enabled: true },
+        { slot: 3, label: 'Break 3', startTime: '', durationMinutes: 15, enabled: true }
+      ]
+    },
+    // The BreakLog row behind the current pending/active break, so ending it
+    // updates the permanent record rather than guessing which row it was.
+    currentBreakLogId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'BreakLog',
+      default: null
+    },
+    currentBreakSlot: {
+      type: Number,
+      default: null
+    }
   },
   {
     timestamps: true

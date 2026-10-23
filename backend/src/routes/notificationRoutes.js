@@ -8,6 +8,7 @@ const {
   deleteNotification,
   getUserNotifications,
   getStaffNotifications,
+  createStaffShiftEndNotification,
   markAsRead,
   markAllAsRead,
   dismissNotification,
@@ -17,6 +18,7 @@ const {
 // User & Staff routes
 router.get('/user', authMiddleware, getUserNotifications);
 router.get('/staff', authMiddleware, getStaffNotifications);
+router.post('/shift-end', authMiddleware, createStaffShiftEndNotification);
 router.post('/read-all', authMiddleware, markAllAsRead);
 router.post('/read/:id', authMiddleware, markAsRead);
 router.delete('/dismiss/:id', authMiddleware, dismissNotification);

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Wallet, Plus, Search, Trash2, Edit2, X, Loader2,
-  TrendingDown, CalendarDays, Receipt
+  TrendingDown, CalendarDays, Receipt, Image as ImageIcon, Eye
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip
@@ -16,6 +17,7 @@ import {
   formatExpenseDate,
   toDateInput
 } from '../services/expenseApi';
+import ExpenseImagePicker from '../common/components/ExpenseImagePicker';
 
 const money = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
 
@@ -25,7 +27,8 @@ const BLANK = {
   spentOn: toDateInput(new Date()),
   paymentMode: 'Cash',
   vendor: '',
-  notes: ''
+  notes: '',
+  image: ''
 };
 
 export default function ManageExpensesPage() {
@@ -45,6 +48,7 @@ export default function ManageExpensesPage() {
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState(null);
 
   const loadSummary = async () => {
     try {
@@ -91,7 +95,8 @@ export default function ManageExpensesPage() {
       spentOn: toDateInput(e.spentOn),
       paymentMode: e.paymentMode || 'Cash',
       vendor: e.vendor || '',
-      notes: e.notes || ''
+      notes: e.notes || '',
+      image: e.image || ''
     });
     setError('');
     setModalOpen(true);
@@ -266,7 +271,7 @@ export default function ManageExpensesPage() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Date', 'Expense', 'Mode', 'Amount', ''].map((h) => (
+                  {['Date', 'Expense', 'Receipt / Bill', 'Mode', 'Amount', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-wide text-gray-500">{h}</th>
                   ))}
                 </tr>
@@ -281,6 +286,27 @@ export default function ManageExpensesPage() {
                         <span className="block text-[10px] font-semibold text-gray-400 truncate max-w-[220px]">
                           {[e.vendor, e.notes].filter(Boolean).join(' · ')}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {e.image ? (
+                        <button
+                          type="button"
+                          onClick={() => setLightboxUrl(e.image)}
+                          className="group inline-flex items-center gap-1.5 p-1 rounded-xl hover:bg-amber-50 border border-amber-200/80 bg-white transition-all shadow-2xs cursor-pointer"
+                          title="Click to view full receipt"
+                        >
+                          <img
+                            src={e.image}
+                            alt="Receipt"
+                            className="w-7 h-7 object-cover rounded-lg border border-amber-100"
+                          />
+                          <span className="text-[10px] font-bold text-amber-800 pr-1 group-hover:underline flex items-center gap-0.5">
+                            <Eye className="w-3 h-3 text-amber-600" /> View
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-gray-300">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold text-gray-600">{e.paymentMode}</td>
@@ -356,6 +382,14 @@ export default function ManageExpensesPage() {
                   <input className={field} value={form.notes}
                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
                 </div>
+
+                {/* Receipt Image Capture / Upload */}
+                <div className="sm:col-span-2 pt-1">
+                  <ExpenseImagePicker
+                    value={form.image}
+                    onChange={(url) => setForm((f) => ({ ...f, image: url }))}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -373,6 +407,46 @@ export default function ManageExpensesPage() {
           </div>
         </div>
       )}
+
+      {/* Global Receipt Lightbox Modal */}
+      {lightboxUrl &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 cursor-pointer"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+              <a
+                href={lightboxUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-3 py-2 rounded-xl bg-gray-800 text-amber-400 hover:text-amber-300 text-xs font-bold flex items-center gap-1.5 shadow-lg"
+              >
+                <Eye className="w-4 h-4" /> Open Full Resolution
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                className="p-2 rounded-full bg-gray-800 text-white hover:bg-gray-700 shadow-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div
+              className="max-w-4xl max-h-[85vh] p-2 bg-gray-900/70 rounded-2xl border border-gray-700 flex items-center justify-center overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={lightboxUrl}
+                alt="Expense Receipt"
+                className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              />
+            </div>
+            <p className="text-gray-400 text-xs font-bold mt-3">Click anywhere outside to close</p>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

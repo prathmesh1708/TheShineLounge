@@ -12,7 +12,9 @@ const {
   toggleStaffStatus,
   resetStaffPassword,
   updateStaffBreak,
-  getStaffBreakStatus
+  getStaffBreakStatus,
+  updateStaffBreakSchedule,
+  getStaffBreakLogs
 } = require('../controllers/staffController');
 
 router.get('/', authMiddleware, staffOnly, getStaffList);
@@ -24,6 +26,9 @@ router.patch('/:id/status', authMiddleware, adminOnly, toggleStaffStatus);
 router.patch('/:id/reset-password', authMiddleware, adminOnly, resetStaffPassword);
 router.post('/:id/break', authMiddleware, staffOnly, updateStaffBreak);
 router.get('/:id/break', authMiddleware, staffOnly, getStaffBreakStatus);
+router.put('/:id/break-schedule', authMiddleware, adminOnly, updateStaffBreakSchedule);
+// Staff may read their own logs; the controller enforces ownership.
+router.get('/:id/break-logs', authMiddleware, staffOnly, getStaffBreakLogs);
 
 module.exports = router;
 

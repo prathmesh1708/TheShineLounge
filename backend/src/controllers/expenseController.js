@@ -168,6 +168,7 @@ const createExpense = async (req, res) => {
       vendor: String(req.body.vendor || '').trim(),
       billRef: String(req.body.billRef || '').trim(),
       notes: String(req.body.notes || ''),
+      image: String(req.body.image || req.body.imageUrl || '').trim(),
       recordedBy: (req.user && req.user.fullName) || ''
     });
 
@@ -203,7 +204,7 @@ const updateExpense = async (req, res) => {
       expense.spentOn = d;
     }
 
-    ['title', 'category', 'paidBy', 'paymentMode', 'serviceKey', 'vendor', 'billRef', 'notes'].forEach((f) => {
+    ['title', 'category', 'paidBy', 'paymentMode', 'serviceKey', 'vendor', 'billRef', 'notes', 'image'].forEach((f) => {
       if (req.body[f] !== undefined) expense[f] = req.body[f];
     });
 

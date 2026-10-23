@@ -14,7 +14,7 @@ import {
   Download,
   Phone
 } from 'lucide-react';
-import { formatINR } from '../utils/calculationUtils';
+import { formatINR, currentFinancialYearLabel } from '../utils/calculationUtils';
 
 export default function CaRevenueReportModal({
   isOpen,
@@ -26,6 +26,7 @@ export default function CaRevenueReportModal({
   if (!isOpen || !summary) return null;
 
   const cs = calculationSettings || {};
+  const reportFy = /^FY /.test(timeRange || '') ? timeRange : currentFinancialYearLabel();
   const reportDate = new Date().toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -37,7 +38,7 @@ export default function CaRevenueReportModal({
   // 1. WhatsApp Share Action
   const handleShareWhatsApp = () => {
     const text = `*THE SHINE LOUNGE - EXECUTIVE FINANCIAL & GST AUDIT REPORT*
-Period: ${timeRange} | Fiscal Year: ${cs.fiscalYear || 'FY 2025-26'}
+Period: ${timeRange} | Fiscal Year: ${reportFy}
 Generated: ${reportDate}
 
 Dear ${cs.caName || 'Chartered Accountant'},
@@ -50,7 +51,7 @@ Please find the summary of our financial audit statement for tax filing and stat
 • SGST (${summary.effectiveTaxRate / 2}%): ${formatINR(summary.sgst)}
 • Total Output GST Liability: ${formatINR(summary.totalGst)}
 • Operating Overheads & Costs: ${formatINR(summary.totalDeductions)}
-• Net Operating Profit (EBITDA): ${formatINR(summary.netProfit)} (${summary.netProfitMargin}%)
+• Net Operating Profit (EBITDA): ${formatINR(summary.netProfit)} (${summary.netProfitMargin}%) — ${summary.profitBasisLabel}
 
 📋 *STATUTORY SAC BREAKDOWN:*
 ${summary.departmentBreakdown.map(d => `• ${d.name} (SAC ${d.sacCode}): ${formatINR(d.gross)} [Tax: ${formatINR(d.tax)}]`).join('\n')}
@@ -67,7 +68,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
   // 2. Email Share Action
   const handleShareEmail = () => {
     const subject = `Financial & GST Audit Statement [${timeRange}] - ${cs.businessName || 'The Shine Lounge'}`;
-    const body = `Dear ${cs.caName || 'Chartered Accountant'},%0D%0A%0D%0APlease find below the financial summary and GST tax audit statement for ${cs.businessName || 'The Shine Lounge'} for the period ${timeRange} (${cs.fiscalYear || 'FY 2025-26'}):%0D%0A%0D%0AGross Turnover: ${formatINR(summary.grossSales)}%0D%0ANet Taxable Base: ${formatINR(summary.netSales)}%0D%0ACentral GST (CGST): ${formatINR(summary.cgst)}%0D%0AState GST (SGST): ${formatINR(summary.sgst)}%0D%0ATotal GST Output Tax: ${formatINR(summary.totalGst)}%0D%0AOperating Deductions: ${formatINR(summary.totalDeductions)}%0D%0ANet Profit: ${formatINR(summary.netProfit)}%0D%0A%0D%0AGSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}%0D%0APAN: ${cs.pan || 'AABCT8742L'}%0D%0A%0D%0AKindly verify the schedule for GSTR-3B and GSTR-1 submission.%0D%0A%0D%0ARegards,%0D%0AFinance & Accounts Team%0D%0A${cs.businessName || 'The Shine Lounge'}`;
+    const body = `Dear ${cs.caName || 'Chartered Accountant'},%0D%0A%0D%0APlease find below the financial summary and GST tax audit statement for ${cs.businessName || 'The Shine Lounge'} for the period ${timeRange} (${reportFy}):%0D%0A%0D%0AGross Turnover: ${formatINR(summary.grossSales)}%0D%0ANet Taxable Base: ${formatINR(summary.netSales)}%0D%0ACentral GST (CGST): ${formatINR(summary.cgst)}%0D%0AState GST (SGST): ${formatINR(summary.sgst)}%0D%0ATotal GST Output Tax: ${formatINR(summary.totalGst)}%0D%0AOperating Deductions: ${formatINR(summary.totalDeductions)}%0D%0ANet Profit: ${formatINR(summary.netProfit)}%0D%0A%0D%0AGSTIN: ${cs.gstin || '06ABSCS4162M1ZO'}%0D%0APAN: ${cs.pan || 'AABCT8742L'}%0D%0A%0D%0AKindly verify the schedule for GSTR-3B and GSTR-1 submission.%0D%0A%0D%0ARegards,%0D%0AFinance & Accounts Team%0D%0A${cs.businessName || 'The Shine Lounge'}`;
     window.location.href = `mailto:${cs.caEmail || 'tax.audit@theshinelounge.com'}?subject=${encodeURIComponent(subject)}&body=${body}`;
   };
 
@@ -129,7 +130,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
           </div>
           <div class="meta-badge">
             <div>AUDIT STATEMENT: <strong>${timeRange}</strong></div>
-            <div>FISCAL YEAR: <strong>${cs.fiscalYear || 'FY 2025-26'}</strong></div>
+            <div>FISCAL YEAR: <strong>${reportFy}</strong></div>
             <div>DATE: ${reportDate}</div>
           </div>
         </div>
@@ -218,18 +219,13 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
             </tr>
           </thead>
           <tbody>
+            ${summary.deductionRows.map((r) => `
             <tr>
-              <td>Operating Overheads (Rent, Utilities, Consumables)</td>
-              <td>${cs.operatingOverheadRate || 18.5}%</td>
-              <td>Net Taxable Base</td>
-              <td>${formatINR(summary.operatingOverheads)}</td>
-            </tr>
-            <tr>
-              <td>Payment Gateway & POS Surcharge</td>
-              <td>${cs.gatewaySurchargeRate || 1.8}%</td>
-              <td>Gross Turnover</td>
-              <td>${formatINR(summary.gatewayFees)}</td>
-            </tr>
+              <td>${r.label}</td>
+              <td>—</td>
+              <td>${r.basis}</td>
+              <td>${formatINR(r.amount)}</td>
+            </tr>`).join('')}
             <tr style="background:#f1f5f9;font-weight:800;">
               <td>Total Allowable Operational Expenditure</td>
               <td>—</td>
@@ -306,7 +302,7 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
                 PAN: <strong className="text-white">{cs.pan || 'AABCT8742L'}</strong>
               </span>
               <span className="bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/30 font-bold">
-                Period: {timeRange} ({cs.fiscalYear || 'FY 2025-26'})
+                Period: {timeRange} ({reportFy})
               </span>
             </div>
           </div>
@@ -450,18 +446,14 @@ Please review and confirm compliance for GSTR-3B & GSTR-1 filing.`;
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
-                  <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Operating Overheads (Rent, Water, Power)</td>
-                    <td className="py-2 px-3">{cs.operatingOverheadRate || 18.5}%</td>
-                    <td className="py-2 px-3 text-gray-500">Net Taxable Base</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.operatingOverheads)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3 font-bold text-gray-900">Payment Gateway & Surcharge Fees</td>
-                    <td className="py-2 px-3">{cs.gatewaySurchargeRate || 1.8}%</td>
-                    <td className="py-2 px-3 text-gray-500">Gross Turnover</td>
-                    <td className="py-2 px-3 text-right font-mono">{formatINR(summary.gatewayFees)}</td>
-                  </tr>
+                  {summary.deductionRows.map((r) => (
+                    <tr key={r.label}>
+                      <td className="py-2 px-3 font-bold text-gray-900">{r.label}</td>
+                      <td className="py-2 px-3">—</td>
+                      <td className="py-2 px-3 text-gray-500">{r.basis}</td>
+                      <td className="py-2 px-3 text-right font-mono">{formatINR(r.amount)}</td>
+                    </tr>
+                  ))}
                   <tr className="bg-emerald-50/60 font-bold text-emerald-900">
                     <td className="py-2.5 px-3" colSpan="3">
                       Net Operating Profit (Margin: {summary.netProfitMargin}%)

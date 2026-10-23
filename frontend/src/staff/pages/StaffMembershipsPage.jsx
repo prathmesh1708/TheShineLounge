@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStaff } from '../common/context/StaffContext';
+import VehicleImagePicker from '../../common/components/VehicleImagePicker';
 import {
   Ticket,
   Sparkles,
@@ -36,10 +37,11 @@ import apiClient from '../../common/utils/apiClient';
 
 export default function StaffMembershipsPage() {
   const navigate = useNavigate();
-  const { currentStaff, customers, allJobs, jobs, showToast, updateCustomerVehicle } = useStaff();
+  const { currentStaff, customers, allJobs, jobs, showToast, updateCustomerVehicle, canAccess, getVehicleImage } = useStaff();
 
-  // 1. Strict Department Access Guard: Isolated to Car Wash Staff only
+  // 1. Department / Admin Assigned Access Guard: Car Wash Staff or staff with admin-granted permissions
   const isCarWash = isCarWashStaff(currentStaff);
+  const hasAccess = isCarWash || (canAccess && canAccess('memberships'));
 
   // Active Tab: 'passes' (Searchable Pass List) vs 'issue' (Sell New Pass)
   const [activeTab, setActiveTab] = useState('passes'); // 'passes' | 'issue'
@@ -95,6 +97,8 @@ export default function StaffMembershipsPage() {
   const [selectedCustomer, setSelectedCustomer] = useState(resolvedCustomers[0]?.id || '');
   const [customPlate, setCustomPlate] = useState('');
   const [customModel, setCustomModel] = useState('');
+  const [editCarImage, setEditCarImage] = useState('');
+  const [isUploadingCarImage, setIsUploadingCarImage] = useState(false);
   const [customPrice, setCustomPrice] = useState('2499');
   const [paymentMode, setPaymentMode] = useState('UPI');
   const [issuedPass, setIssuedPass] = useState(null);
@@ -239,6 +243,7 @@ export default function StaffMembershipsPage() {
     setEditingCarPass(passItem);
     setEditPlateNumber(passItem.vehicleNo || '');
     setEditCarModel(passItem.vehicleModel || '');
+    setEditCarImage((passItem.vehicleImageUrl || passItem.imageUrl || ''));
   };
 
   const handleSaveEditPlate = async (e) => {
@@ -265,6 +270,24 @@ export default function StaffMembershipsPage() {
           plateNumber: cleanPlate,
           model: cleanModel
         });
+      }
+
+      // The photo is saved against the plate and fanned out to the registry,
+      // customer profile, sales and membership records by the backend.
+      if (editCarImage) {
+        try {
+          await apiClient.post('/vehicles', {
+            plateNumber: cleanPlate,
+            model: cleanModel,
+            ownerName: editingCarPass.customerName,
+            ownerEmail: editingCarPass.email,
+            ownerPhone: editingCarPass.phone,
+            imageUrl: editCarImage,
+            addedVia: 'staff'
+          });
+        } catch (imgErr) {
+          showToast('Plate saved, but the vehicle photo could not be saved', 'error');
+        }
       }
 
       if (selectedMembership && (selectedMembership.id === editingCarPass.id || selectedMembership.vehicleNo === editingCarPass.vehicleNo)) {
@@ -382,18 +405,18 @@ export default function StaffMembershipsPage() {
   };
 
   // -------------------------------------------------------------
-  // Department Access Guard: Deny access if NOT Car Wash Staff
+  // Department / Permission Access Guard: Deny access if unauthorized
   // -------------------------------------------------------------
-  if (!isCarWash) {
+  if (!hasAccess) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center shadow-sm my-6 space-y-4">
         <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
           <ShieldAlert className="w-6 h-6" />
         </div>
         <div>
-          <h3 className="text-base font-black text-gray-900">Restricted Department Access</h3>
+          <h3 className="text-base font-black text-gray-900">Restricted Access</h3>
           <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto mt-1">
-            The Car Wash Memberships & Passes Hub is strictly reserved for ground staff in the <b>Car Wash Department</b>.
+            The Memberships & Passes Hub requires <b>Memberships</b> module permission from your administrator.
           </p>
         </div>
         <button
@@ -528,6 +551,9 @@ export default function StaffMembershipsPage() {
                     {/* Top Row: Plate Number, Model & Status Badge */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
+                        {getVehicleImage && getVehicleImage(item.vehicleNo) && (
+                          <img src={getVehicleImage(item.vehicleNo)} alt={item.vehicleNo} className="w-11 h-11 rounded-lg object-cover border border-gray-200" />
+                        )}
                         <span className="px-2 py-0.5 bg-slate-900 text-white font-mono font-black text-xs rounded-md tracking-wider shadow-2xs">
                           {item.vehicleNo}
                         </span>
@@ -658,6 +684,11 @@ export default function StaffMembershipsPage() {
                   <Edit2 className="w-3 h-3" />
                   <span>Update Plate</span>
                 </button>
+                {getVehicleImage && getVehicleImage(selectedMembership.vehicleNo) && (
+                  <a href={getVehicleImage(selectedMembership.vehicleNo)} target="_blank" rel="noreferrer">
+                    <img src={getVehicleImage(selectedMembership.vehicleNo)} alt={selectedMembership.vehicleNo} className="w-12 h-12 rounded-lg object-cover border border-white/30" />
+                  </a>
+                )}
                 <div>
                   <h3 className="text-xs font-extrabold text-white leading-tight">
                     {selectedMembership.vehicleModel || 'Registered Car'}
@@ -882,6 +913,12 @@ export default function StaffMembershipsPage() {
                 />
               </div>
 
+              <VehicleImagePicker
+                value={editCarImage}
+                onChange={setEditCarImage}
+                onBusy={setIsUploadingCarImage}
+              />
+
               <div className="pt-2 flex items-center gap-2">
                 <button
                   type="button"
@@ -892,7 +929,7 @@ export default function StaffMembershipsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isUpdatingPlate || !editPlateNumber.trim()}
+                  disabled={isUpdatingPlate || isUploadingCarImage || !editPlateNumber.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-md transition-all disabled:opacity-50"
                 >
                   {isUpdatingPlate ? 'Saving...' : 'Save Car Number'}

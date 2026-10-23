@@ -1,27 +1,38 @@
 import React from 'react';
-import { Coffee, CheckCircle2, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
+import { Coffee, CheckCircle2, ArrowRight, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { useStaff } from '../context/StaffContext';
+
+// '13:05' -> '1:05 PM'
+const formatScheduled = (hhmm) => {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
 
 export default function StaffBreakAlertModal() {
   const { breakStatus, startStaffBreak, isStartingBreak, breakAlertModal, dismissBreakAlertModal } = useStaff();
 
-  // An admin-assigned break waiting for the staff member takes priority and can't be dismissed
+  // A scheduled or admin-assigned break waiting for the staff member takes
+  // priority and can't be dismissed. The "completed" popup only appears after
+  // the staff ends a break, with the server's summary of time taken.
   const isPending = breakStatus?.status === 'pending';
   const isCompleted = !isPending && breakAlertModal?.isOpen && breakAlertModal.type === 'completed';
+  const wentOver = isCompleted && (breakAlertModal.overtimeSeconds || 0) > 0;
 
   if (!isPending && !isCompleted) {
     return null;
   }
 
   const duration = breakStatus?.breakDuration || 30;
-  const reason = breakStatus?.breakReason || 'Rest / Lunch Break';
+  const label = breakStatus?.breakLabel || breakStatus?.breakReason || 'Rest / Lunch Break';
+  const scheduled = formatScheduled(breakStatus?.breakScheduledTime);
 
   const title = isPending
-    ? `☕ ${duration}-Minute Break Assigned`
-    : breakAlertModal.title || '⏰ Break Over! Time to Get Back to Work';
+    ? `☕ ${duration}-Minute Break ${scheduled ? 'Time' : 'Assigned'}`
+    : breakAlertModal.title || 'Break Ended';
   const message = isPending
-    ? `Admin has assigned you a ${duration}-minute break (${reason}). Click below when you are ready to start.`
-    : breakAlertModal.message || 'Your break time has finished. Please return to your workstation and resume pending service tasks.';
+    ? `${label}${scheduled ? ` · scheduled ${scheduled}` : ''} · ${duration} min. Tap below when you are ready to start.`
+    : breakAlertModal.message || 'Your break has ended. Please return to your workstation.';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -29,13 +40,17 @@ export default function StaffBreakAlertModal() {
         {/* Glow Header */}
         <div
           className={`absolute -top-12 left-1/2 -translate-x-1/2 w-44 h-44 rounded-full blur-3xl opacity-30 pointer-events-none ${
-            isCompleted ? 'bg-emerald-500' : 'bg-amber-500'
+            wentOver ? 'bg-red-500' : isCompleted ? 'bg-emerald-500' : 'bg-amber-500'
           }`}
         />
 
         {/* Icon */}
         <div className="relative mx-auto mb-4 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transform transition-transform hover:scale-105">
-          {isCompleted ? (
+          {wentOver ? (
+            <div className="w-16 h-16 rounded-2xl bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shadow-inner">
+              <AlertTriangle className="w-9 h-9" />
+            </div>
+          ) : isCompleted ? (
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-inner">
               <CheckCircle2 className="w-9 h-9 animate-bounce" />
             </div>

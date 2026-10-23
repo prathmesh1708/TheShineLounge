@@ -46,9 +46,14 @@ export default function StaffSchedulePage() {
 
       {/* Timeline Schedule */}
       <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
-        <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1">
-          <Clock className="w-3.5 h-3.5 text-amber-500" /> Today's Shift Timeline
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5 text-amber-500" /> Today's Shift Timeline
+          </h3>
+          <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+            {currentStaff?.shiftTiming || '09:00 AM - 06:00 PM'}
+          </span>
+        </div>
 
         <div className="relative pl-6 space-y-4 border-l-2 border-amber-500/40">
           {scheduleSlots.map((slot, index) => (

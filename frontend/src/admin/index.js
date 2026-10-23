@@ -21,6 +21,7 @@ export { default as ManageExpensesPage } from './pages/ManageExpensesPage';
 export { default as AdminCalculationSettingsPage } from './pages/AdminCalculationSettingsPage';
 export { default as ServiceModulePage } from './pages/ServiceModulePage';
 export { default as AdminNotificationsPage } from './pages/AdminNotificationsPage';
+export { default as WhatsAppHubPage } from './pages/WhatsAppHubPage';
 
 export * from './car-wash-admin';
 export * from './car-detailing-admin';

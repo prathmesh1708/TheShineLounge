@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const OfflineSale = require('../models/OfflineSale');
-const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { tryUpsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
 const { toDisplayDate } = require('../utils/dateFormat');
 
@@ -46,7 +46,8 @@ const createOfflineSale = async (req, res) => {
           plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
           model: v.model || v.vehicleModel || '',
           brand: v.brand || '',
-          category: v.category || 'Car'
+          category: v.category || 'Car',
+          imageUrl: v.imageUrl || ''
         })).filter(v => Boolean(v.plateNumber))
       : [];
 
@@ -93,8 +94,10 @@ const createOfflineSale = async (req, res) => {
           ownerName: customerName,
           ownerEmail: customerEmail,
           ownerPhone: phone,
-          addedVia: 'pos'
+          addedVia: 'pos',
+          imageUrl: v.imageUrl || ''
         });
+        if (v.imageUrl) await syncVehicleImage(v.plateNumber, v.imageUrl);
       }
     }
 
@@ -175,7 +178,8 @@ const updateOfflineSale = async (req, res) => {
           plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
           model: v.model || v.vehicleModel || '',
           brand: v.brand || '',
-          category: v.category || 'Car'
+          category: v.category || 'Car',
+          imageUrl: v.imageUrl || ''
         })).filter(v => Boolean(v.plateNumber))
       : (vehicleNo ? [{
           plateNumber: String(vehicleNo).toUpperCase().trim(),
@@ -275,8 +279,10 @@ const updateOfflineSale = async (req, res) => {
           ownerName: sale.customerName,
           ownerEmail: sale.customerEmail,
           ownerPhone: sale.phone,
-          addedVia: 'pos'
+          addedVia: 'pos',
+          imageUrl: v.imageUrl || ''
         });
+        if (v.imageUrl) await syncVehicleImage(v.plateNumber, v.imageUrl);
       }
     }
 

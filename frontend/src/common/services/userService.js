@@ -48,6 +48,21 @@ export const userService = {
     return response.data;
   },
 
+  // breakSchedule: [{ slot, label, startTime: 'HH:mm', durationMinutes, enabled }]
+  updateStaffBreakSchedule: async (id, breakSchedule) => {
+    const response = await apiClient.put(`/staff/${id}/break-schedule`, { breakSchedule });
+    return response.data;
+  },
+
+  // from/to: 'YYYY-MM-DD' (site timezone); omitted = last 7 days
+  getStaffBreakLogs: async (id, { from, to } = {}) => {
+    const params = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    const response = await apiClient.get(`/staff/${id}/break-logs`, { params });
+    return response.data;
+  },
+
   // ─── Staff Leave ───────────────────────────────────────
 
   // Staff: apply, list own history + balance, cancel a pending request

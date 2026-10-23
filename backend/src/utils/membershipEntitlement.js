@@ -6,32 +6,10 @@
 
 const { normalizePlate } = require('./plateNormalizer');
 
-// The site's wall-clock timezone. Daily and monthly caps reset on the site's
-// calendar, not UTC's — a 1am wash must not count against the previous day.
-const SITE_TIMEZONE = process.env.SITE_TIMEZONE || 'Asia/Kolkata';
-
-const partsIn = (date, timeZone) => {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const parts = {};
-  for (const p of fmt.formatToParts(date)) {
-    if (p.type !== 'literal') parts[p.type] = p.value;
-  }
-  return parts;
-};
-
-// "2026-08-08" in site-local time. Comparing these strings is exact and immune
-// to DST, unlike subtracting timestamps.
-const dayKey = (date, timeZone = SITE_TIMEZONE) => {
-  const d = date instanceof Date ? date : new Date(date);
-  if (Number.isNaN(d.getTime())) return '';
-  const { year, month, day } = partsIn(d, timeZone);
-  return `${year}-${month}-${day}`;
-};
+// Timezone and calendar-day helpers live in siteTime.js (shared with the staff
+// break scheduler). Daily and monthly caps reset on the site's calendar, not
+// UTC's — a 1am wash must not count against the previous day.
+const { SITE_TIMEZONE, partsIn, dayKey } = require('./siteTime');
 
 const monthKey = (date, timeZone = SITE_TIMEZONE) => {
   const key = dayKey(date, timeZone);
@@ -229,6 +207,7 @@ const buildReversal = (user, ledgerRow, opts = {}) => {
 
 module.exports = {
   SITE_TIMEZONE,
+  partsIn,
   ACTIVE_STATUSES,
   dayKey,
   monthKey,

@@ -29,6 +29,9 @@ const admin = require('./admin');
 // Import Hardware Integration Module (ANPR cameras, tunnel wash controller)
 const integrations = require('./integrations');
 
+// Import WhatsApp Hub (Meta WhatsApp Cloud API campaigns + webhook)
+const whatsapp = require('./whatsapp');
+
 // Import Auth, User & Dynamic Service Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -37,8 +40,24 @@ const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
-// Connect to Database
-connectDB();
+// Connect to Database, then start the staff break scheduler. Serverless
+// instances freeze between requests, so on Vercel the scheduler is driven by
+// POST /api/internal/break-scheduler/tick instead; test runs never start it.
+const { BREAK_SCHEDULER_ENABLED } = require('./common/config/env');
+const { startBreakScheduler } = require('./services/breakScheduler');
+const shouldRunBreakScheduler = BREAK_SCHEDULER_ENABLED
+  && !process.env.VERCEL
+  && process.env.NODE_ENV !== 'test'
+  && !process.env.NODE_TEST_CONTEXT;
+
+connectDB().then(() => {
+  if (shouldRunBreakScheduler) startBreakScheduler();
+  // Same rules as the break scheduler: on Vercel the WhatsApp sender is driven
+  // by POST /api/internal/whatsapp/tick and by the admin watching a campaign.
+  if (shouldRunBreakScheduler && require('./common/config/env').WHATSAPP_SENDER_ENABLED) {
+    whatsapp.startWhatsAppSender();
+  }
+});
 
 // CORS Configuration — allow Vercel frontend + localhost dev
 const allowedOrigins = [
@@ -71,7 +90,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-cron-secret']
 }));
 
 // Handle preflight OPTIONS for all routes
@@ -82,6 +101,8 @@ app.options('*', cors());
 // router has to read the raw body itself; once express.json() has consumed the
 // stream it is gone, and every signature check would fail.
 app.use('/api/integrations', integrations.routes);
+// Meta signs WhatsApp webhooks over the raw body too, so the same applies.
+app.use('/api/whatsapp/webhook', whatsapp.webhook);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -117,6 +138,7 @@ app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
+app.use('/api/internal', require('./routes/internalRoutes'));
 
 // Mount Isolated Collections Routes
 app.use('/api/staff', require('./routes/staffRoutes'));
@@ -124,7 +146,11 @@ app.use('/api/vehicles', require('./routes/vehicleRoutes'));
 app.use('/api/memberships', require('./routes/membershipRoutes'));
 app.use('/api/offline-sales', require('./routes/offlineSaleRoutes'));
 app.use('/api/customers', require('./routes/customerRoutes'));
+app.use('/api/invoices', require('./routes/invoiceRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
+// Staff billing (staffOnly) must be mounted before the admin-only hub router.
+app.use('/api/whatsapp/invoice', whatsapp.invoiceRoutes);
+app.use('/api/whatsapp', whatsapp.routes);
 
 
 // Serve uploaded files as static assets

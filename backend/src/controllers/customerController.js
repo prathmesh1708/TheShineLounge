@@ -2,7 +2,7 @@ const Customer = require('../models/Customer');
 const RegisteredVehicle = require('../models/RegisteredVehicle');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const { tryUpsertRegisteredVehicle } = require('../services/vehicleRegistry');
+const { tryUpsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 
 // @desc    Get all customers
 // @route   GET /api/customers
@@ -33,7 +33,8 @@ exports.getAllCustomers = async (req, res) => {
         brand: v.brand || '',
         model: v.model || '',
         category: v.category || 'Car',
-        year: v.year || ''
+        year: v.year || '',
+        imageUrl: v.imageUrl || ''
       }));
 
       const vehicleStrings = rawVehicles.map(v => {
@@ -116,6 +117,7 @@ exports.createCustomer = async (req, res) => {
         const brand = (typeof v === 'object' && v.brand) || '';
         const model = (typeof v === 'object' && v.model) || '';
         const category = (typeof v === 'object' && v.category) || 'Car';
+        const imageUrl = (typeof v === 'object' && v.imageUrl) || '';
 
         await tryUpsertRegisteredVehicle({
           plateNumber: cleanPlate,
@@ -126,14 +128,17 @@ exports.createCustomer = async (req, res) => {
           ownerEmail: email,
           ownerPhone: mobile,
           customerId,
-          addedVia: 'staff'
+          addedVia: 'staff',
+          imageUrl
         });
+        await syncVehicleImage(cleanPlate, imageUrl);
 
         vehicleObjs.push({
           plateNumber: cleanPlate,
           brand,
           model,
-          category
+          category,
+          imageUrl
         });
       }
     }
@@ -159,6 +164,7 @@ exports.createCustomer = async (req, res) => {
             brand: vo.brand,
             model: vo.model,
             category: vo.category,
+            imageUrl: vo.imageUrl || '',
             addedVia: 'staff'
           }))
         });
@@ -171,6 +177,7 @@ exports.createCustomer = async (req, res) => {
               brand: vo.brand,
               model: vo.model,
               category: vo.category,
+              imageUrl: vo.imageUrl || '',
               addedVia: 'staff'
             });
           }

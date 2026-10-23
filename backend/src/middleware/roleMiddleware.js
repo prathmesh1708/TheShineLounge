@@ -22,6 +22,27 @@ const staffOnly = (req, res, next) => {
   });
 };
 
+// Who may manage other staff members' records: admins, plus department
+// managers and staff holding a staff/orders/bookings permission. Exported so
+// controllers can apply the same rule to per-action checks.
+const isStaffManager = (user) => {
+  if (!user) return false;
+  const role = String(user.role || '').toLowerCase();
+  const dept = String(user.department || '').toLowerCase();
+
+  // Super Admins, Admins, and Managers have full staff onboarding control
+  if (role === 'admin' || role === 'superadmin' || role === 'manager') return true;
+
+  // Department managers and staff with staff/admin permissions
+  return role === 'staff' && (
+    user.permissions?.includes('staff') ||
+    user.permissions?.includes('orders') ||
+    user.permissions?.includes('bookings') ||
+    dept === 'management' ||
+    dept === 'manager'
+  );
+};
+
 const canManageStaff = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({
@@ -30,23 +51,7 @@ const canManageStaff = (req, res, next) => {
     });
   }
 
-  const role = String(req.user.role || '').toLowerCase();
-  const dept = String(req.user.department || '').toLowerCase();
-
-  // Super Admins, Admins, and Managers have full staff onboarding control
-  if (role === 'admin' || role === 'superadmin' || role === 'manager') {
-    return next();
-  }
-
-  // Department managers and staff with staff/admin permissions
-  if (
-    role === 'staff' &&
-    (req.user.permissions?.includes('staff') ||
-     req.user.permissions?.includes('orders') ||
-     req.user.permissions?.includes('bookings') ||
-     dept === 'management' ||
-     dept === 'manager')
-  ) {
+  if (isStaffManager(req.user)) {
     return next();
   }
 
@@ -94,4 +99,4 @@ const hasPermission = (permissionName) => {
   };
 };
 
-module.exports = { adminOnly, staffOnly, userOnly, hasPermission, canManageStaff };
+module.exports = { adminOnly, staffOnly, userOnly, hasPermission, canManageStaff, isStaffManager };

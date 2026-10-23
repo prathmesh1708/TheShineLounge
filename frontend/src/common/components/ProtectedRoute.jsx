@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { permissionsForStaffPath } from '../utils/staffPermissions';
 
 // Generic protected route - must be logged in
 export function ProtectedRoute({ children }) {
@@ -102,6 +103,35 @@ export function PermissionRoute({ permission, children }) {
 
   if (!hasPermission(permission)) {
     return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+// Staff module guard: a staff member who opens a module URL the admin has not
+// assigned (e.g. /staff/memberships) is sent back to the dashboard, which
+// explains why. `permission` overrides the route's default module mapping.
+export function StaffPermissionRoute({ permission, children }) {
+  const { canAccess, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <div className="animate-spin w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  const required = permission || permissionsForStaffPath(location.pathname);
+  if (required && !canAccess(required)) {
+    return (
+      <Navigate
+        to="/staff/dashboard"
+        replace
+        state={{ deniedPath: location.pathname, deniedModules: Array.isArray(required) ? required : [required] }}
+      />
+    );
   }
 
   return children;

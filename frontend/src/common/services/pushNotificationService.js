@@ -1,7 +1,19 @@
 import { messaging, getToken, onMessage } from '../config/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BNQTIYwpiZnwXFtWtOyovW01zm4q9k5Gu8OF2dKYSE9Ll0grTtZZTzweBEkExTsc8a0Yb6H-LvQaUekEyY6c65U';
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005';
+
+// Same token resolution as apiClient: the app stores JWTs under tsl_* keys.
+function getAuthToken() {
+  const path = window.location.pathname;
+  const admin = localStorage.getItem('tsl_admin_token');
+  const staff = localStorage.getItem('tsl_staff_token');
+  const customer = localStorage.getItem('tsl_customer_token');
+  const generic = localStorage.getItem('tsl_token');
+  if (path.startsWith('/admin')) return admin || generic;
+  if (path.startsWith('/staff')) return staff || admin || generic;
+  return customer || generic;
+}
 
 /**
  * Register Service Worker for Firebase Cloud Messaging
@@ -9,7 +21,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 export async function registerServiceWorker() {
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     try {
-      const firebaseEnv = {
+      const firebaseEnv = {  // must match config/firebase.js — the SW cannot read import.meta.env
         apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
         authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
         projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
@@ -96,7 +108,7 @@ export async function registerFCMToken(forceUpdate = false) {
     const token = await getFCMToken();
     if (!token) return null;
 
-    const authToken = localStorage.getItem('token') || localStorage.getItem('authToken');
+    const authToken = getAuthToken();
     if (!authToken) {
       console.log('No auth token present, skipping backend FCM token registration.');
       return token;
@@ -128,7 +140,7 @@ export async function registerFCMToken(forceUpdate = false) {
 export async function removeFCMToken() {
   try {
     const savedToken = localStorage.getItem('fcm_token_web');
-    const authToken = localStorage.getItem('token') || localStorage.getItem('authToken');
+    const authToken = getAuthToken();
     if (!savedToken || !authToken) return;
 
     await fetch(`${API_BASE_URL}/api/fcm-tokens/remove`, {
@@ -161,9 +173,14 @@ export function setupForegroundNotificationHandler(handler) {
       const options = {
         body: payload.notification?.body || '',
         icon: payload.notification?.icon || '/favicon.ico',
-        data: payload.data
+        data: payload.data,
+        tag: payload.data?.tag || undefined
       };
-      new Notification(title, options);
+      // `new Notification()` throws on Android Chrome; go through the SW.
+      navigator.serviceWorker.getRegistration('/').then((reg) => {
+        if (reg) reg.showNotification(title, options);
+        else new Notification(title, options);
+      }).catch(() => {});
     }
 
     if (handler) {
@@ -181,4 +198,20 @@ export async function initializePushNotifications() {
   } catch (error) {
     console.warn('Push notification initialization notice:', error.message);
   }
+}
+
+/**
+ * Mirror an in-app toast to the OS notification tray when the app is in the
+ * background (or the phone is locked but the tab is alive). No-op when the app
+ * is on screen, since the toast itself is then visible.
+ */
+export function mirrorToastToDevice(message, type = 'info') {
+  try {
+    if (typeof document === 'undefined' || !document.hidden) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const title = type === 'error' ? 'The Shine Lounge – Alert' : 'The Shine Lounge';
+    navigator.serviceWorker?.getRegistration('/').then((reg) => {
+      if (reg) reg.showNotification(title, { body: String(message), icon: '/favicon.ico', tag: `toast-${type}` });
+    }).catch(() => {});
+  } catch (e) { /* never let a notification break the toast */ }
 }

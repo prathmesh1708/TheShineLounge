@@ -1,8 +1,10 @@
+import { mirrorToastToDevice } from '../../../common/services/pushNotificationService';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import apiClient from '../../../common/utils/apiClient';
 import userService from '../../../common/services/userService';
 import { useAuth } from '../../../common/context/AuthContext';
 import { uploadToCloudinary } from '../../../common/utils/cloudinaryUpload';
+import { normalizePermissions, permissionsAllow, samePermissions } from '../../../common/utils/staffPermissions';
 
 const StaffContext = createContext();
 
@@ -31,7 +33,7 @@ const formatStaffUser = (u) => {
       mobile: '+91 98210 55555',
       photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-      permissions: ['bookings', 'orders']
+      permissions: normalizePermissions(undefined)
     };
   }
 
@@ -65,18 +67,33 @@ const formatStaffUser = (u) => {
     }
   }
 
+  const fullName = u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member');
+  const staffRole = u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist';
+  // The Staff collection stores the number as `mobile`; older payloads used `phone`.
+  const mobile = u.mobile || u.phone || '';
+
   return {
     id: u._id || u.id || 'STF-LIVE',
-    employeeId: u.email || u.employeeId || 'STF-01',
-    name: u.fullName || u.name || (u.email ? u.email.split('@')[0] : 'Staff Member'),
-    role: u.staffRole || (u.role === 'staff' ? (dept || 'Staff Specialist') : u.role) || 'Staff Specialist',
+    // The STF-xxx code the admin sees in the department hub.
+    staffId: u.staffId || '',
+    employeeId: u.staffId || u.employeeId || u.email || '',
+    name: fullName,
+    fullName,
+    role: staffRole,
+    staffRole,
     department: dept,
     serviceKey: key,
     email: u.email || '',
-    mobile: u.mobile || '',
+    mobile,
+    phone: mobile,
     photo: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     avatar: u.photo || u.profileImage || u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-    permissions: u.permissions || ['bookings', 'orders']
+    shiftStartTime: u.shiftStartTime || '09:00',
+    shiftEndTime: u.shiftEndTime || '18:00',
+    shiftTiming: u.shiftTiming || '09:00 AM - 06:00 PM',
+    // Exactly what the admin saved; only a record with no array at all gets
+    // the legacy hub default (see utils/staffPermissions).
+    permissions: normalizePermissions(u.permissions)
   };
 };
 
@@ -102,7 +119,11 @@ export function StaffProvider({ children }) {
   });
 
   // Sync staff context whenever localStorage tsl_user changes or authUser changes
-  const { user: authUser } = useAuth();
+  const { user: authUser, updateUser } = useAuth();
+  // The break poll below is set up once per staff member; read the latest auth
+  // user through a ref so a permission change isn't compared against a stale copy.
+  const authUserRef = useRef(authUser);
+  authUserRef.current = authUser;
 
   useEffect(() => {
     const syncStaffUser = () => {
@@ -142,6 +163,7 @@ export function StaffProvider({ children }) {
   const [jobs, setJobs] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [vehicleRegistry, setVehicleRegistry] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [notifications, setNotifications] = useState([]);
   
@@ -150,7 +172,10 @@ export function StaffProvider({ children }) {
   const [checkInPhoto, setCheckInPhoto] = useState('');
   const [checkInTime, setCheckInTime] = useState('');
 
-  // Break lifecycle synced with MongoDB: idle -> pending (admin assigned) -> active (staff tapped Start) -> idle
+  // Break lifecycle synced with MongoDB: idle -> pending (scheduled or admin
+  // assigned) -> active (staff tapped Start) -> idle (staff/admin ended it).
+  // Past its end time a break stays active and counts overtime; it never ends
+  // on its own.
   const [breakStatus, setBreakStatus] = useState({
     status: 'idle',
     isOnBreak: false,
@@ -158,23 +183,68 @@ export function StaffProvider({ children }) {
     breakEndTime: null,
     breakDuration: 30,
     breakReason: 'Rest / Lunch Break',
-    remainingSeconds: 0
+    breakLabel: '',
+    breakScheduledTime: '',
+    remainingSeconds: 0,
+    isOvertime: false,
+    overtimeSeconds: 0
   });
   const [isStartingBreak, setIsStartingBreak] = useState(false);
+  const [isEndingBreak, setIsEndingBreak] = useState(false);
 
-  // Only drives the "break over" popup; the pending popup is derived from breakStatus.status
+  // Only drives the "break ended" summary popup; the pending popup is derived from breakStatus.status
   const [breakAlertModal, setBreakAlertModal] = useState({
     isOpen: false,
     type: 'completed',
     title: '',
     message: '',
     duration: 30,
-    returnTime: ''
+    returnTime: '',
+    overtimeSeconds: 0,
+    actualSeconds: 0
   });
 
   const prevBreakStatusRef = useRef('idle');
-  const notifiedBreakEndSet = useRef(new Set());
-  const activeBreakRef = useRef({ breakEndTime: null, breakDuration: 30 });
+  const [todayBreakLogs, setTodayBreakLogs] = useState([]);
+
+  // The break poll returns the staff record every few seconds, so profile
+  // details and module access the admin changes (in Manage Staff or a
+  // department hub) reach this app within moments, without a re-login.
+  const PROFILE_FIELDS = ['fullName', 'email', 'mobile', 'staffId', 'staffRole', 'department', 'serviceKey', 'photo', 'profileImage', 'shiftStartTime', 'shiftEndTime', 'shiftTiming'];
+  const syncProfileFromServer = (staffDoc) => {
+    const current = authUserRef.current;
+    if (!staffDoc) return;
+
+    if (staffDoc.shiftStartTime || staffDoc.shiftEndTime || staffDoc.shiftTiming) {
+      setCurrentStaff(prev => ({
+        ...prev,
+        shiftStartTime: staffDoc.shiftStartTime || prev?.shiftStartTime || '09:00',
+        shiftEndTime: staffDoc.shiftEndTime || prev?.shiftEndTime || '18:00',
+        shiftTiming: staffDoc.shiftTiming || prev?.shiftTiming || '09:00 AM - 06:00 PM'
+      }));
+    }
+
+    if (!current || current.role !== 'staff') return;
+
+    const patch = {};
+    for (const field of PROFILE_FIELDS) {
+      if (staffDoc[field] !== undefined && staffDoc[field] !== current[field]) patch[field] = staffDoc[field];
+    }
+    const permissionsChanged = Array.isArray(staffDoc.permissions)
+      && !samePermissions(staffDoc.permissions, current.permissions);
+    if (permissionsChanged) patch.permissions = staffDoc.permissions;
+    if (Object.keys(patch).length === 0) return;
+
+    updateUser({ ...current, ...patch });
+    if (permissionsChanged) showToast('Your module access was updated by the admin.', 'info');
+  };
+  // Breaks (keyed by end time) whose "time is over" alert already played here.
+  const overtimeAlertedRef = useRef(new Set());
+  // Server clock minus device clock, from each poll's serverNow. A phone whose
+  // clock is a few minutes off would otherwise show the wrong countdown.
+  const clockOffsetRef = useRef(0);
+
+  const serverNowMs = () => Date.now() + clockOffsetRef.current;
 
   const getStaffTargetId = () => currentStaff?.id || currentStaff?._id || currentStaff?.email;
 
@@ -222,19 +292,32 @@ export function StaffProvider({ children }) {
     }
   };
 
-  const triggerBreakOverModal = (endKey, duration = 30) => {
-    const key = String(endKey || 'end_break');
-    if (notifiedBreakEndSet.current.has(key)) return;
-    notifiedBreakEndSet.current.add(key);
+  // { remainingSeconds, isOvertime, overtimeSeconds } for a break ending at endTime.
+  const breakClock = (endTime) => {
+    const endMs = endTime ? new Date(endTime).getTime() : NaN;
+    if (Number.isNaN(endMs)) return { remainingSeconds: 0, isOvertime: false, overtimeSeconds: 0 };
+    const signed = endMs - serverNowMs();
+    return signed > 0
+      ? { remainingSeconds: Math.ceil(signed / 1000), isOvertime: false, overtimeSeconds: 0 }
+      : { remainingSeconds: 0, isOvertime: true, overtimeSeconds: Math.floor(-signed / 1000) };
+  };
+
+  // First time this device sees a break run over: one chime and a toast. The
+  // break keeps running until the staff (or admin) ends it.
+  const noteOvertime = (endTime) => {
+    const key = String(endTime || '');
+    if (!key || overtimeAlertedRef.current.has(key)) return;
+    overtimeAlertedRef.current.add(key);
     playBreakAudio('completed');
-    setBreakAlertModal({
-      isOpen: true,
-      type: 'completed',
-      title: '⏰ Break Over! Time to Get Back to Work',
-      message: 'Your break time has finished. Please return to your workstation and resume pending service tasks.',
-      duration,
-      returnTime: 'Now'
-    });
+    showToast('⏰ Break time is over — tap End Break when you are back.', 'error');
+  };
+
+  const formatMmSs = (totalSeconds) => {
+    const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${String(m).padStart(2, '0')}:${sec}`;
   };
 
   const resetBreakToIdle = (duration, reason) => {
@@ -247,47 +330,43 @@ export function StaffProvider({ children }) {
       breakEndTime: null,
       breakDuration: duration ?? prev.breakDuration,
       breakReason: reason ?? prev.breakReason,
-      remainingSeconds: 0
+      breakLabel: '',
+      breakScheduledTime: '',
+      remainingSeconds: 0,
+      isOvertime: false,
+      overtimeSeconds: 0
     }));
-  };
-
-  // Countdown reached zero on this device: show the popup and close the break in MongoDB
-  const finishActiveBreakLocally = (breakEndTime, duration) => {
-    triggerBreakOverModal(breakEndTime, duration);
-    resetBreakToIdle();
-    const targetId = getStaffTargetId();
-    if (targetId) {
-      userService.updateStaffBreak(targetId, { action: 'complete' })
-        .then(broadcastStaffUpdate)
-        .catch(() => {});
-    }
   };
 
   // Applies a server snapshot and reacts to state transitions (assigned, cancelled, ended)
   const applyBreakSnapshot = (snap) => {
+    if (snap.serverNow) {
+      const serverMs = Date.parse(snap.serverNow);
+      if (!Number.isNaN(serverMs)) clockOffsetRef.current = serverMs - Date.now();
+    }
+
     const status = snap.breakStatus || (snap.isOnBreak ? 'active' : 'idle');
     const prevStatus = prevBreakStatusRef.current;
     const duration = snap.breakDuration || 30;
     const reason = snap.breakReason || 'Rest / Lunch Break';
+    const label = snap.label || reason;
 
     if (status === 'active') {
-      const endMs = snap.breakEndTime ? new Date(snap.breakEndTime).getTime() : 0;
-      const remainingSeconds = endMs ? Math.max(0, Math.floor((endMs - Date.now()) / 1000)) : 0;
-      if (remainingSeconds <= 0) {
-        finishActiveBreakLocally(snap.breakEndTime, duration);
-        return;
-      }
+      // Past the end time is still active: the clock flips to overtime.
+      const clock = breakClock(snap.breakEndTime);
+      if (clock.isOvertime) noteOvertime(snap.breakEndTime);
       prevBreakStatusRef.current = 'active';
-      activeBreakRef.current = { breakEndTime: snap.breakEndTime, breakDuration: duration };
-      setBreakStatus({
+      setBreakStatus(prev => ({
         status: 'active',
         isOnBreak: true,
         breakStartTime: snap.breakStartTime,
         breakEndTime: snap.breakEndTime,
         breakDuration: duration,
         breakReason: reason,
-        remainingSeconds
-      });
+        breakLabel: snap.label || prev.breakLabel || reason,
+        breakScheduledTime: snap.scheduledTime ?? prev.breakScheduledTime ?? '',
+        ...clock
+      }));
       return;
     }
 
@@ -301,17 +380,21 @@ export function StaffProvider({ children }) {
         breakEndTime: null,
         breakDuration: duration,
         breakReason: reason,
-        remainingSeconds: 0
+        breakLabel: label,
+        breakScheduledTime: snap.scheduledTime || '',
+        remainingSeconds: 0,
+        isOvertime: false,
+        overtimeSeconds: 0
       });
       return;
     }
 
     // idle
     if (prevStatus === 'active') {
-      // Ended by admin or expired on the server
-      triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
+      // Ended somewhere else (admin, another device, or the server's safety cap)
+      showToast('Your break was ended. Welcome back!', 'info');
     } else if (prevStatus === 'pending') {
-      showToast('Your assigned break was cancelled by admin.', 'info');
+      showToast('Your break was cancelled or has expired.', 'info');
     }
     resetBreakToIdle(duration, reason);
   };
@@ -323,13 +406,15 @@ export function StaffProvider({ children }) {
       const res = await userService.getStaffBreakStatus(targetId);
       if (res && res.success) {
         applyBreakSnapshot(res);
+        setTodayBreakLogs(Array.isArray(res.todayLogs) ? res.todayLogs : []);
+        syncProfileFromServer(res.staff);
       }
     } catch (err) {
       console.warn('Error fetching live break status from MongoDB:', err.message);
     }
   };
 
-  // Staff tapped "Got it, start break" on an admin-assigned break; the countdown begins now
+  // Staff tapped "Start" on a scheduled or admin-assigned break; the countdown begins now
   const startStaffBreak = async () => {
     const targetId = getStaffTargetId();
     if (!targetId || isStartingBreak) return;
@@ -349,19 +434,40 @@ export function StaffProvider({ children }) {
     }
   };
 
+  // The only way a break ends from this app. The server measures the time
+  // taken and the overtime; the summary popup reports what it recorded.
   const endStaffBreak = async () => {
     const targetId = getStaffTargetId();
-    if (!targetId) return;
+    if (!targetId || isEndingBreak) return;
+    setIsEndingBreak(true);
+    const allowedMinutes = breakStatus.breakDuration || 30;
     try {
       const res = await userService.updateStaffBreak(targetId, { action: 'end' });
       if (res.success) {
-        triggerBreakOverModal(activeBreakRef.current.breakEndTime, activeBreakRef.current.breakDuration);
         resetBreakToIdle();
-        showToast('Shift Resumed. Back on duty!', 'success');
+        const over = Number(res.overtimeSeconds) || 0;
+        const took = formatMmSs(res.actualSeconds);
+        const allowed = Number(res.allowedMinutes) || allowedMinutes;
+        playBreakAudio('start');
+        setBreakAlertModal({
+          isOpen: true,
+          type: 'completed',
+          title: over > 0 ? '⏰ Break Ended — Over Time' : '✅ Break Ended On Time',
+          message: over > 0
+            ? `You took ${took} — ${formatMmSs(over)} over your ${allowed}-min break.`
+            : `You took ${took} — on time for your ${allowed}-min break.`,
+          duration: allowed,
+          returnTime: 'Now',
+          overtimeSeconds: over,
+          actualSeconds: Number(res.actualSeconds) || 0
+        });
         broadcastStaffUpdate();
       }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to end break', 'error');
+      fetchLiveBreakStatus(targetId);
+    } finally {
+      setIsEndingBreak(false);
     }
   };
 
@@ -369,26 +475,87 @@ export function StaffProvider({ children }) {
     setBreakAlertModal(prev => ({ ...prev, isOpen: false }));
   };
 
-  // 1-second reverse countdown, only while the break is active
+  // 1-second clock while the break is active: counts down to the end time, then
+  // keeps going as overtime until the server says the break is over.
   useEffect(() => {
     if (breakStatus.status !== 'active' || !breakStatus.breakEndTime) return;
     const endTime = breakStatus.breakEndTime;
-    const duration = breakStatus.breakDuration;
-    const endMs = new Date(endTime).getTime();
 
     const tick = () => {
-      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
-      if (remaining > 0) {
-        setBreakStatus(prev => (prev.status === 'active' ? { ...prev, remainingSeconds: remaining } : prev));
-      } else {
-        clearInterval(timer);
-        finishActiveBreakLocally(endTime, duration);
-      }
+      const clock = breakClock(endTime);
+      if (clock.isOvertime) noteOvertime(endTime);
+      setBreakStatus(prev => (prev.status === 'active' && prev.breakEndTime === endTime ? { ...prev, ...clock } : prev));
     };
 
+    tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [breakStatus.status, breakStatus.breakEndTime]);
+
+  const fetchStaffNotifications = async () => {
+    try {
+      const res = await apiClient.get('/notifications/staff');
+      if (res.data && Array.isArray(res.data.notifications)) {
+        setNotifications(res.data.notifications);
+      }
+    } catch (err) {
+      console.warn('Could not fetch staff notifications from MongoDB:', err.message);
+    }
+  };
+
+  // Shift end alert tracking ref so we only alert once per day per staff session
+  const shiftEndAlertedDayRef = useRef('');
+
+  const checkShiftEndAlert = async () => {
+    const staff = authUserRef.current;
+    if (!staff || staff.role !== 'staff') return;
+
+    const endTime = staff.shiftEndTime || '18:00';
+    const match = String(endTime).trim().match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (!match) return;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const [endHour, endMin] = [parseInt(match[1], 10), parseInt(match[2], 10)];
+
+    const isAfterOrAtShiftEnd = (currentHour > endHour) || (currentHour === endHour && currentMinute >= endMin);
+    const todayKeyStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+
+    const staffId = staff._id || staff.id || staff.email;
+    const storageKey = `tsl_shift_end_notified_${staffId}_${todayKeyStr}`;
+    let alreadyNotified = shiftEndAlertedDayRef.current === todayKeyStr;
+    try {
+      if (!alreadyNotified && localStorage.getItem(storageKey) === 'true') {
+        alreadyNotified = true;
+      }
+    } catch (e) {}
+
+    if (isAfterOrAtShiftEnd && !alreadyNotified) {
+      shiftEndAlertedDayRef.current = todayKeyStr;
+      try { localStorage.setItem(storageKey, 'true'); } catch (e) {}
+
+      const formattedShift = staff.shiftTiming || `${endTime}`;
+      showToast(`⏰ Shift Ended: Your shift (${formattedShift}) has completed for today. Please complete pending tasks and punch out.`, 'info');
+      playBreakAudio('start');
+
+      // Post notification to MongoDB
+      try {
+        const targetStaffId = staff._id || staff.id;
+        await apiClient.post('/notifications/shift-end', {
+          staffId: targetStaffId,
+          shiftTiming: formattedShift,
+          serviceKey: staff.serviceKey || 'car-wash'
+        });
+        fetchStaffNotifications();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tsl_staff_updated'));
+        }
+      } catch (postErr) {
+        console.warn('Could not post shift-end notification to MongoDB:', postErr.message);
+      }
+    }
+  };
 
   // Fast MongoDB poll every 2.5 seconds + live event listeners for immediate sync
   useEffect(() => {
@@ -396,12 +563,18 @@ export function StaffProvider({ children }) {
     if (!targetId) return;
 
     fetchLiveBreakStatus(targetId);
+    checkShiftEndAlert();
+    fetchStaffNotifications();
+
     const poller = setInterval(() => {
       fetchLiveBreakStatus(targetId);
+      checkShiftEndAlert();
     }, 2500);
 
     const handleStaffBreakSync = () => {
       fetchLiveBreakStatus(targetId);
+      checkShiftEndAlert();
+      fetchStaffNotifications();
     };
 
     window.addEventListener('tsl_staff_updated', handleStaffBreakSync);
@@ -504,15 +677,17 @@ export function StaffProvider({ children }) {
             pickupTime: b.pickupTime || '',
             expectedAt: b.expectedAt || null,
             vehicleNo: b.vehicleNo || (resolvedKey === 'dog-wash' ? 'Max (Golden Retriever)' : 'MH02CD5678'),
+            vehicles: Array.isArray(b.vehicles) ? b.vehicles : [],
+            vehicleImageUrl: (Array.isArray(b.vehicles) ? b.vehicles : []).find(v => v && v.imageUrl)?.imageUrl || '',
             vehicleModel: b.vehicleType || b.vehicle || (resolvedKey === 'dog-wash' ? 'Pet' : 'Car'),
             vehicleType: b.vehicleType || (resolvedKey === 'dog-wash' ? 'Dog' : 'Car'),
             customerName: resolveCustomerName(b, idx, resolvedKey === 'salon' ? 'Salon Client' : 'Customer'),
             phone: b.phone || b.mobile || b.customerEmail || '+91 98200 12345',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || b.time || '02:00 PM',
-            amount: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
-            total: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
-            price: b.price || b.amount || (resolvedKey === 'dog-wash' ? 500 : 699),
+            amount: Number(b.price ?? b.amount) || 0, // real price; a ₹0 pass wash stays ₹0
+            total: Number(b.price ?? b.amount) || 0, // real price; a ₹0 pass wash stays ₹0
+            price: Number(b.price ?? b.amount) || 0, // real price; a ₹0 pass wash stays ₹0
             status: b.status || 'Confirmed',
             isOfflineSale: b.isOfflineSale !== undefined ? b.isOfflineSale : (b.bookingId && b.bookingId.startsWith('OFS-')),
             saleType: b.saleType || (isMembershipPackage(b.packageName || b.package || b.membershipName || b.serviceName) ? 'membership' : 'service'),
@@ -594,8 +769,8 @@ export function StaffProvider({ children }) {
             phone: b.phone || b.customerEmail || '+91 98212 34567',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || b.time || 'Walk-In',
-            amount: b.price || b.amount || 500,
-            total: b.price || b.amount || 500,
+            amount: Number(b.price ?? b.amount) || 0,
+            total: Number(b.price ?? b.amount) || 0,
             status: b.status || 'Confirmed',
             stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
             notes: b.notes || 'Dog wash & hydrobath session scheduled.',
@@ -626,8 +801,8 @@ export function StaffProvider({ children }) {
             phone: b.phone || b.customerEmail || '+91 98210 77777',
             date: b.date || new Date().toISOString().split('T')[0],
             timeSlot: b.timeSlot || (b.date && b.time ? `${b.date} | ${b.time}` : (b.time || '01:30 PM')),
-            amount: b.price || b.total || b.amount || 499,
-            total: b.price || b.total || b.amount || 499,
+            amount: Number(b.price ?? b.total ?? b.amount) || 0,
+            total: Number(b.price ?? b.total ?? b.amount) || 0,
             status: b.status === 'Upcoming' ? 'Confirmed' : (b.status || 'Confirmed'),
             stepIndex: b.stepIndex !== undefined ? b.stepIndex : 0,
             notes: b.notes || 'Salon appointment scheduled.',
@@ -684,64 +859,43 @@ export function StaffProvider({ children }) {
     setJobs(finalJobsList);
   };
 
+  // Plate -> photo lookup source. Staff sees the same car photo everywhere.
+  const fetchVehicleRegistry = async () => {
+    try {
+      const res = await apiClient.get('/vehicles');
+      if (res.data && Array.isArray(res.data.vehicles)) setVehicleRegistry(res.data.vehicles);
+    } catch (err) {
+      console.warn('Could not fetch vehicle photos:', err.message);
+    }
+  };
+
+  const getVehicleImage = (plate, vehicleList) => {
+    const key = String(plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!key) return '';
+    const norm = (p) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const hit = (vehicleRegistry || []).find(v => v.imageUrl && norm(v.plateNumber) === key);
+    if (hit) return hit.imageUrl;
+    const own = (vehicleList || []).find(v => v && v.imageUrl && norm(v.plateNumber) === key);
+    return own ? own.imageUrl : '';
+  };
+
+  // Customers come from MongoDB only: /users/customers merges the `users` and
+  // `customers` collections plus booking-only customers on the server.
   const fetchLiveCustomers = async () => {
     try {
       let baseList = [];
       try {
-        const res = await apiClient.get('/users/customers');
-        if (res.data && Array.isArray(res.data.customers) && res.data.customers.length > 0) {
+        const res = await apiClient.get('/users/customers', { params: { limit: 5000 } });
+        if (res.data && Array.isArray(res.data.customers)) {
           baseList = res.data.customers;
         }
       } catch (e) {
         console.warn('Could not fetch from /users/customers, trying /customers:', e.message);
-      }
-
-      // If baseList is still empty, fetch from /customers (public route)
-      if (baseList.length === 0) {
-        try {
-          const res = await apiClient.get('/customers');
-          if (res.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
-            baseList = res.data.data;
-          }
-        } catch (e) {
-          console.warn('Could not fetch from /customers:', e.message);
+        const res = await apiClient.get('/customers');
+        if (res.data && Array.isArray(res.data.data)) {
+          baseList = res.data.data;
         }
       }
-
-      // If still empty, check localStorage cached customers
-      if (baseList.length === 0) {
-        try {
-          const cached = JSON.parse(localStorage.getItem('tsl_customers') || '[]');
-          if (Array.isArray(cached) && cached.length > 0) {
-            baseList = cached;
-          }
-        } catch (e) {}
-      }
-
-      // Read live memberships from Admin Panel -> Membership
-      let adminMemberships = [];
-      try {
-        const raw = localStorage.getItem('tsl_admin_memberships');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) adminMemberships = parsed.filter(m => m && !String(m.id || '').startsWith('MEM-100'));
-        }
-      } catch (e) {}
-
-      // Read customer vehicles overrides from staff/admin updates
-      let custVehicles = {};
-      try {
-        custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
-      } catch (e) {}
-
-      // Seed/default vehicle plates for realistic customers if none attached
-      const defaultKnownPlates = {
-        'prathmesh@gmail.com': { plate: 'MP09GG8790', model: 'Hyundai i20' },
-        'amit.sharma@gmail.com': { plate: 'MH02CP4455', model: 'Tesla Model S' },
-        'neha.k@gmail.com': { plate: 'MH01AB1234', model: 'BMW 3 Series' },
-        'rahul.verma@gmail.com': { plate: 'MH12FG5678', model: 'Audi A6' },
-        'sneha.patel@gmail.com': { plate: 'MH04DZ8989', model: 'Hyundai Creta' }
-      };
 
       const mapped = baseList.map((c) => {
         let userVehicles = (c.rawVehicles || [])
@@ -749,6 +903,7 @@ export function StaffProvider({ children }) {
           .map(v => ({
             id: v._id || v.plateNumber,
             registrationNumber: v.plateNumber,
+            imageUrl: v.imageUrl || '',
             brand: v.brand || '',
             model: v.model || '',
             color: v.color || '',
@@ -756,201 +911,36 @@ export function StaffProvider({ children }) {
             isPrimary: Boolean(v.isPrimary)
           }));
 
-        // If no rawVehicles, try parsing string array c.vehicles
+        // Fall back to the "PLATE (Model)" strings the API also returns
         if (userVehicles.length === 0 && Array.isArray(c.vehicles) && c.vehicles.length > 0) {
           userVehicles = c.vehicles.map(vStr => {
             if (typeof vStr === 'object' && vStr?.registrationNumber) return vStr;
             const match = String(vStr).match(/^([A-Z0-9-]+)\s*(?:\(([^)]+)\))?/i);
             const plate = match ? match[1].trim() : String(vStr).trim();
             const model = match && match[2] ? match[2].trim() : '';
-            return {
-              id: plate,
-              registrationNumber: plate,
-              brand: '',
-              model,
-              color: '',
-              fuelType: '',
-              isPrimary: true
-            };
+            return { id: plate, registrationNumber: plate, brand: '', model, color: '', fuelType: '', isPrimary: true };
           });
-        }
-
-        // Check Admin Panel -> Membership for this customer
-        const cEmail = (c.email || '').toLowerCase().trim();
-        const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
-        const cName = (c.fullName || c.name || '').toLowerCase().trim();
-
-        const adminMem = adminMemberships.find(m => {
-          const mEmail = (m.email || '').toLowerCase().trim();
-          const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
-          const mName = (m.customerName || '').toLowerCase().trim();
-          return (cEmail && mEmail === cEmail) || (cPhone && mPhone === cPhone) || (mName && mName === cName);
-        });
-
-        if (adminMem && adminMem.vehicleNo) {
-          const cleanPlate = adminMem.vehicleNo.toUpperCase().trim();
-          if (!userVehicles.some(v => v.registrationNumber === cleanPlate)) {
-            userVehicles.push({
-              id: cleanPlate,
-              registrationNumber: cleanPlate,
-              brand: '',
-              model: adminMem.vehicleModel || 'Car',
-              color: '',
-              fuelType: '',
-              isPrimary: true
-            });
-          }
-        }
-
-        // Check default known plates
-        if (userVehicles.length === 0 && defaultKnownPlates[cEmail]) {
-          userVehicles.push({
-            id: defaultKnownPlates[cEmail].plate,
-            registrationNumber: defaultKnownPlates[cEmail].plate,
-            brand: '',
-            model: defaultKnownPlates[cEmail].model,
-            color: '',
-            fuelType: '',
-            isPrimary: true
-          });
-        }
-
-        // Check local override in custVehicles
-        const override = (cEmail && custVehicles[cEmail]) ||
-                         (cPhone && custVehicles[cPhone]) ||
-                         (cName && custVehicles[cName]) ||
-                         (c._id && custVehicles[c._id]);
-        if (override && override.plateNumber) {
-          const cleanOverridePlate = override.plateNumber.toUpperCase().trim();
-          userVehicles = [{
-            id: cleanOverridePlate,
-            registrationNumber: cleanOverridePlate,
-            brand: '',
-            model: override.model || '',
-            color: '',
-            fuelType: '',
-            isPrimary: true
-          }, ...userVehicles.filter(v => v.registrationNumber !== cleanOverridePlate)];
         }
 
         return {
-          id: c.email || c._id || `cust-${c.name || 'user'}`,
+          id: c.email || c._id || c.customerId || c.mobile,
           _id: c._id,
+          customerId: c.customerId || '',
           name: c.fullName || c.name || 'Customer',
           fullName: c.fullName || c.name || 'Customer',
           email: c.email || '',
           mobile: c.mobile || c.phone || '',
           phone: c.mobile || c.phone || '',
           role: c.role || 'user',
-          segment: c.segment || (adminMem ? 'Active Member' : 'Regular'),
-          serviceKey: 'car-wash',
+          segment: c.segment || 'Regular',
+          serviceKey: c.serviceKey || 'car-wash',
           vehicles: userVehicles,
-          activePassesCount: adminMem ? 1 : 0
+          membership: c.membership || null,
+          activePassesCount: c.membership && c.membership.status === 'Active' ? 1 : 0
         };
       });
 
-      // Also merge any customers from Admin Panel -> Membership who aren't in baseList
-      adminMemberships.forEach(m => {
-        if (!m.customerName) return;
-        const mEmail = (m.email || '').toLowerCase().trim();
-        const mPhone = String(m.phone || '').replace(/\D/g, '').slice(-10);
-        const mName = (m.customerName || '').toLowerCase().trim();
-
-        const exists = mapped.some(c => {
-          const cEmail = (c.email || '').toLowerCase().trim();
-          const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10);
-          const cName = (c.name || '').toLowerCase().trim();
-          return (mEmail && cEmail === mEmail) || (mPhone && cPhone === mPhone) || (mName && cName === mName);
-        });
-
-        if (!exists) {
-          const cleanPlate = (m.vehicleNo || 'MH01AB1234').toUpperCase().trim();
-          mapped.push({
-            id: m.email || m.id || `CUST-${m.customerName.replace(/\s+/g, '-').toLowerCase()}`,
-            name: m.customerName,
-            fullName: m.customerName,
-            email: m.email || '',
-            mobile: m.phone || '',
-            phone: m.phone || '',
-            role: 'user',
-            segment: 'Active Member',
-            serviceKey: 'car-wash',
-            vehicles: [
-              {
-                id: cleanPlate,
-                registrationNumber: cleanPlate,
-                brand: '',
-                model: m.vehicleModel || 'Car',
-                color: '',
-                fuelType: '',
-                isPrimary: true
-              }
-            ],
-            activePassesCount: 1
-          });
-        }
-      });
-
-      // If mapped is still empty, seed default realistic customers so staff can always issue invoices/passes
-      if (mapped.length === 0) {
-        const defaultSeeds = [
-          {
-            id: 'prathmesh@gmail.com',
-            name: 'Prathmesh Jawade',
-            fullName: 'Prathmesh Jawade',
-            email: 'prathmesh@gmail.com',
-            mobile: '+91 98210 12345',
-            phone: '+91 98210 12345',
-            role: 'user',
-            segment: 'VIP Member',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MP09GG8790', registrationNumber: 'MP09GG8790', model: 'Hyundai i20', isPrimary: true }],
-            activePassesCount: 1
-          },
-          {
-            id: 'amit.sharma@gmail.com',
-            name: 'Amit Sharma',
-            fullName: 'Amit Sharma',
-            email: 'amit.sharma@gmail.com',
-            mobile: '+91 98765 43210',
-            phone: '+91 98765 43210',
-            role: 'user',
-            segment: 'Active Member',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH02CP4455', registrationNumber: 'MH02CP4455', model: 'Tesla Model S', isPrimary: true }],
-            activePassesCount: 1
-          },
-          {
-            id: 'neha.k@gmail.com',
-            name: 'Neha Kapoor',
-            fullName: 'Neha Kapoor',
-            email: 'neha.k@gmail.com',
-            mobile: '+91 98111 22334',
-            phone: '+91 98111 22334',
-            role: 'user',
-            segment: 'Regular',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH01AB1234', registrationNumber: 'MH01AB1234', model: 'BMW 3 Series', isPrimary: true }],
-            activePassesCount: 0
-          },
-          {
-            id: 'rahul.verma@gmail.com',
-            name: 'Rahul Verma',
-            fullName: 'Rahul Verma',
-            email: 'rahul.verma@gmail.com',
-            mobile: '+91 99223 34455',
-            phone: '+91 99223 34455',
-            role: 'user',
-            segment: 'Regular',
-            serviceKey: 'car-wash',
-            vehicles: [{ id: 'MH12FG5678', registrationNumber: 'MH12FG5678', model: 'Audi A6', isPrimary: true }],
-            activePassesCount: 0
-          }
-        ];
-        setCustomers(defaultSeeds);
-      } else {
-        setCustomers(mapped);
-      }
+      setCustomers(mapped);
     } catch (err) {
       console.warn('Could not fetch customers from database in StaffContext:', err.message);
     }
@@ -975,12 +965,14 @@ export function StaffProvider({ children }) {
     }
     fetchLiveJobs();
     fetchLiveCustomers();
+    fetchVehicleRegistry();
     fetchLiveStaffList();
 
     // Listen for cross-portal customer, booking, and staff updates
     const handleSync = () => {
       fetchLiveCustomers();
       fetchLiveJobs();
+      fetchVehicleRegistry();
       fetchLiveStaffList();
     };
     window.addEventListener('tsl_customer_updated', handleSync);
@@ -1009,6 +1001,7 @@ export function StaffProvider({ children }) {
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
+    mirrorToastToDevice(message, type);
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -1146,7 +1139,7 @@ export function StaffProvider({ children }) {
             stepIndex: newStepIndex,
             technician: currentStaff?.name || 'suryansh',
             package: updatedTargetJob?.planName || updatedTargetJob?.serviceName || 'Car Detailing Treatment',
-            price: updatedTargetJob?.total || updatedTargetJob?.amount || 2348,
+            price: Number(updatedTargetJob?.total ?? updatedTargetJob?.amount) || 0,
             customerName: updatedTargetJob?.customerName || 'Car Owner',
             vehicle: updatedTargetJob?.vehicleModel || 'Vehicle',
             vehicleNo: updatedTargetJob?.vehicleNo || 'MP092545',
@@ -1226,19 +1219,8 @@ export function StaffProvider({ children }) {
       return res.data?.data;
     } catch (err) {
       console.error('Error adding customer via staff panel:', err);
-      // Fallback local update if offline
-      const newCust = {
-        id: `CUST-${Date.now().toString().slice(-3)}`,
-        ...customerData,
-        serviceKey: customerData.serviceKey || currentStaff?.serviceKey,
-        totalSpent: 0,
-        loyaltyPoints: 100,
-        joinDate: new Date().toISOString().split('T')[0],
-        lastVisit: new Date().toISOString().split('T')[0]
-      };
-      setCustomers(prev => [newCust, ...prev]);
-      showToast(err.response?.data?.message || `Registered new customer ${customerData.name || 'Customer'}`, 'success');
-      return newCust;
+      showToast(err.response?.data?.message || 'Could not save customer to the database', 'error');
+      throw err;
     }
   };
 
@@ -1247,13 +1229,6 @@ export function StaffProvider({ children }) {
     const cleanPlate = String(vehicleData.plateNumber || '').trim().toUpperCase();
     const cleanModel = String(vehicleData.model || '').trim();
     if (!cleanPlate) return;
-
-    try {
-      const custVehicles = JSON.parse(localStorage.getItem('tsl_customer_vehicles') || '{}');
-      const vObj = { plateNumber: cleanPlate, model: cleanModel, isPrimary: true };
-      if (customerIdOrEmail) custVehicles[customerIdOrEmail] = vObj;
-      localStorage.setItem('tsl_customer_vehicles', JSON.stringify(custVehicles));
-    } catch (e) {}
 
     setCustomers(prev => prev.map(c => {
       const match = c.id === customerIdOrEmail || c.email === customerIdOrEmail || c._id === customerIdOrEmail;
@@ -1280,7 +1255,9 @@ export function StaffProvider({ children }) {
         model: cleanModel,
         isPrimary: true
       });
-    } catch (err) {}
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Could not save vehicle to the database', 'error');
+    }
 
     try {
       window.dispatchEvent(new CustomEvent('tsl_customer_updated', {
@@ -1436,6 +1413,7 @@ export function StaffProvider({ children }) {
         updateJobStatus,
         customers: staffCustomers,
         allCustomers: customers,
+        getVehicleImage,
         addCustomer,
         updateCustomerVehicle,
         attendance,
@@ -1448,8 +1426,16 @@ export function StaffProvider({ children }) {
         startStaffBreak,
         isStartingBreak,
         endStaffBreak,
+        isEndingBreak,
+        isOvertime: breakStatus.status === 'active' && breakStatus.isOvertime,
+        overtimeSeconds: breakStatus.overtimeSeconds,
+        breakLabel: breakStatus.breakLabel,
+        breakScheduledTime: breakStatus.breakScheduledTime,
         breakAlertModal,
         dismissBreakAlertModal,
+        todayBreakLogs,
+        permissions: currentStaff?.permissions || [],
+        canAccess: (required) => permissionsAllow(currentStaff?.permissions, required),
         notifications,
         isCameraOpen,
         setIsCameraOpen,

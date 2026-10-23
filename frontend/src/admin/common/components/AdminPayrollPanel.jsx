@@ -8,9 +8,15 @@ const POLL_MS = 30000;
 
 // Month payroll for a service's staff: base, deductions, remaining and paid status.
 // Omit serviceKey to cover every department (global Manage Staff page).
-export default function AdminPayrollPanel({ serviceKey }) {
+// `month` ('YYYY-MM') lets a parent page (the Global Dashboard filter) choose
+// the pay month; the panel's own picker still works on top of it.
+export default function AdminPayrollPanel({ serviceKey, month: monthFromParent = null }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [month, setMonth] = useState(null);
+  const [month, setMonth] = useState(monthFromParent);
+
+  useEffect(() => {
+    setMonth(monthFromParent);
+  }, [monthFromParent]);
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [selected, setSelected] = useState(null);

@@ -1,8 +1,11 @@
 import React from 'react';
+import { useStaff } from '../../common/context/StaffContext';
 import { Car, Clock, Phone, IndianRupee, ArrowRight, Camera, ShieldCheck } from 'lucide-react';
 import DetailingInspectionStepper, { DETAILING_STEPS } from './detailingInspectionStepper';
 
 export default function CarDetailingStaffCard({ job, onUpdateStatus, onAddPhoto }) {
+  const { getVehicleImage } = useStaff();
+  const carImage = job.vehicleImageUrl || (getVehicleImage ? getVehicleImage(job.vehicleNo, job.vehicles) : '');
   const currentStep = DETAILING_STEPS[job.stepIndex || 0] || DETAILING_STEPS[0];
   const isFinished = (job.stepIndex || 0) >= DETAILING_STEPS.length - 1;
 
@@ -36,7 +39,11 @@ export default function CarDetailingStaffCard({ job, onUpdateStatus, onAddPhoto 
       {/* Vehicle Info */}
       <div className="bg-gray-50/80 rounded-xl p-2.5 flex items-center justify-between border border-gray-200/60">
         <div className="flex items-center gap-2 text-xs">
-          <ShieldCheck className="w-4 h-4 text-amber-600" />
+          {carImage ? (
+            <a href={carImage} target="_blank" rel="noreferrer"><img src={carImage} alt={job.vehicleNo} className="w-12 h-12 rounded-lg object-cover border border-gray-200" /></a>
+          ) : (
+            <ShieldCheck className="w-4 h-4 text-amber-600" />
+          )}
           <span className="font-extrabold text-gray-900">{job.vehicleNo}</span>
           <span className="text-gray-500 font-medium">({job.vehicleModel})</span>
         </div>
