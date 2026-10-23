@@ -32,6 +32,24 @@ export function isMembershipPackage(name) {
 }
 
 /**
+ * Is this BOOKING a membership purchase?
+ *
+ * Prefer the explicit saleType the POS writes over guessing from the package
+ * name. The name test alone meant a sale typed as "Montlhy Memberdship" was
+ * rung up and badged as a membership, then silently missing from the
+ * memberships list because no hint word matched the misspelling. A typo in a
+ * label should not decide whether a pass exists.
+ */
+export function isMembershipRecord(booking) {
+  if (!booking) return false;
+  if (booking.saleType === 'membership') return true;
+  if (booking.membershipPassId) return true;
+  return isMembershipPackage(
+    booking.plan || booking.packageName || booking.planName || booking.membershipName
+  );
+}
+
+/**
  * Checks if a booking record is an actual wash redemption performed under a membership
  */
 export function isWashRedemptionRecord(b) {
@@ -202,7 +220,7 @@ export function buildMembershipSchedule(bookings, options = {}) {
   const seenFingerprints = new Set();
 
   const uniqueBookings = (bookings || [])
-    .filter(b => b && isMembershipPackage(readPackageName(b)))
+    .filter(b => b && isMembershipRecord(b))
     .filter(booking => {
       const rawId = booking.bookingId || booking.id || booking.passId || booking._id || '';
       const normId = normalizeMembershipId(rawId);

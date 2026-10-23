@@ -4,6 +4,7 @@ import apiClient from '../../../common/utils/apiClient';
 import userService from '../../../common/services/userService';
 import {
   isMembershipPackage,
+  isMembershipRecord,
   isWashRedemptionRecord,
   buildMembershipSchedule,
   findMembershipMeta,
@@ -231,7 +232,9 @@ export const AdminProvider = ({ children }) => {
    */
   const deriveMembershipsFromBookings = (allBookings, servicesList) => {
     const bookingList = allBookings || [];
-    const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
+    // Trust the explicit saleType flag, not just the package name -- a typo in
+    // the name must not make a sold membership vanish from this list.
+    const membershipBookings = bookingList.filter(isMembershipRecord);
 
     // Purchases made offline (or before the API call landed) live in localStorage.
     const knownIds = new Set();
@@ -1513,7 +1516,7 @@ export const AdminProvider = ({ children }) => {
       const match = (normPassId && normBId && normPassId === normBId) ||
                     bId === memId ||
                     b.membershipPassId === memId ||
-                    (targetPlate && bPlate && targetPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
+                    (targetPlate && bPlate && targetPlate === bPlate && isMembershipRecord(b));
 
       if (match) {
         const startISO = updatedFields.startDate ? toISODateString(parseFlexibleDate(updatedFields.startDate)) : b.membershipStartDate;
@@ -1640,7 +1643,7 @@ export const AdminProvider = ({ children }) => {
 
         const match = (normPassId && normBId && normPassId === normBId) ||
                       bId === cleanId ||
-                      (tPlate && bPlate && tPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
+                      (tPlate && bPlate && tPlate === bPlate && isMembershipRecord(b));
 
         if (match) {
           return {

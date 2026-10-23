@@ -29,20 +29,33 @@ export default function SalonPosModal({ open, products, onClose, onSold }) {
     setTimeout(() => scanRef.current?.focus(), 80);
   }, [open]);
 
-  const available = useMemo(
-    () => (products || []).filter((p) => p.status !== 'inactive' && Number(p.stock) > 0),
+  // Everything the counter could sell if it had stock. Searching has to reach
+  // these: a product sitting at zero still exists, and hiding it from the
+  // search made it look like it had never been added at all.
+  const sellable = useMemo(
+    () => (products || []).filter((p) => p.status !== 'inactive'),
     [products]
+  );
+
+  const available = useMemo(
+    () => sellable.filter((p) => Number(p.stock) > 0),
+    [sellable]
   );
 
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // With no search, lead with what can actually be rung up.
     if (!q) return available.slice(0, 8);
-    return available.filter((p) =>
+    const matches = sellable.filter((p) =>
       [p.name, p.sku, p.barcode, p.category, p.variant, p.brand]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
-    ).slice(0, 12);
-  }, [available, search]);
+    );
+    // In-stock first, so an out-of-stock match never buries a sellable one.
+    return matches
+      .sort((a, b) => (Number(b.stock) > 0) - (Number(a.stock) > 0))
+      .slice(0, 12);
+  }, [sellable, available, search]);
 
   const addToCart = (product, qty = 1) => {
     setError('');
@@ -189,24 +202,39 @@ export default function SalonPosModal({ open, products, onClose, onSold }) {
             <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
               {results.length === 0 && (
                 <p className="text-xs font-semibold text-gray-400 text-center py-8">
-                  {available.length === 0 ? 'No products in stock yet. Add some under Supplies & Stock.' : 'No products match that search.'}
+                  {search.trim()
+                    ? `No product matches "${search.trim()}".`
+                    : sellable.length === 0
+                      ? 'No products yet. Add some under Supplies & Stock.'
+                      : 'Everything is out of stock. Add stock under Supplies & Stock.'}
                 </p>
               )}
               {results.map((p) => {
                 const off = p.mrp > 0 ? Math.round(((p.mrp - p.sellPrice) / p.mrp) * 100) : 0;
+                const outOfStock = Number(p.stock) <= 0;
                 return (
-                  <button key={p._id} type="button" onClick={() => addToCart(p)}
-                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-200 hover:border-amber-400 hover:bg-amber-50/40 text-left transition">
+                  <button key={p._id} type="button" disabled={outOfStock}
+                    onClick={() => addToCart(p)}
+                    title={outOfStock ? 'Out of stock — add stock under Supplies & Stock' : undefined}
+                    className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition ${
+                      outOfStock
+                        ? 'border-gray-200 bg-gray-50 opacity-70 cursor-not-allowed'
+                        : 'border-gray-200 hover:border-amber-400 hover:bg-amber-50/40'
+                    }`}>
                     <div className="min-w-0">
-                      <p className="text-sm font-black text-gray-900 truncate">{p.name}</p>
+                      <p className={`text-sm font-black truncate ${outOfStock ? 'text-gray-500' : 'text-gray-900'}`}>{p.name}</p>
                       <p className="text-[11px] font-semibold text-gray-500 truncate">
                         {[p.variant, p.brand, p.sku].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-gray-900">{money(p.sellPrice)}</p>
-                      {off > 0 && <p className="text-[11px] font-bold text-emerald-600">{off}% off</p>}
-                      <p className="text-[10px] font-bold text-gray-400">{p.stock} in stock</p>
+                      <p className={`text-sm font-black ${outOfStock ? 'text-gray-400' : 'text-gray-900'}`}>{money(p.sellPrice)}</p>
+                      {off > 0 && !outOfStock && <p className="text-[11px] font-bold text-emerald-600">{off}% off</p>}
+                      {outOfStock ? (
+                        <p className="text-[10px] font-black text-rose-500">Out of stock</p>
+                      ) : (
+                        <p className="text-[10px] font-bold text-gray-400">{p.stock} in stock</p>
+                      )}
                     </div>
                   </button>
                 );
