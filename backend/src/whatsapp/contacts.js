@@ -24,6 +24,26 @@ const NOT_DELETED = { isDeleted: { $ne: true } };
 const NAME_PRIORITY = { crm: 6, staff: 6, app: 5, membership: 4, booking: 3, sale: 3, invoice: 3, vehicle: 2, whatsapp: 1 };
 
 const TZ = SITE_TIMEZONE || 'Asia/Kolkata';
+// Bookings that no longer need a reminder.
+const CLOSED_BOOKING = /^(Completed|Cancelled|Delivered|Ready for Owner)$/i;
+
+// Booking.date is human text ("October 24, 2026") and timeSlot a range
+// ("06:00 PM - 06:30 PM"), both written in the salon's own local time, so they
+// are parsed and compared as local times too.
+const bookingAt = (date, timeSlot) => {
+  const startOfSlot = String(timeSlot || '').split('-')[0].trim();
+  const withTime = new Date(`${date} ${startOfSlot}`);
+  if (!isNaN(withTime.getTime())) return withTime;
+  const dayOnly = new Date(date);
+  return isNaN(dayOnly.getTime()) ? null : dayOnly;
+};
+
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
 const formatDate = (d) => {
   const date = d instanceof Date ? d : new Date(d);
   if (!d || isNaN(date.getTime())) return '';
@@ -53,6 +73,7 @@ const createContact = (phone) => ({
   visits: 0,
   lastVisitAt: null,
   lastService: '',
+  booking: null,
   membership: null
 });
 
@@ -62,7 +83,7 @@ const collectSources = async () => {
     User.find({ ...NOT_DELETED, role: 'user' }).select('fullName mobile email vehicles membership').lean(),
     Staff.find(NOT_DELETED).select('fullName mobile email department staffRole isActive').lean(),
     Booking.find({ ...NOT_DELETED, phone: { $nin: ['', null] } })
-      .select('customerName customerEmail phone serviceKey serviceName packageName vehicleNo price createdAt').lean(),
+      .select('customerName customerEmail phone serviceKey serviceName packageName vehicleNo price createdAt date timeSlot status').lean(),
     OfflineSale.find({ ...NOT_DELETED, phone: { $nin: ['', null] } })
       .select('customerName customerEmail phone serviceKey serviceName packageName vehicleNo price createdAt').lean(),
     MembershipPass.find({ ...NOT_DELETED, phone: { $nin: ['', null] } })
@@ -110,6 +131,17 @@ const buildContacts = async () => {
     }
   };
 
+  // The soonest booking still ahead of us, for {{bookingTime}} reminders.
+  const today = startOfToday();
+  const addBooking = (c, row) => {
+    if (!row.date || !row.timeSlot) return;
+    if (CLOSED_BOOKING.test(row.status || '')) return;
+    const at = bookingAt(row.date, row.timeSlot);
+    if (!at || at < today) return;
+    if (c.booking && c.booking.at <= at) return;
+    c.booking = { at, date: row.date, time: row.timeSlot, service: row.packageName || row.serviceName || '' };
+  };
+
   const addMembership = (c, m) => {
     if (!m || !m.planName || !m.expiryDate) return;
     const expiry = new Date(m.expiryDate);
@@ -141,7 +173,9 @@ const buildContacts = async () => {
   }
   for (const r of src.bookings) {
     const c = touch(r.phone, 'booking', 'customer', r.customerName, r.customerEmail);
-    if (c) addVisit(c, r);
+    if (!c) continue;
+    addVisit(c, r);
+    addBooking(c, r);
   }
   for (const r of src.sales) {
     const c = touch(r.phone, 'sale', 'customer', r.customerName, r.customerEmail);
@@ -206,6 +240,7 @@ const buildContacts = async () => {
       visits: c.visits,
       lastVisitAt: c.lastVisitAt ? c.lastVisitAt.toISOString() : null,
       lastService: c.lastService,
+      booking: c.booking ? { date: c.booking.date, time: c.booking.time, service: c.booking.service } : null,
       membership: c.membership,
       optIn: Boolean(pref.optIn),
       optedOut: Boolean(pref.optedOut),
@@ -223,7 +258,10 @@ const buildContacts = async () => {
         lastService: c.lastService || '',
         lastVisit: c.lastVisitAt ? formatDate(c.lastVisitAt) : '',
         department: c.department || '',
-        businessName: 'The Shine Lounge'
+        businessName: 'The Shine Lounge',
+        bookingDate: c.booking ? formatDate(c.booking.date) : '',
+        bookingTime: c.booking ? c.booking.time : '',
+        bookingService: c.booking ? c.booking.service : ''
       }
     });
   }

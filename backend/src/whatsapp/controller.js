@@ -360,6 +360,16 @@ exports.updateTemplate = async (req, res) => {
 
   if (req.body.purpose !== undefined) template.purpose = req.body.purpose === 'invoice' ? 'invoice' : 'campaign';
 
+  // Only the "Use for" switch changed (Settings → invoice template picker).
+  if (Object.keys(req.body).every((k) => k === 'purpose')) {
+    if (template.purpose === 'invoice' && template.metaStatus !== 'APPROVED') {
+      return fail(res, 400, 'Only an approved template can be used for invoices');
+    }
+    await template.save();
+    await claimInvoicePurpose(template);
+    return res.json({ success: true, template });
+  }
+
   if (template.provider === 'bhashsms') {
     // A registration mirrors the BhashSMS panel; fix it freely if it was typed wrong.
     if (req.body.name !== undefined) template.name = String(req.body.name).trim();
