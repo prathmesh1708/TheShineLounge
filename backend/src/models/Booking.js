@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const { normalizePlate } = require('../utils/plateNormalizer');
+const invalidateOnWrite = require('../common/cache/invalidateOnWrite');
+const { BOOKINGS_ROLLUP, CUSTOMER_DIRECTORY } = require('../common/cache/keys');
 
 const bookingSchema = new mongoose.Schema({
   bookingId: {
@@ -184,6 +186,25 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: 'Cash'
   },
+  // Set for Pine Labs card sales: the terminal's own record lives in the
+  // pinelabstransactions collection, keyed by this reference.
+  paymentStatus: {
+    type: String,
+    enum: ['paid', 'pending', 'failed'],
+    default: 'paid'
+  },
+  pineLabsTxnRef: {
+    type: String,
+    default: '',
+    index: true
+  },
+  cardDetails: {
+    cardType: { type: String, default: '' },
+    last4: { type: String, default: '' },
+    approvalCode: { type: String, default: '' },
+    rrn: { type: String, default: '' },
+    acquirerName: { type: String, default: '' }
+  },
   membershipName: {
     type: String,
     default: ''
@@ -236,5 +257,10 @@ bookingSchema.pre('save', function () {
   if (!this.isModified('vehicleNo')) return;
   this.vehicleNoNormalized = normalizePlate(this.vehicleNo);
 });
+
+// The admin rollups cache a whole-collection view of bookings; any write here
+// drops it so the next read is fresh. Registered before model compilation, as
+// middleware added afterwards never runs.
+invalidateOnWrite(bookingSchema, BOOKINGS_ROLLUP, CUSTOMER_DIRECTORY);
 
 module.exports = mongoose.model('Booking', bookingSchema);

@@ -33,6 +33,18 @@ const invoiceSchema = new mongoose.Schema(
     igst: { type: Number, default: 0 },
     total: { type: Number, required: true },
     paymentMethod: { type: String, default: 'UPI' },
+    // Set for Pine Labs card sales. The invoice is only written once the
+    // terminal has approved, so 'pending' never reaches the database on this
+    // path -- it exists for cash rows that are billed but not yet collected.
+    paymentStatus: { type: String, enum: ['paid', 'pending', 'failed'], default: 'paid' },
+    pineLabsTxnRef: { type: String, default: '', index: true },
+    cardDetails: {
+      cardType: { type: String, default: '' },
+      last4: { type: String, default: '' },
+      approvalCode: { type: String, default: '' },
+      rrn: { type: String, default: '' },
+      acquirerName: { type: String, default: '' }
+    },
     staffId: { type: String, default: '' },
     staffName: { type: String, default: '' },
     warrantyNo: { type: String, default: '' },

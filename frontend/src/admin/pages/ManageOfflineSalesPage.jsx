@@ -28,7 +28,33 @@ import { useAdmin } from '../common/context/AdminContext';
 import OfflineSaleModal from '../common/components/OfflineSaleModal';
 import RegisteredVehicleDetailModal from '../common/components/RegisteredVehicleDetailModal';
 import OfflineSaleInvoiceModal from '../common/components/OfflineSaleInvoiceModal';
+import PineLabsAttemptsModal from '../common/components/PineLabsAttemptsModal';
+import { getPineLabsConfig } from '../../common/services/pineLabsService';
 import { getSaleDate, toDisplayDate } from '../../common/utils/dateFormat';
+
+// Which tile a sale's money belongs under. Money taken on the Pine Labs
+// terminal is card money: without this it fell through to the catch-all and
+// was reported as cash in one total and as net banking in another.
+//
+// The two call sites below disagreed about where an UNRECOGNISED mode goes
+// (the summary counted it as cash, the tiles as "Net Banking / Other"), so
+// the fallback stays theirs — only the Pine Labs case is being corrected here.
+const PAYMENT_BUCKETS = [
+  ['cash', /cash/],
+  ['upi', /upi|qr|online/],
+  ['card', /card|pine\s*labs/],
+  ['netBanking', /bank|net/]
+];
+
+const paymentBucket = (paymentMode, fallback) => {
+  const mode = String(paymentMode || '').toLowerCase();
+  const hit = PAYMENT_BUCKETS.find(([, re]) => re.test(mode));
+  return hit ? hit[0] : fallback;
+};
+
+// A tile is clicked to filter the table; Card covers the terminal too.
+const matchesPaymentFilter = (paymentMode, selected) =>
+  paymentBucket(paymentMode, 'other') === paymentBucket(selected, 'other');
 
 export default function ManageOfflineSalesPage() {
   const { bookings, addOfflineSale, updateOfflineSale, deleteOfflineSale, clearAllOfflineSales, showToast, services } = useAdmin();
@@ -40,6 +66,16 @@ export default function ManageOfflineSalesPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('all');
+  // The card-attempt log is only worth a button where a terminal exists.
+  const [pineLabsOn, setPineLabsOn] = useState(false);
+  const [showCardAttempts, setShowCardAttempts] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getPineLabsConfig().then((cfg) => { if (alive) setPineLabsOn(Boolean(cfg?.enabled)); });
+    return () => { alive = false; };
+  }, []);
+
   const [selectedPaymentMode, setSelectedPaymentMode] = useState('all'); // 'all' | 'Cash' | 'UPI' | 'Card' | 'Net Banking'
   const [selectedSaleType, setSelectedSaleType] = useState('all'); // 'all' | 'service' | 'membership'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' = calendar sequence (earliest first, e.g. Aug 20 then Sep 2), 'desc' = latest first
@@ -103,7 +139,7 @@ export default function ManageOfflineSalesPage() {
       (
         (b.bookingId && String(b.bookingId).startsWith('OFS-')) ||
         (b.id && String(b.id).startsWith('OFS-')) ||
-        (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-') && (Number(b.price) > 0 || Number(b.total) > 0 || b.paymentMode === 'Cash' || b.paymentMode === 'UPI' || b.paymentMode === 'Card' || b.paymentMode === 'Net Banking'))
+        (b.isOfflineSale && !String(b.bookingId || b.id || '').startsWith('WASH-') && (Number(b.price) > 0 || Number(b.total) > 0 || b.paymentMode === 'Cash' || b.paymentMode === 'UPI' || b.paymentMode === 'Card' || b.paymentMode === 'Net Banking' || b.paymentMode === 'Pine Labs'))
       )
     );
     const map = new Map();
@@ -321,16 +357,12 @@ export default function ManageOfflineSalesPage() {
       }).filter(Boolean)
     ).size;
 
-    let cash = 0, upi = 0, card = 0, netBanking = 0;
+    const buckets = { cash: 0, upi: 0, card: 0, netBanking: 0 };
     salesForDateScope.forEach(s => {
-      const mode = (s.paymentMode || '').toLowerCase();
       const val = Number(s.price) || Number(s.total) || Number(s.amount) || 0;
-      if (mode.includes('cash')) cash += val;
-      else if (mode.includes('upi') || mode.includes('qr') || mode.includes('online')) upi += val;
-      else if (mode.includes('card')) card += val;
-      else if (mode.includes('bank') || mode.includes('net')) netBanking += val;
-      else cash += val;
+      buckets[paymentBucket(s.paymentMode, 'cash')] += val;
     });
+    const { cash, upi, card, netBanking } = buckets;
 
     return {
       volume: sum,
@@ -352,22 +384,11 @@ export default function ManageOfflineSalesPage() {
     let card = { amount: 0, count: 0 };
     let netBanking = { amount: 0, count: 0 };
 
+    const buckets = { cash, upi, card, netBanking };
     salesForDateScope.forEach(s => {
-      const amt = Number(s.price) || Number(s.total) || 0;
-      const m = (s.paymentMode || '').toLowerCase();
-      if (m.includes('cash')) {
-        cash.amount += amt;
-        cash.count += 1;
-      } else if (m.includes('upi')) {
-        upi.amount += amt;
-        upi.count += 1;
-      } else if (m.includes('card')) {
-        card.amount += amt;
-        card.count += 1;
-      } else {
-        netBanking.amount += amt;
-        netBanking.count += 1;
-      }
+      const bucket = buckets[paymentBucket(s.paymentMode, 'netBanking')];
+      bucket.amount += Number(s.price) || Number(s.total) || 0;
+      bucket.count += 1;
     });
 
     const sum = cash.amount + upi.amount + card.amount + netBanking.amount;
@@ -424,9 +445,7 @@ export default function ManageOfflineSalesPage() {
 
       // 3. Payment Method Filter
       if (selectedPaymentMode !== 'all') {
-        const pMode = (s.paymentMode || '').toLowerCase();
-        const target = selectedPaymentMode.toLowerCase();
-        if (!pMode.includes(target)) return false;
+        if (!matchesPaymentFilter(s.paymentMode, selectedPaymentMode)) return false;
       }
 
       // 4. Sale Type Filter (Service vs Membership)
@@ -627,6 +646,16 @@ export default function ManageOfflineSalesPage() {
               <span>Clear All</span>
             </button>
           )}
+          {pineLabsOn && (
+            <button
+              onClick={() => setShowCardAttempts(true)}
+              className="flex-1 sm:flex-initial px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Every card presented on a terminal, including declines"
+            >
+              <CreditCard className="w-4 h-4 flex-shrink-0" />
+              <span>Card Attempts</span>
+            </button>
+          )}
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex-1 sm:flex-initial px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -757,14 +786,14 @@ export default function ManageOfflineSalesPage() {
                 ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/30'
                 : 'border-gray-200 hover:border-blue-300'
             }`}
-            title="Click to filter Card transactions"
+            title="Click to filter Card and Pine Labs transactions"
           >
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 bg-blue-600 shadow-2xs">
               <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
-                <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase font-bold truncate">Card Received</p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase font-bold truncate">Card / Pine Labs</p>
                 {paymentTotals.total > 0 && (
                   <span className="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
                     {Math.round((paymentTotals.card.amount / (paymentTotals.total || 1)) * 100)}%
@@ -1474,6 +1503,9 @@ export default function ManageOfflineSalesPage() {
           </>
         )}
       </div>
+
+      {/* Declined cards live nowhere else — they never become a sale. */}
+      <PineLabsAttemptsModal isOpen={showCardAttempts} onClose={() => setShowCardAttempts(false)} />
 
       {/* Create Offline Sale Modal */}
       <OfflineSaleModal

@@ -107,5 +107,25 @@ module.exports = {
   WHATSAPP_SENDER_ENABLED: process.env.WHATSAPP_SENDER_ENABLED !== 'false',
   // Shared secret for POST /api/internal/whatsapp/tick; falls back to the
   // break scheduler's secret so one cron job can drive both.
-  WHATSAPP_CRON_SECRET: process.env.WHATSAPP_CRON_SECRET || process.env.BREAK_CRON_SECRET || ''
+  WHATSAPP_CRON_SECRET: process.env.WHATSAPP_CRON_SECRET || process.env.BREAK_CRON_SECRET || '',
+
+  // ── Pine Labs card terminals (Plutus Smart cloud integration, src/payments) ──
+  // Leave the credentials empty and the POS simply never offers Pine Labs:
+  // staff bill in cash as before. PINELABS_DRY_RUN fakes the whole terminal
+  // round-trip so the screens can be used before the credentials arrive.
+  PINELABS_BASE_URL: (process.env.PINELABS_BASE_URL || '').replace(/\/+$/, ''),
+  PINELABS_MERCHANT_ID: process.env.PINELABS_MERCHANT_ID || '',
+  PINELABS_STORE_ID: process.env.PINELABS_STORE_ID || '',
+  PINELABS_CLIENT_ID: process.env.PINELABS_CLIENT_ID || '',
+  PINELABS_SECURITY_TOKEN: process.env.PINELABS_SECURITY_TOKEN || '',
+  // One terminal per department: {"car-wash":"<imei>","salon":"<imei>"}.
+  PINELABS_TERMINALS: process.env.PINELABS_TERMINALS || '',
+  // The terminal used when a department has no entry of its own.
+  PINELABS_DEFAULT_IMEI: process.env.PINELABS_DEFAULT_IMEI || '',
+  // How long the bill stays on the terminal before Pine Labs cancels it.
+  PINELABS_AUTO_CANCEL_MIN: positiveInt(process.env.PINELABS_AUTO_CANCEL_MIN, 3),
+  // How long the POS keeps polling before it gives up on the card.
+  PINELABS_POLL_TIMEOUT_MS: positiveInt(process.env.PINELABS_POLL_TIMEOUT_MS, 150000),
+  // true = run the full flow without calling Pine Labs (fake approvals).
+  PINELABS_DRY_RUN: process.env.PINELABS_DRY_RUN === 'true'
 };

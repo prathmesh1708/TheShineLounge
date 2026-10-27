@@ -71,6 +71,11 @@ const mirrorOfflineSale = async (booking) => {
     gstAmount: Number(booking.gstAmount) || 0,
     includeGst: Boolean(booking.includeGst),
     paymentMode: booking.paymentMode || 'Cash',
+    // Card details travel with the mirror so the offline-sales screen and its
+    // receipt can show them without reaching into the booking.
+    paymentStatus: booking.paymentStatus || 'paid',
+    pineLabsTxnRef: booking.pineLabsTxnRef || '',
+    ...(booking.cardDetails ? { cardDetails: booking.cardDetails } : {}),
     saleDate: toIsoDate(booking.saleDate || booking.date) || new Date().toISOString().split('T')[0],
     saleType: booking.saleType || 'service',
     staffId: booking.staffId || null,

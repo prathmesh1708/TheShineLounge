@@ -1,35 +1,32 @@
 const RegisteredVehicle = require('../models/RegisteredVehicle');
 const { upsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 const { normalizePlate } = require('../utils/plateNormalizer');
-const Booking = require('../models/Booking');
-const { isSaleOrCustomerBooking } = require('../utils/bookingKinds');
+const { getTransactedPlates } = require('../services/bookingSnapshot');
 
 // @desc    Get all registered fleet vehicles
 // @route   GET /api/vehicles
 // @access  Private (Staff/Admin)
 const getRegisteredVehicles = async (req, res) => {
   try {
-    const vehicles = await RegisteredVehicle.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
-
     // A car belongs on this list while it has a real transaction behind it:
     // a counter sale, or a booking the customer made. Membership redemptions
     // are excluded (usage, not a sale), and so are rows left behind by sales
     // that were later deleted -- those stay in the collection for the record
     // but would otherwise inflate the fleet count with cars nobody can trace.
-    const bookings = await Booking.find({ isDeleted: { $ne: true } })
-      .select('bookingId vehicleNo saleType paymentMode packageName notes')
-      .lean();
-
-    const activePlates = new Set(
-      bookings
-        .filter(isSaleOrCustomerBooking)
-        .map((b) => normalizePlate(b.vehicleNo))
-        .filter(Boolean)
-    );
+    //
+    // The two reads are independent, so they go out together rather than one
+    // after the other; this endpoint was serialising two full-collection round
+    // trips to Atlas. The registry rows come back lean() because every one of
+    // them is copied into a plain object below anyway -- hydrating them into
+    // mongoose documents first was work done purely to throw away.
+    const [vehicles, activePlates] = await Promise.all([
+      RegisteredVehicle.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean(),
+      getTransactedPlates()
+    ]);
 
     const linked = vehicles.filter((v) => activePlates.has(v.plateNormalized));
     const cleanedVehicles = linked.map(v => {
-      const obj = v.toObject ? v.toObject() : { ...v };
+      const obj = { ...v };
       if (obj.brand && obj.model && obj.brand.trim().toLowerCase() === obj.model.trim().toLowerCase()) {
         obj.brand = '';
       }

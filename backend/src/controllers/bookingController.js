@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
+const BookingReceipt = require('../models/BookingReceipt');
 const User = require('../models/User');
 const { findStaffForService, notifyStaffOfBooking } = require('../utils/staffAssignment');
 const { sendNotificationToUser } = require('../common/services/pushNotificationHelper');
@@ -7,6 +8,10 @@ const { tryUpsertRegisteredVehicle, syncVehicleImage } = require('../services/ve
 const { tryMirrorBooking, trySoftDeleteMirrors } = require('../services/salesRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
 const { toDisplayDate } = require('../utils/dateFormat');
+const pineLabs = require('../payments/pinelabs').service;
+
+// The one spelling of the card option that the UI and the API agree on.
+const PINE_LABS = 'Pine Labs';
 
 // Staff screens address a job by whatever id they have on hand — the Mongo _id
 // for jobs pulled from the API, or the human booking id (DT-2841, B-2026-1234)
@@ -30,6 +35,36 @@ const findBookingByAnyId = async (id) => {
       { bookingId: new RegExp(`^${escapeRegex(cleanId)}$`, 'i') }
     ]
   });
+};
+
+// Receipt PDFs live in their own collection so the booking documents stay
+// small; `receiptPdfBase64` on the booking is the pre-split format and is still
+// read here for any row that has not been migrated yet.
+// The split-out row is the newer of the two, so it wins; an un-migrated
+// booking falls back to its own inline copy.
+const readReceiptPdf = async (booking) => {
+  if (!booking) return '';
+  const stored = await BookingReceipt.findOne({ booking: booking._id }).select('pdfBase64').lean();
+  if (stored && stored.pdfBase64) return stored.pdfBase64;
+  return booking.receiptPdfBase64 || '';
+};
+
+const hasReceiptPdf = async (booking) => {
+  if (!booking) return false;
+  if (booking.receiptPdfBase64) return true;
+  return Boolean(await BookingReceipt.exists({ booking: booking._id }));
+};
+
+// New receipts are written here and nowhere else. Existing bookings are never
+// rewritten: a row that still carries an inline PDF keeps it, and keeps being
+// served from there by readReceiptPdf, so no stored data is altered or removed.
+const writeReceiptPdf = async (booking, pdfBase64) => {
+  if (!booking || !pdfBase64) return;
+  await BookingReceipt.findOneAndUpdate(
+    { booking: booking._id },
+    { $set: { pdfBase64, bookingId: booking.bookingId || '' } },
+    { upsert: true }
+  );
 };
 
 const isPrivileged = (user) => user && (user.role === 'admin' || user.role === 'staff');
@@ -134,6 +169,22 @@ const createBooking = async (req, res) => {
       var targetStaffId = assignedStaff ? assignedStaff._id : null;
     }
 
+    // An offline sale paid by card may only be recorded against a payment the
+    // terminal actually approved, for the amount it approved. Checked before
+    // the booking is written so a rejected reference leaves nothing behind.
+    let payment = null;
+    if (String(req.body.paymentMode || '') === PINE_LABS) {
+      try {
+        payment = await pineLabs.verifyForSale({
+          txnRef: req.body.pineLabsTxnRef,
+          amount: Number(price) || 0,
+          source: 'offline-sale'
+        });
+      } catch (err) {
+        return res.status(err.status || 400).json({ success: false, message: err.message });
+      }
+    }
+
     const bookingData = {
       bookingId: finalBookingId,
       serviceKey,
@@ -174,6 +225,19 @@ const createBooking = async (req, res) => {
       isOfflineSale: req.body.isOfflineSale !== undefined ? req.body.isOfflineSale : (finalBookingId && finalBookingId.startsWith('OFS-')),
       saleType: req.body.saleType || 'service',
       paymentMode: req.body.paymentMode || 'Cash',
+      paymentStatus: 'paid',
+      pineLabsTxnRef: payment ? payment.txnRef : '',
+      ...(payment
+        ? {
+            cardDetails: {
+              cardType: payment.cardType,
+              last4: payment.cardLast4,
+              approvalCode: payment.approvalCode,
+              rrn: payment.rrn,
+              acquirerName: payment.acquirerName
+            }
+          }
+        : {}),
       vehicleModel: req.body.vehicleModel || vehicleType || '',
       saleDate: req.body.saleDate || '',
       notes: req.body.notes || '',
@@ -191,6 +255,14 @@ const createBooking = async (req, res) => {
       { $set: bookingData },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
+    // Point the card payment at the sale it paid for, so the same approval can
+    // never be quoted on a second sale.
+    if (payment) {
+      await pineLabs
+        .consumeForSale({ txnRef: payment.txnRef, amount: booking.price, source: 'offline-sale', sourceId: booking.bookingId })
+        .catch(() => {});
+    }
 
     if (assignedStaff) {
       await notifyStaffOfBooking(assignedStaff, booking);
@@ -356,14 +428,55 @@ const getBookings = async (req, res) => {
       Object.assign(query, ownedByFilter(email));
     }
 
-    const bookings = await Booking.find(query)
+    // Paging is opt-in: a caller that asks for a `limit` gets one chunk plus
+    // the cursor it needs to ask for the next. Callers that ask for nothing
+    // still get the whole list, so every existing consumer keeps working.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 0, 0), 500);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+
+    const cursor = Booking.find(query)
       .select('-receiptPdfBase64')
-      .sort({ createdAt: -1 })
+      // `_id` breaks ties so a row cannot slip between pages when several
+      // bookings share a createdAt.
+      .sort({ createdAt: -1, _id: -1 })
       .lean();
+
+    if (!limit) {
+      const bookings = await cursor;
+      return res.status(200).json({
+        success: true,
+        count: bookings.length,
+        total: bookings.length,
+        page: 1,
+        limit: bookings.length,
+        hasMore: false,
+        bookings
+      });
+    }
+
+    // `hasMore` is answered by over-fetching a single row rather than by
+    // counting the collection. The admin dashboard walks this endpoint page by
+    // page, and a countDocuments() per page meant a second full round trip --
+    // and a full index scan -- for an answer that one extra document gives.
+    // The total is still counted, but only for the first page, which is the
+    // only response a client reads it from.
+    const [rows, total] = await Promise.all([
+      cursor.skip((page - 1) * limit).limit(limit + 1),
+      page === 1 ? Booking.countDocuments(query) : Promise.resolve(null)
+    ]);
+
+    const hasMore = rows.length > limit;
+    const bookings = hasMore ? rows.slice(0, limit) : rows;
 
     res.status(200).json({
       success: true,
       count: bookings.length,
+      // Later pages report the floor the caller can already see rather than a
+      // count nothing asked for; `hasMore` is what drives the paging loop.
+      total: total !== null ? total : (page - 1) * limit + bookings.length,
+      page,
+      limit,
+      hasMore,
       bookings
     });
   } catch (error) {
@@ -664,7 +777,7 @@ const getPublicReceipt = async (req, res) => {
         membershipValidity: booking.membershipValidity,
         saleDate: booking.saleDate || booking.date,
         notes: booking.notes || '',
-        hasPdf: !!booking.receiptPdfBase64
+        hasPdf: await hasReceiptPdf(booking)
       }
     });
   } catch (error) {
@@ -710,10 +823,10 @@ const saveReceiptPdf = async (req, res) => {
         membershipExpiry: saleData.membershipExpiry || '',
         membershipValidity: saleData.membershipValidity || '',
         paymentMode: saleData.paymentMode || 'Cash',
-        notes: saleData.notes || '',
-        receiptPdfBase64: pdfBase64 || ''
+        notes: saleData.notes || ''
       });
 
+      await writeReceiptPdf(booking, pdfBase64);
       return res.json({ success: true, message: 'Receipt created and PDF saved', bookingId: booking.bookingId });
     }
 
@@ -721,8 +834,7 @@ const saveReceiptPdf = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Receipt not found' });
     }
     if (pdfBase64) {
-      booking.receiptPdfBase64 = pdfBase64;
-      await booking.save();
+      await writeReceiptPdf(booking, pdfBase64);
     }
     res.json({ success: true, message: 'Receipt PDF saved' });
   } catch (error) {
@@ -737,10 +849,11 @@ const saveReceiptPdf = async (req, res) => {
 const streamReceiptPdf = async (req, res) => {
   try {
     const booking = await findBookingByAnyId(req.params.id);
-    if (!booking || !booking.receiptPdfBase64) {
+    const pdfBase64 = await readReceiptPdf(booking);
+    if (!pdfBase64) {
       return res.status(404).json({ success: false, message: 'Receipt PDF not available directly' });
     }
-    const buffer = Buffer.from(booking.receiptPdfBase64, 'base64');
+    const buffer = Buffer.from(pdfBase64, 'base64');
     const receiptNo = booking.bookingId || req.params.id;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="Invoice-${receiptNo}.pdf"`);

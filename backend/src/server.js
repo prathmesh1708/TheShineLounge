@@ -1,6 +1,7 @@
 require('./common/config/env');
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const { PORT } = require('./common/config/env');
 const connectDB = require('./common/config/db');
 const logger = require('./common/middleware/logger');
@@ -96,6 +97,15 @@ app.use(cors({
 // Handle preflight OPTIONS for all routes
 app.options('*', cors());
 
+// gzip every response big enough to be worth it.
+//
+// The admin dashboard's list endpoints return JSON by the megabyte -- bookings,
+// customers, the vehicle registry -- and JSON of that shape compresses by
+// roughly an order of magnitude. This only touches the response body, so the
+// HMAC-signed device routes and the WhatsApp webhook below, which care about
+// the exact bytes of the *request*, are unaffected.
+app.use(compression({ threshold: 1024 }));
+
 // Hardware integration routes are mounted ahead of the global JSON parser on
 // purpose. Device requests are HMAC-signed over the exact bytes sent, so the
 // router has to read the raw body itself; once express.json() has consumed the
@@ -148,6 +158,8 @@ app.use('/api/offline-sales', require('./routes/offlineSaleRoutes'));
 app.use('/api/customers', require('./routes/customerRoutes'));
 app.use('/api/invoices', require('./routes/invoiceRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
+// Card payments on the counter's Pine Labs terminal.
+app.use('/api/payments/pinelabs', require('./payments/pinelabs').routes);
 // Staff billing (staffOnly) must be mounted before the admin-only hub router.
 app.use('/api/whatsapp/invoice', whatsapp.invoiceRoutes);
 app.use('/api/whatsapp', whatsapp.routes);
