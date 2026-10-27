@@ -1,4 +1,9 @@
-const { findAccountById } = require('../utils/findAccount');
+const { findAccountById, invalidateAccount } = require('../utils/findAccount');
+
+// Both handlers below read an account, change it and save it back. Identities
+// are cached for a few seconds to keep authMiddleware off the wire, and a
+// read-modify-save must never start from a snapshot that is already stale, so
+// each one drops the cached copy before reading and again after writing.
 
 /**
  * Save FCM Token for the logged-in user
@@ -14,6 +19,7 @@ const saveFcmToken = async (req, res) => {
       return res.status(400).json({ success: false, message: 'FCM token is required' });
     }
 
+    invalidateAccount(userId);
     const user = await findAccountById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -39,6 +45,7 @@ const saveFcmToken = async (req, res) => {
     }
 
     await user.save();
+    invalidateAccount(userId);
 
     res.status(200).json({
       success: true,
@@ -65,6 +72,7 @@ const removeFcmToken = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Token is required' });
     }
 
+    invalidateAccount(userId);
     const user = await findAccountById(userId);
     if (user) {
       if (platform === 'web' && user.fcmTokens) {
@@ -73,6 +81,7 @@ const removeFcmToken = async (req, res) => {
         user.fcmTokenMobile = user.fcmTokenMobile.filter((t) => t !== token);
       }
       await user.save();
+      invalidateAccount(userId);
     }
 
     res.status(200).json({ success: true, message: 'FCM token removed successfully' });
