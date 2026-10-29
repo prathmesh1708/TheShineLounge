@@ -3,6 +3,10 @@ const OfflineSale = require('../models/OfflineSale');
 const { tryUpsertRegisteredVehicle, syncVehicleImage } = require('../services/vehicleRegistry');
 const { nextSequentialId } = require('../utils/sequentialId');
 const { toDisplayDate } = require('../utils/dateFormat');
+const pineLabs = require('../payments/pinelabs').service;
+
+// The one spelling of the card option that the UI and the API agree on.
+const PINE_LABS = 'Pine Labs';
 
 // @desc    Get all offline POS sales
 // @route   GET /api/offline-sales
@@ -41,6 +45,21 @@ const createOfflineSale = async (req, res) => {
       });
     }
 
+    // A card sale may only be recorded against a payment the terminal actually
+    // approved, for the amount it approved. Checked before anything is written.
+    let payment = null;
+    if (String(paymentMode || '') === PINE_LABS) {
+      try {
+        payment = await pineLabs.verifyForSale({
+          txnRef: req.body.pineLabsTxnRef,
+          amount: Number(price) || 0,
+          source: 'offline-sale'
+        });
+      } catch (err) {
+        return res.status(err.status || 400).json({ success: false, message: err.message });
+      }
+    }
+
     const parsedVehicles = Array.isArray(vehicles) && vehicles.length > 0
       ? vehicles.map(v => ({
           plateNumber: (v.plateNumber || v.plate || '').toUpperCase().trim(),
@@ -77,12 +96,33 @@ const createOfflineSale = async (req, res) => {
       gstAmount: Number(gstAmount) || 0,
       includeGst: Boolean(includeGst),
       paymentMode: paymentMode || 'Cash',
+      paymentStatus: 'paid',
+      pineLabsTxnRef: payment ? payment.txnRef : '',
+      ...(payment
+        ? {
+            cardDetails: {
+              cardType: payment.cardType,
+              last4: payment.cardLast4,
+              approvalCode: payment.approvalCode,
+              rrn: payment.rrn,
+              acquirerName: payment.acquirerName
+            }
+          }
+        : {}),
       saleDate: saleDate || new Date().toISOString().split('T')[0],
       saleType: saleType || 'service',
       staffId: staffId || null,
       staffName: staffName || '',
       notes: notes || ''
     });
+
+    // Point the card payment at the sale it paid for, so the same approval can
+    // never be quoted on a second sale.
+    if (payment) {
+      await pineLabs
+        .consumeForSale({ txnRef: payment.txnRef, amount: sale.price, source: 'offline-sale', sourceId: sale.saleId })
+        .catch(() => {});
+    }
 
     // All plates sold to at the counter are registered vehicles from now on.
     for (const v of finalVehicles) {

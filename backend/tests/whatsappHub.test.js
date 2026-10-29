@@ -108,6 +108,43 @@ test('contacts merge customers, bookings and staff on the normalized number', as
   assert.equal(aarav.vars.department, 'Car Wash');
 });
 
+// Booking.date is stored as "October 24, 2026", so the reminder variables can
+// only work if that text is parsed rather than compared as a string.
+test('booking variables use the soonest booking that is still ahead', async () => {
+  const day = (offsetDays) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+  let seq = 0;
+  const booking = (extra) => ({
+    bookingId: `BK-TEST-${seq += 1}`,
+    customerName: 'Meera', phone: '9876500011', serviceKey: 'salon', createdAt: new Date(), ...extra
+  });
+
+  await Booking.collection.insertMany([
+    booking({ date: day(-3), timeSlot: '09:00 AM - 09:30 AM', serviceName: 'Old Haircut', status: 'Completed' }),
+    booking({ date: day(5), timeSlot: '04:00 PM - 05:00 PM', serviceName: 'Later Facial', status: 'Confirmed' }),
+    booking({ date: day(1), timeSlot: '11:00 AM - 11:30 AM', serviceName: 'Beard Trim', status: 'Confirmed' }),
+    booking({ date: day(2), timeSlot: '10:00 AM - 10:30 AM', serviceName: 'Cancelled One', status: 'Cancelled' })
+  ]);
+
+  const meera = (await buildContacts()).find((c) => c.phone === '919876500011');
+  assert.equal(meera.vars.bookingTime, '11:00 AM - 11:30 AM'); // soonest upcoming, not the past or later one
+  assert.equal(meera.vars.bookingService, 'Beard Trim');
+  assert.ok(meera.vars.bookingDate, 'booking date is filled in');
+});
+
+test('a contact with only past bookings has no booking variables', async () => {
+  await Booking.collection.insertOne({
+    bookingId: 'BK-TEST-OLD', customerName: 'Old', phone: '9876500022', serviceKey: 'salon', createdAt: new Date(),
+    date: 'October 24, 2020', timeSlot: '09:00 AM - 09:30 AM', serviceName: 'Ancient', status: 'Completed'
+  });
+  const old = (await buildContacts()).find((c) => c.phone === '919876500022');
+  assert.equal(old.booking, null);
+  assert.equal(old.vars.bookingTime, '');
+});
+
 test('a template campaign sends each recipient once and skips opted-out numbers', async () => {
   const token = await adminToken();
   await Customer.create({ customerId: 'C1', fullName: 'Rahul Sharma', mobile: '9876543210' });

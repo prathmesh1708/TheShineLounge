@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const invalidateOnWrite = require('../common/cache/invalidateOnWrite');
+const { CUSTOMER_DIRECTORY } = require('../common/cache/keys');
 
 const customerSchema = new mongoose.Schema(
   {
@@ -90,5 +92,8 @@ customerSchema.methods.toJSON = function () {
   delete obj.password;
   return obj;
 };
+
+// The admin customer list caches a whole-collection view of this collection.
+invalidateOnWrite(customerSchema, CUSTOMER_DIRECTORY);
 
 module.exports = mongoose.model('Customer', customerSchema, 'customers');

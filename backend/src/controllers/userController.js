@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const Customer = require('../models/Customer');
 const Booking = require('../models/Booking');
+const { getRollupBookings, getCustomerDirectory } = require('../services/bookingSnapshot');
 const Feedback = require('../models/Feedback');
 const DeregisteredVehicle = require('../models/DeregisteredVehicle');
 const bcrypt = require('bcryptjs');
@@ -72,15 +72,39 @@ const getCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
+    // The page of User rows is specific to this request; the two
+    // whole-collection reads behind it are not -- every admin screen that
+    // needs them wants the same thing, so they come from the shared snapshot
+    // (projected and briefly cached, invalidated the moment either collection
+    // is written). Previously this endpoint pulled every booking in full,
+    // receipt PDFs and all, on every single call.
     const [rawCustomers, total, allBookings, customerModelRecords] = await Promise.all([
       User.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
       User.countDocuments(query),
-      Booking.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean(),
-      Customer.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()
+      getRollupBookings(),
+      getCustomerDirectory()
     ]);
+
+    // Bookings are indexed by the two things a customer is matched on, once,
+    // instead of rescanning the whole list per customer. The old shape walked
+    // every booking for every row on the page -- 50 customers against a few
+    // thousand bookings is hundreds of thousands of comparisons per request,
+    // all of it CPU on the event loop while other requests queue behind it.
+    const bookingsByEmail = new Map();
+    const bookingsByPhone = new Map();
+    const pushTo = (map, key, booking) => {
+      if (!key) return;
+      const list = map.get(key);
+      if (list) list.push(booking);
+      else map.set(key, [booking]);
+    };
+    for (const b of allBookings) {
+      pushTo(bookingsByEmail, (b.customerEmail || '').toLowerCase().trim(), b);
+      pushTo(bookingsByPhone, String(b.phone || '').replace(/\D/g, '').slice(-10), b);
+    }
 
     const customers = rawCustomers.map(u => {
       const computedSegment = computeMembershipStatus(u);
@@ -93,11 +117,12 @@ const getCustomers = async (req, res) => {
       // Find all bookings for this user to aggregate lifetime spent and vehicles
       const uEmail = (u.email || '').toLowerCase().trim();
       const uPhone = String(u.mobile || '').replace(/\D/g, '').slice(-10);
-      const userBookings = allBookings.filter(b => {
-        const bEmail = (b.customerEmail || '').toLowerCase().trim();
-        const bPhone = String(b.phone || '').replace(/\D/g, '').slice(-10);
-        return (uEmail && bEmail && uEmail === bEmail) || (uPhone && bPhone && uPhone === bPhone);
-      });
+      // Either key may match, and a booking carrying both must still be
+      // counted once -- hence the de-duplicating Set rather than concat.
+      const userBookings = [...new Set([
+        ...(uEmail ? bookingsByEmail.get(uEmail) || [] : []),
+        ...(uPhone ? bookingsByPhone.get(uPhone) || [] : [])
+      ])];
 
       const bookingSpent = userBookings.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
       const totalSpent = Math.max(u.totalSpent || 0, bookingSpent);

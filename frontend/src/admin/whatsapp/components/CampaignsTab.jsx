@@ -278,7 +278,7 @@ export default function CampaignsTab({ openCampaignId, onOpenCampaign }) {
                     <td className="px-4 py-3">
                       <ProgressBar counts={c.counts} total={c.total} />
                       <p className="text-[10.5px] text-gray-500 font-semibold mt-1">
-                        {c.total} total · {(c.counts.sent || 0) + (c.counts.delivered || 0) + (c.counts.read || 0)} sent · {c.counts.read || 0} read
+                        {c.total} total · {(c.counts.sent || 0) + (c.counts.delivered || 0) + (c.counts.read || 0)} sent
                         {c.counts.failed ? ` · ${c.counts.failed} failed` : ''}{c.counts.skipped ? ` · ${c.counts.skipped} skipped` : ''}
                       </p>
                     </td>

@@ -15,12 +15,7 @@ const SEGMENTS = [
   { id: 'all', label: 'Every contact' },
   { id: 'active_members', label: 'Active members' },
   { id: 'expiring_7', label: 'Membership expiring in 7 days' },
-  { id: 'expired', label: 'Membership expired' },
-  { id: 'no_membership', label: 'No membership' },
-  { id: 'replied_24h', label: 'Replied in last 24h (free-form OK)' },
-  { id: 'opted_in', label: 'Opted in' },
-  { id: 'opted_out', label: 'Opted out' },
-  { id: 'inactive_30', label: 'No visit in 30+ days' }
+  { id: 'expired', label: 'Membership expired' }
 ];
 
 const SERVICES = [
@@ -42,7 +37,6 @@ const matchesSegment = (c, segment) => {
     case 'expired': return Boolean(m && (m.status === 'Expired' || expiry < Date.now()));
     case 'no_membership': return !m;
     case 'replied_24h': return within24h(c.lastInboundAt);
-    case 'opted_in': return c.optIn;
     case 'opted_out': return c.optedOut;
     case 'inactive_30': return !c.lastVisitAt || Date.now() - new Date(c.lastVisitAt).getTime() > 30 * DAY;
     default: return true;

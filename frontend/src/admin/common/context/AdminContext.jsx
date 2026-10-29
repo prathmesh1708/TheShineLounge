@@ -455,10 +455,13 @@ export const AdminProvider = ({ children }) => {
     const fetchPromise = (async () => {
       try {
         let mapped = [];
-        const res = await apiClient.get('/bookings');
-        lastFetchedRef.current.bookings = Date.now();
-        if (res.data && res.data.bookings) {
-          mapped = res.data.bookings.map(b => {
+        // Bookings are pulled a page at a time: the dashboard paints from the
+        // first chunk instead of waiting for the whole table, and each request
+        // stays small enough not to stall the other dashboard calls.
+        const PAGE_SIZE = 200;
+        const MAX_PAGES = 100; // a stop so a bad `hasMore` cannot loop forever
+
+        const mapBooking = (b) => {
             // Normalize on read so rows saved with an ISO `date` by the old
             // update path still display as "August 20, 2026".
             const rawDate = toDisplayDate(b.date || b.saleDate || b.createdAt || '');
@@ -516,9 +519,9 @@ export const AdminProvider = ({ children }) => {
               createdAt: b.createdAt || b.bookedAt || b.date,
               bookedAt: b.bookedAt || b.createdAt
             };
-          });
+        };
 
-          const cleanBookings = mapped.filter(b => {
+        const isJunk = (b) => {
             if (!b) return false;
             const bId = String(b.id || b.bookingId || '').trim();
             if (!bId && !b.customerName) return false;
@@ -533,11 +536,32 @@ export const AdminProvider = ({ children }) => {
               return false;
             }
             return true;
-          });
+        };
 
+        let page = 1;
+        let hasMore = true;
+        let gotAnyResponse = false;
+
+        while (hasMore && page <= MAX_PAGES) {
+          const res = await apiClient.get('/bookings', { params: { page, limit: PAGE_SIZE } });
+          const data = res.data || {};
+          if (!Array.isArray(data.bookings)) break;
+          gotAnyResponse = true;
+
+          mapped = mapped.concat(data.bookings.map(mapBooking));
+          // Paint what has arrived so far rather than holding the table back
+          // until the last page lands.
+          setBookings(mapped.filter(isJunk));
           setMemberships(deriveMembershipsFromBookings(mapped));
-          setBookings(cleanBookings);
-        } else {
+
+          // `hasMore` is absent on an older backend, which returns everything
+          // in one response — then the first page is already the whole list.
+          hasMore = Boolean(data.hasMore);
+          page += 1;
+        }
+
+        lastFetchedRef.current.bookings = Date.now();
+        if (!gotAnyResponse) {
           setBookings([]);
           setMemberships(deriveMembershipsFromBookings([]));
         }
@@ -1826,6 +1850,9 @@ export const AdminProvider = ({ children }) => {
       membershipExpiry,
       ...(membershipStartDate ? { membershipStartDate } : {}),
       paymentMode: formData.paymentMode || 'Cash',
+      // Set when the sale was paid on the Pine Labs terminal; the API refuses
+      // a card sale without an approved payment behind it.
+      pineLabsTxnRef: formData.pineLabsTxnRef || '',
       notes: formData.notes || '',
       includeGst: Boolean(formData.includeGst),
       gstRate: Number(formData.gstRate || 0),

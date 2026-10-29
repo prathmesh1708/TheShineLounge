@@ -340,15 +340,6 @@ export default function ComposeTab({
                 To send a photo, video or PDF, use a template approved with that header type.
               </p>
             )}
-            {apiReady && isBhash && recipients.length > 0 && (
-              <div className="p-3 rounded-xl text-[11.5px] font-semibold flex gap-2 bg-amber-50 text-amber-800 border border-amber-200">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
-                <span>
-                  WhatsApp only delivers free-form messages to people who messaged your business number in the last 24 hours.
-                  BhashSMS does not tell us who replied, so anyone else will not receive it — use a template to reach everyone.
-                </span>
-              </div>
-            )}
             {apiReady && !isBhash && recipients.length > 0 && (
               <div className={`p-3 rounded-xl text-[11.5px] font-semibold flex gap-2 ${
                 repliedCount === recipients.length ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
