@@ -8,6 +8,10 @@ const { parseSalaryText, formatSalaryText } = require('../utils/salaryAmount');
 const { normalizeBreakSchedule } = require('../utils/breakSchedule');
 const { normalizeShiftTiming } = require('../utils/shiftTiming');
 const { dayKey } = require('../utils/siteTime');
+// Authenticated identities are cached for a few seconds so authMiddleware stops
+// paying Atlas latency on every request. Deactivating or removing an account
+// must bite immediately rather than after the TTL, so those writes say so.
+const { invalidateAccount } = require('../utils/findAccount');
 
 // Staff accounts may read the roster (e.g. to hand jobs over) but never another
 // person's pay. Their own salary is served only by /api/salary/me.
@@ -534,12 +538,14 @@ const deleteStaff = async (req, res) => {
       staff.isDeleted = true;
       staff.isActive = false;
       await staff.save();
+      invalidateAccount(staff._id);
     }
 
     if (legacyUser) {
       legacyUser.isDeleted = true;
       legacyUser.isActive = false;
       await legacyUser.save().catch(() => {});
+      invalidateAccount(legacyUser._id);
     }
 
     res.status(200).json({
@@ -572,11 +578,13 @@ const toggleStaffStatus = async (req, res) => {
       staff.isActive = !staff.isActive;
       nextState = staff.isActive;
       await staff.save();
+      invalidateAccount(staff._id);
     }
 
     if (legacyUser) {
       legacyUser.isActive = nextState;
       await legacyUser.save().catch(() => {});
+      invalidateAccount(legacyUser._id);
     }
 
     res.status(200).json({

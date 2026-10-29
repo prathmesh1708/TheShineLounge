@@ -9,6 +9,41 @@ const apiClient = axios.create({
   }
 });
 
+// Collapse identical GETs that are in flight at the same moment.
+//
+// The admin dashboard mounts a dozen widgets at once and several want the same
+// endpoint; React StrictMode then fires every effect twice in dev. The network
+// panel showed the result plainly -- /auth/me, /notifications/admin, /vehicles,
+// /vehicles/deregistered and /salary/overview each requested twice, seconds
+// apart, for byte-identical answers. Every duplicate cost a full round trip to
+// Atlas and held one of the browser's six connections to the origin, which is
+// what pushed the later rows of the waterfall past two seconds: they were
+// queued behind the duplicates, not slow in themselves.
+//
+// This shares a flight already under way; it is not a cache. Nothing is
+// retained once a request settles, so no response can ever be served stale.
+// Callers that de-duplicate already (AdminContext keeps its own in-flight map)
+// are simply unaffected.
+const inFlightGets = new Map();
+
+const flightKey = (url, config) =>
+  `${url}?${config.params ? JSON.stringify(config.params) : ''}`;
+
+// apiClient.get is replaced rather than wrapped in an interceptor: by the time
+// an interceptor runs, the second request has already been created.
+apiClient.get = (url, config = {}) => {
+  const key = flightKey(url, config);
+  const pending = inFlightGets.get(key);
+  if (pending) return pending;
+
+  const request = apiClient
+    .request({ ...config, method: 'get', url })
+    .finally(() => { inFlightGets.delete(key); });
+
+  inFlightGets.set(key, request);
+  return request;
+};
+
 // Request interceptor - attach JWT token
 apiClient.interceptors.request.use(
   (config) => {

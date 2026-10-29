@@ -68,7 +68,7 @@ export default function WhatsAppHubPage() {
 
   // New panel templates show up as soon as the tab is opened again.
   useEffect(() => {
-    if (tab === 'compose' || tab === 'templates') loadTemplates();
+    if (tab === 'compose' || tab === 'templates' || tab === 'settings') loadTemplates();
   }, [tab, loadTemplates]);
 
   const toggleOptOut = async (contact) => {
@@ -195,7 +195,7 @@ export default function WhatsAppHubPage() {
           onOpenCampaign={(id) => setTab('campaigns', id ? { campaign: id } : {})}
         />
       )}
-      {tab === 'settings' && <SettingsTab status={status} onRefresh={loadStatus} loading={statusLoading} />}
+      {tab === 'settings' && <SettingsTab status={status} onRefresh={loadStatus} loading={statusLoading} templates={templates} onReloadTemplates={loadTemplates} />}
     </div>
   );
 }

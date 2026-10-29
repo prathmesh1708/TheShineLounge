@@ -96,6 +96,14 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
   const validityRange = getReceiptValidityRange(sale, issuedDate);
   const receiptNo = sale.seqId || sale.id || sale.bookingId || sale.receiptNo || 'OFS-TSH-01';
   const paymentMode = sale.paymentMode || 'Cash';
+  // A card payment has to be traceable back to the terminal years later, so
+  // the approval details are printed on the receipt, not just shown on screen.
+  const card = sale.cardDetails || null;
+  const cardLine = card
+    ? [card.cardType, card.last4 && `xxxx ${card.last4}`, card.approvalCode && `Auth ${card.approvalCode}`, card.rrn && `RRN ${card.rrn}`]
+        .filter(Boolean)
+        .join(' | ')
+    : '';
   const customerPhone = formatReceiptPhone(sale.phone || sale.customerPhone || sale.mobile);
 
   const gstNo = sale.gstNo || sale.gstin || sale.gstNumber || '06ABSCS4162M1ZO';
@@ -592,6 +600,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                 <p style={{ margin: 0 }}>
                   Amount received via {paymentMode}: Rs. {price.toLocaleString('en-IN')}. (GSTIN: {gstNo})
                 </p>
+                {cardLine && <p style={{ margin: '2px 0 0 0' }}>{cardLine}</p>}
               </>
             ) : (
               <>
@@ -601,6 +610,7 @@ const ReceiptDocument = React.forwardRef(({ sale, forPrint = false }, ref) => {
                 <p style={{ margin: 0 }}>
                   Amount received via {paymentMode}: Rs. {price.toLocaleString('en-IN')}.
                 </p>
+                {cardLine && <p style={{ margin: '2px 0 0 0' }}>{cardLine}</p>}
               </>
             )}
           </div>

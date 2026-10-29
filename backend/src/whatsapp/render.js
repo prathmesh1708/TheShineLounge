@@ -14,6 +14,10 @@ const VARIABLES = [
   'lastVisit',
   'department',
   'businessName',
+  // The contact's next upcoming booking, for reminders.
+  'bookingDate',
+  'bookingTime',
+  'bookingService',
   // Filled only when sending an invoice receipt.
   'invoiceNo',
   'invoiceAmount',

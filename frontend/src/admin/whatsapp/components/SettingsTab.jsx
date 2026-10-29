@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { updateWhatsAppTemplate } from '../../services/whatsappApi';
 import { CheckCircle2, XCircle, Copy, Check, RefreshCw, KeyRound, Webhook, Smartphone, ShieldCheck, ListChecks } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005';
@@ -43,7 +44,46 @@ BHASHSMS_USER=
 BHASHSMS_PASS=
 BHASHSMS_SENDER=BUZWAP`;
 
-function BhashSmsSettings({ status, onRefresh, loading }) {
+function InvoiceTemplatePicker({ templates, current, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const options = (templates || []).filter((t) => t.metaStatus === 'APPROVED');
+  const choose = async (id) => {
+    if (!id || (current && String(current._id) === id)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await updateWhatsAppTemplate(id, { purpose: 'invoice' });
+      await onChanged();
+    } catch (err) {
+      setError((err.response && err.response.data && err.response.data.message) || err.message || 'Could not change the invoice template');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const selected = options.find((t) => current && (String(t._id) === String(current._id) || t.name === current.name));
+  return (
+    <div className="pl-[30px] pb-2.5 -mt-1">
+      <select
+        value={selected ? selected._id : ''}
+        disabled={busy}
+        onChange={(e) => choose(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+      >
+        <option value="" disabled>Select an approved template…</option>
+        {options.map((t) => (
+          <option key={t._id} value={t._id}>
+            {t.displayName || t.name}{t.headerType === 'document' ? ' · PDF' : ''}
+          </option>
+        ))}
+      </select>
+      <p className="text-[10.5px] text-gray-400 font-medium mt-1">Only approved templates are listed. Pick one with a PDF header so the invoice is attached.</p>
+      {error && <p className="text-[11px] font-semibold text-rose-600 mt-1">{error}</p>}
+    </div>
+  );
+}
+
+function BhashSmsSettings({ status, onRefresh, loading, templates, onReloadTemplates }) {
   const s = status || {};
   const b = s.bhashsms || {};
   const tpl = s.invoiceTemplate;
@@ -59,14 +99,11 @@ function BhashSmsSettings({ status, onRefresh, loading }) {
         <div className="divide-y divide-gray-50 mt-2">
           <Row ok={b.credentialsSet} title="Login"
             detail={b.credentialsSet ? `User ${b.user} · sender ${b.sender}` : 'Set BHASHSMS_USER, BHASHSMS_PASS and BHASHSMS_SENDER in backend/.env.'} />
-          <Row ok={Boolean(b.balance) && !b.balanceError} title="Account balance"
-            detail={b.balanceError || (b.balance ? `${b.balance} credits` : 'Not available')} />
           <Row ok={Boolean(tpl)} title="Invoice receipt template"
             detail={tpl ? `"${tpl.displayName || tpl.name}" — staff billing sends invoices with it.` : 'Register the approved invoice template in the Templates tab and set "Use for: Invoice receipts".'} />
+          <InvoiceTemplatePicker templates={templates} current={tpl} onChanged={async () => { await onRefresh(); if (onReloadTemplates) await onReloadTemplates(); }} />
           <Row ok={s.dryRun === false} title="Live sending"
             detail={s.dryRun ? 'Dry-run mode (WHATSAPP_DRY_RUN=true) — nothing reaches WhatsApp.' : 'Messages go out for real.'} />
-          <Row ok={false} title="Delivery reports & replies"
-            detail="Not set up yet. Ask your BhashSMS account manager for call-backs; until then messages show as “sent” (accepted by BhashSMS)." />
         </div>
       </div>
 
@@ -101,9 +138,9 @@ function BhashSmsSettings({ status, onRefresh, loading }) {
   );
 }
 
-export default function SettingsTab({ status, onRefresh, loading }) {
+export default function SettingsTab({ status, onRefresh, loading, templates, onReloadTemplates }) {
   const s = status || {};
-  if (s.provider === 'bhashsms') return <BhashSmsSettings status={status} onRefresh={onRefresh} loading={loading} />;
+  if (s.provider === 'bhashsms') return <BhashSmsSettings status={status} onRefresh={onRefresh} loading={loading} templates={templates} onReloadTemplates={onReloadTemplates} />;
   const webhook = s.webhook || {};
   const phone = s.phone || null;
 

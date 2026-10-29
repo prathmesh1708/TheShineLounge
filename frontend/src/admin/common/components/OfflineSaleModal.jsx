@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
 import { toIsoDate } from '../../../common/utils/dateFormat';
 import VehicleImagePicker from '../../../common/components/VehicleImagePicker';
+import PineLabsPaymentModal from '../../../common/components/PineLabsPaymentModal';
+import { getPineLabsConfig } from '../../../common/services/pineLabsService';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -52,7 +54,9 @@ const SALE_TYPES = [
   { value: 'membership', label: 'Membership Plan' }
 ];
 
-const PAYMENT_MODES = ['Cash', 'UPI', 'Card', 'Net Banking'];
+// The card option's label, spelled the same here, in the API and on the receipt.
+const PINE_LABS = 'Pine Labs';
+const PAYMENT_MODES = ['Cash', PINE_LABS];
 
 const VALIDITY_OPTIONS = [
   { value: '7', label: '7 Days' },
@@ -165,6 +169,18 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const [paymentRef, setPaymentRef] = useState('');
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
+  // The card machine is only offered once the backend says it is set up and
+  // this department has a terminal of its own.
+  const [pineLabs, setPineLabs] = useState({ enabled: false, departments: [], pollTimeoutMs: 150000 });
+  // Set while the customer is at the terminal; holds the sale waiting on it.
+  const [cardPayment, setCardPayment] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let alive = true;
+    getPineLabsConfig().then((cfg) => { if (alive) setPineLabs(cfg || { enabled: false, departments: [] }); });
+    return () => { alive = false; };
+  }, [isOpen]);
 
   // Helper to parse phone number into code and 10 digits
   const parsePhoneInfo = (rawPhone) => {
@@ -319,6 +335,11 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         updated.price = '';
         setIsCustomPackage(false);
         setIsCustomMembership(false);
+        // The new department may not have a card machine; don't leave the
+        // form asking for one that does not exist.
+        if (updated.paymentMode === PINE_LABS && !(pineLabs.departments || []).includes(value)) {
+          updated.paymentMode = 'Cash';
+        }
       }
       if (field === 'price') {
         updated.basePrice = value;
@@ -487,6 +508,20 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
       paymentRef: trimmedRef
     };
 
+    // A card sale is not a sale until the terminal approves it, so the form
+    // stays open behind the payment window and is only cleared on approval.
+    if (payload.paymentMode === PINE_LABS && !editSale) {
+      setCardPayment({ payload });
+      setSubmitting(false);
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    await finishSubmit(payload);
+  };
+
+  // Clears the form, closes the modal and hands the sale up to be saved.
+  const finishSubmit = async (payload) => {
     // Close the modal window IMMEDIATELY
     onClose();
     setForm({ ...initialFormState });
@@ -508,6 +543,14 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   };
 
   if (!isOpen) return null;
+
+  // Cash is always possible. The card machine is offered only for a new sale
+  // at a counter that has a terminal: an existing sale cannot be switched to
+  // card after the fact, because no card was ever presented for it.
+  const cardOffered = Boolean(pineLabs.enabled && !editSale && (pineLabs.departments || []).includes(form.serviceKey));
+  const paymentModeOptions = cardOffered
+    ? PAYMENT_MODES
+    : Array.from(new Set(['Cash', form.paymentMode].filter(Boolean)));
 
   const inputClass = 'w-full p-2.5 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none transition-all bg-white';
   const labelClass = 'block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wide';
@@ -1103,6 +1146,29 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
           </div>
         </form>
       </div>
+
+      {/* The customer is at the card machine; the sale is saved on approval. */}
+      <PineLabsPaymentModal
+        isOpen={Boolean(cardPayment)}
+        amount={cardPayment?.payload?.price || 0}
+        source="offline-sale"
+        departmentKey={cardPayment?.payload?.serviceKey}
+        customerName={cardPayment?.payload?.customerName}
+        phone={cardPayment?.payload?.phone}
+        vehicleNo={cardPayment?.payload?.vehicleNo}
+        pollTimeoutMs={pineLabs.pollTimeoutMs}
+        onPaid={async (payment) => {
+          const pending = cardPayment;
+          setCardPayment(null);
+          if (pending) await finishSubmit({ ...pending.payload, pineLabsTxnRef: payment.txnRef });
+        }}
+        onCancel={() => setCardPayment(null)}
+        onPayCash={async () => {
+          const pending = cardPayment;
+          setCardPayment(null);
+          if (pending) await finishSubmit({ ...pending.payload, paymentMode: 'Cash' });
+        }}
+      />
     </div>,
     document.body
   );

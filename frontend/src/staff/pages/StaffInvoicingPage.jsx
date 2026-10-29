@@ -15,6 +15,11 @@ import { Link } from 'react-router-dom';
 import { defaultCalculationSettings, formatINR } from '../../admin/common/utils/calculationUtils';
 import { downloadReceiptPdf, copyReceiptImageToClipboard, getReceiptPdfBlob } from '../../common/utils/receiptPdfGenerator';
 import { getInvoiceWhatsAppConfig, renderInvoiceTemplate, sendInvoiceOnWhatsApp, whatsappNumber } from '../../common/services/whatsappInvoiceService';
+import PineLabsPaymentModal from '../../common/components/PineLabsPaymentModal';
+import { getPineLabsConfig } from '../../common/services/pineLabsService';
+
+// The card option's label, spelled the same here, in the API and on the receipt.
+const PINE_LABS = 'Pine Labs';
 
 // Helper function to extract pure admin-configured services & packages from DB / cached service object
 const extractAdminServices = (serviceData) => {
@@ -353,7 +358,12 @@ export default function StaffInvoicingPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState('UPI');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  // The card machine is only offered once the backend says it is set up and
+  // this department has a terminal of its own -- billing a card on another
+  // counter's machine is worse than not offering the button at all.
+  const [pineLabs, setPineLabs] = useState({ enabled: false, departments: [], pollTimeoutMs: 150000 });
+  const [cardPayment, setCardPayment] = useState(null);
   const [includeGst, setIncludeGst] = useState(false); // Default: Without GST
   const [generatedInvoice, setGeneratedInvoice] = useState(null);
   const receiptRef = useRef(null);
@@ -375,6 +385,12 @@ export default function StaffInvoicingPage() {
   useEffect(() => {
     let alive = true;
     getInvoiceWhatsAppConfig().then((cfg) => { if (alive) setWaApi(cfg || { enabled: false }); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    getPineLabsConfig().then((cfg) => { if (alive) setPineLabs(cfg || { enabled: false, departments: [] }); });
     return () => { alive = false; };
   }, []);
 
@@ -559,6 +575,17 @@ export default function StaffInvoicingPage() {
   const isIgst = calcSettings?.taxType === 'igst';
   const sacCode = calcSettings?.categorySacCodes?.[currentDeptKey] || '998714';
 
+  // Cash is always possible; the card machine only when this counter has one.
+  const cardOffered = Boolean(pineLabs.enabled && (pineLabs.departments || []).includes(currentDeptKey));
+  const paymentOptions = cardOffered ? ['Cash', PINE_LABS] : ['Cash'];
+
+  // Switching to a department with no terminal must not leave the form set to
+  // a payment method it can no longer take.
+  useEffect(() => {
+    if (!cardOffered && paymentMethod === PINE_LABS) setPaymentMethod('Cash');
+  }, [cardOffered, paymentMethod]);
+
+
   const subtotal = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
   const discountAmount = appliedDiscount;
   const netAmount = Math.max(0, subtotal - discountAmount);
@@ -656,12 +683,34 @@ export default function StaffInvoicingPage() {
       pan: calcSettings?.pan || 'AABCT8742L',
       registeredAddress: calcSettings?.registeredAddress || '1173/82, Southern Peripheral Rd, next to Sportscube, Darbaripur, Sector 75, Gurugram, Haryana 122101'
     };
-    // Save to MongoDB first; the invoice number is allocated by the server.
+    if (paymentMethod === PINE_LABS) {
+      // Nothing is billed until the terminal approves: the modal calls back
+      // with the approved payment and the invoice is written then.
+      setCardPayment({ inv });
+      return;
+    }
+    await finalizeInvoice(inv, null);
+  };
+
+  // Writes the invoice, issues the warranty and shows the receipt. Split out
+  // of the submit handler because a card sale only reaches this point after
+  // the Pine Labs terminal has approved the money.
+  const finalizeInvoice = async (inv, payment) => {
+    if (payment) {
+      inv.cardDetails = {
+        cardType: payment.cardType,
+        last4: payment.cardLast4,
+        approvalCode: payment.approvalCode,
+        rrn: payment.rrn
+      };
+      inv.pineLabsTxnRef = payment.txnRef;
+    }
     try {
       const res = await apiClient.post('/invoices', {
         ...inv,
         customerId: currentCust._id || currentCust.id,
-        customerEmail: currentCust.email || ''
+        customerEmail: currentCust.email || '',
+        pineLabsTxnRef: payment?.txnRef || ''
       });
       inv.id = res.data.invoice.invoiceNo;
       inv.date = new Date(res.data.invoice.createdAt).toLocaleString();
@@ -1120,8 +1169,8 @@ export default function StaffInvoicingPage() {
         {/* Payment Options */}
         <div>
           <label className="block text-xs font-bold text-gray-700 mb-1">Payment Method</label>
-          <div className="grid grid-cols-3 gap-2">
-            {['UPI', 'Card', 'Cash'].map(m => (
+          <div className={`grid gap-2 ${cardOffered ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {paymentOptions.map(m => (
               <button
                 key={m}
                 type="button"
@@ -1132,6 +1181,14 @@ export default function StaffInvoicingPage() {
               </button>
             ))}
           </div>
+          {paymentMethod === PINE_LABS && (
+            <p className="text-[10px] text-gray-500 mt-1">
+              The amount is sent to the {currentDeptLabel} card machine. The invoice is saved only once it is approved.
+            </p>
+          )}
+          {!cardOffered && pineLabs.enabled && (
+            <p className="text-[10px] text-gray-400 mt-1">No Pine Labs terminal is set up for {currentDeptLabel}.</p>
+          )}
         </div>
 
         <button
@@ -1236,6 +1293,20 @@ export default function StaffInvoicingPage() {
               <span>Total Paid ({generatedInvoice.paymentMethod}):</span>
               <span className="text-amber-700">₹{generatedInvoice.total.toFixed(2)}</span>
             </div>
+
+            {/* A card payment has to be traceable back to the terminal years
+                later, so the approval details are printed, not just shown. */}
+            {generatedInvoice.cardDetails && (
+              <div className="pt-1 text-[10px] text-gray-500 text-right space-y-0.5">
+                <div>
+                  {[generatedInvoice.cardDetails.cardType, generatedInvoice.cardDetails.last4 && `••••${generatedInvoice.cardDetails.last4}`]
+                    .filter(Boolean)
+                    .join(' ')}
+                </div>
+                {generatedInvoice.cardDetails.approvalCode && <div>Auth {generatedInvoice.cardDetails.approvalCode}</div>}
+                {generatedInvoice.cardDetails.rrn && <div>RRN {generatedInvoice.cardDetails.rrn}</div>}
+              </div>
+            )}
           </div>
 
           {/* Warranty certificate block — only present on detailing invoices */}
@@ -1513,8 +1584,34 @@ export default function StaffInvoicingPage() {
           </div>
         </div>
       )}
+
+      {/* The customer is at the card machine; the invoice is written on approval. */}
+      <PineLabsPaymentModal
+        isOpen={Boolean(cardPayment)}
+        amount={cardPayment?.inv?.total || 0}
+        source="invoice"
+        departmentKey={currentDeptKey}
+        customerName={cardPayment?.inv?.customerName}
+        phone={cardPayment?.inv?.phone}
+        vehicleNo={cardPayment?.inv?.vehicleNo}
+        staffName={currentStaff?.name || ''}
+        pollTimeoutMs={pineLabs.pollTimeoutMs}
+        onPaid={async (payment) => {
+          const pending = cardPayment;
+          setCardPayment(null);
+          if (pending) await finalizeInvoice(pending.inv, payment);
+        }}
+        onCancel={() => {
+          setCardPayment(null);
+          showToast?.('Card payment cancelled — nothing was billed', 'error');
+        }}
+        onPayCash={async () => {
+          const pending = cardPayment;
+          setCardPayment(null);
+          setPaymentMethod('Cash');
+          if (pending) await finalizeInvoice({ ...pending.inv, paymentMethod: 'Cash' }, null);
+        }}
+      />
     </div>
   );
 }
-
-
