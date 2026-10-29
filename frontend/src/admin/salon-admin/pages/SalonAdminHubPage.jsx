@@ -1207,6 +1207,28 @@ export default function SalonAdminHubPage() {
               }},
               { header: 'Booking Date & Time', accessorKey: 'timeSlot', cell: (r) => <span className="text-xs font-medium text-gray-600">{r.timeSlot || (r.date && r.time ? `${r.date} | ${r.time}` : r.date) || 'Today'}</span> },
               { header: 'Total (₹)', accessorKey: 'total', cell: (r) => <span className="font-black text-emerald-700">₹{r.total || r.amount}</span> },
+              { header: 'WhatsApp Reply', accessorKey: 'customerResponse', cell: (r) => {
+                const RESPONSE_BADGES = {
+                  pending: ['Awaiting reply', 'bg-amber-100 text-amber-800'],
+                  confirmed: ['Confirmed', 'bg-emerald-100 text-emerald-800'],
+                  cancelled: ['Cancelled', 'bg-red-100 text-red-800'],
+                  rescheduled: ['Rescheduled', 'bg-blue-100 text-blue-800'],
+                  no_response: ['No response', 'bg-gray-100 text-gray-700']
+                };
+                const badge = RESPONSE_BADGES[r.customerResponse];
+                if (badge) {
+                  const inChat = ['awaiting_reschedule_choice', 'awaiting_day', 'awaiting_slot'].includes(r.chatState);
+                  return (
+                    <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-extrabold ${badge[1]}`}>
+                      {inChat ? 'Rescheduling…' : badge[0]}
+                    </span>
+                  );
+                }
+                if (r.reminderError) {
+                  return <span className="text-[10px] font-semibold text-red-600" title={r.reminderError}>Not sent</span>;
+                }
+                return <span className="text-[10px] font-semibold text-gray-400">—</span>;
+              }},
 
               { header: 'Status', accessorKey: 'status', cell: (r) => (
                 <select

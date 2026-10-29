@@ -3,8 +3,43 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Clock, User, MapPin, ChevronRight, MessageSquare, Receipt } from 'lucide-react';
 
-import { MOCK_BOOKINGS } from '../services/salonApi';
+import apiClient from '../../common/utils/apiClient';
 import { SecondaryButton, Modal, EmptyState } from '../components/salonUI';
+
+// Booking statuses (Confirmed, Client Seated, Completed ...) -> this page's three tabs.
+const DONE_STATUSES = ['Completed', 'Styling Complete', 'Service Completed', 'Served'];
+const tabFor = (status) => {
+  if (status === 'Cancelled') return 'Cancelled';
+  return DONE_STATUSES.includes(status) ? 'Completed' : 'Upcoming';
+};
+
+const readLocalBookings = () => {
+  try {
+    return JSON.parse(localStorage.getItem("salon_bookings") || "[]");
+  } catch (e) {
+    return [];
+  }
+};
+
+// One card shape for server rows and this device's saved copies. The booking
+// page writes timeSlot as "2026-10-23 | 10:00 AM".
+const toCard = (b) => {
+  const slot = String(b.timeSlot || '');
+  const [slotDate, slotTime] = slot.includes('|') ? slot.split('|').map(s => s.trim()) : ['', ''];
+  const legacyStylist = String(b.vehicleNo || '').startsWith('Stylist:') ? b.vehicleNo.slice(8).trim() : '';
+  return {
+    _id: b._id,
+    id: b.bookingId || b.id,
+    package: b.packageName || b.package || b.service || 'Salon Service',
+    status: tabFor(b.status),
+    date: slotDate || b.date || '',
+    time: slotTime || b.time || slot,
+    stylist: b.assignedStaffName || b.stylist || legacyStylist || 'Any Specialist',
+    location: b.location || 'Shine Lounge Salon',
+    price: b.price ?? b.total ?? 0,
+    timeline: b.timeline || []
+  };
+};
 
 export default function SalonMyBookingsPage() {
   const navigate = useNavigate();
@@ -13,10 +48,25 @@ export default function SalonMyBookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  // Load from static mock data + localStorage
+  // Show this device's saved bookings at once, then the account's bookings
+  // from the server, which win for the same id (they carry staff and WhatsApp
+  // updates such as a cancel or a reschedule).
   useEffect(() => {
-    const local = JSON.parse(localStorage.getItem("salon_bookings") || "[]");
-    setBookings([...local, ...MOCK_BOOKINGS]);
+    let active = true;
+    const local = readLocalBookings().map(toCard);
+    setBookings(local);
+
+    apiClient.get('/bookings/my-bookings', { params: { serviceKey: 'salon' } })
+      .then((res) => {
+        if (!active) return;
+        const server = ((res.data && res.data.bookings) || []).map(toCard);
+        const serverIds = new Set(server.map(b => b.id));
+        setBookings([...server, ...local.filter(b => !serverIds.has(b.id))]);
+      })
+      .catch(() => {
+        // Not signed in: only the bookings made on this device are known.
+      });
+    return () => { active = false; };
   }, []);
 
   const filteredBookings = bookings.filter(b => b.status === activeTab);
@@ -207,17 +257,23 @@ export default function SalonMyBookingsPage() {
             <div className="pt-4 border-t border-zinc-100 flex gap-3">
               {selectedBooking.status === "Upcoming" ? (
                 <SecondaryButton
-                  onClick={() => {
-                    const confirmCancel = window.confirm("Are you sure you want to cancel this booking?");
-                    if (confirmCancel) {
-                      // Update in localStorage
-                      const local = JSON.parse(localStorage.getItem("salon_bookings") || "[]");
-                      const updated = local.map(b => b.id === selectedBooking.id ? { ...b, status: "Cancelled" } : b);
-                      localStorage.setItem("salon_bookings", JSON.stringify(updated));
-                      alert("Booking Cancelled.");
-                      setShowDetailsModal(false);
-                      window.location.reload();
+                  onClick={async () => {
+                    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+                    // Cancel on the server first so the salon sees it and the slot is freed.
+                    if (selectedBooking._id) {
+                      try {
+                        await apiClient.put(`/bookings/${selectedBooking._id}`, { status: 'Cancelled' });
+                      } catch (err) {
+                        alert((err.response && err.response.data && err.response.data.message) || 'Could not cancel the booking. Please try again.');
+                        return;
+                      }
                     }
+                    const local = readLocalBookings();
+                    const updated = local.map(b => (b.bookingId || b.id) === selectedBooking.id ? { ...b, status: "Cancelled" } : b);
+                    localStorage.setItem("salon_bookings", JSON.stringify(updated));
+                    setBookings(prev => prev.map(b => b.id === selectedBooking.id ? { ...b, status: 'Cancelled' } : b));
+                    alert("Booking Cancelled.");
+                    setShowDetailsModal(false);
                   }}
                   className="w-full text-red-500 border-red-200 hover:border-red-300 hover:bg-red-50/50 text-xs py-3 rounded-18 font-extrabold"
                 >

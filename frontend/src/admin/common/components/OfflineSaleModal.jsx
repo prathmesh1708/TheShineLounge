@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt, Plus, Trash2 } from 'lucide-react';
+import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt, Plus, Trash2, Banknote, Smartphone } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
 import { toIsoDate } from '../../../common/utils/dateFormat';
@@ -162,6 +162,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const [imageUploads, setImageUploads] = useState(0);
   const [isCustomPackage, setIsCustomPackage] = useState(false);
   const [isCustomMembership, setIsCustomMembership] = useState(false);
+  const [paymentRef, setPaymentRef] = useState('');
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
 
@@ -247,6 +248,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
 
         setIsCustomPackage(Boolean(pName && !DEFAULT_CAR_WASH_PACKAGES.some(p => p.name === pName)));
         setIsCustomMembership(Boolean(mName && !DEFAULT_CAR_WASH_MEMBERSHIPS.some(m => m.name === mName)));
+        const existingRef = (editSale.notes || '').match(/(?:UPI|Card|Payment)\s*Ref:\s*([^|]+)/i)?.[1]?.trim() || editSale.paymentRef || '';
+        setPaymentRef(existingRef);
       } else {
         setForm({ ...initialFormState, vehicles: [{ plateNumber: '', model: '', brand: '', imageUrl: '' }], saleDate: new Date().toISOString().split('T')[0] });
         setCountryCode('+91');
@@ -254,6 +257,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         setCustomCountryCode('');
         setIsCustomPackage(false);
         setIsCustomMembership(false);
+        setPaymentRef('');
       }
     }
   }, [isOpen, editSale]);
@@ -460,6 +464,13 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     const gAmt = form.includeGst ? Math.round((bVal * activeGstRate) / 100) : 0;
     const finalTot = form.includeGst ? bVal + gAmt : bVal;
 
+    const trimmedRef = paymentRef.trim();
+    let finalNotes = (form.notes || '').trim();
+    if (trimmedRef && !finalNotes.toLowerCase().includes(trimmedRef.toLowerCase())) {
+      const refTag = form.paymentMode === 'UPI' ? 'UPI Ref' : form.paymentMode === 'Card' ? 'Card Ref' : 'Payment Ref';
+      finalNotes = finalNotes ? `${finalNotes} | ${refTag}: ${trimmedRef}` : `${refTag}: ${trimmedRef}`;
+    }
+
     const payload = {
       ...form,
       ...(editSale ? { id: editSale.id || editSale.bookingId || editSale._id, saleId: editSale.id || editSale.bookingId || editSale._id } : {}),
@@ -471,7 +482,9 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
       gstRate: form.includeGst ? activeGstRate : 0,
       subtotal: bVal,
       gstAmount: gAmt,
-      price: finalTot
+      price: finalTot,
+      notes: finalNotes,
+      paymentRef: trimmedRef
     };
 
     // Close the modal window IMMEDIATELY
@@ -482,6 +495,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     setCustomCountryCode('');
     setIsCustomPackage(false);
     setIsCustomMembership(false);
+    setPaymentRef('');
 
     try {
       await onSubmit(payload);
@@ -978,15 +992,83 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
               </div>
               <div>
                 <label className={labelClass}>Payment Mode *</label>
+                {/* 1-click Quick Select Buttons for Cash, UPI & Card */}
+                <div className="grid grid-cols-3 gap-1 mb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'Cash')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'Cash'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <Banknote className={`w-3.5 h-3.5 ${form.paymentMode === 'Cash' ? 'text-white' : 'text-emerald-600'}`} />
+                    <span>Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'UPI')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'UPI'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <Smartphone className={`w-3.5 h-3.5 ${form.paymentMode === 'UPI' ? 'text-white' : 'text-purple-600'}`} />
+                    <span>UPI</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'Card')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'Card'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <CreditCard className={`w-3.5 h-3.5 ${form.paymentMode === 'Card' ? 'text-white' : 'text-blue-600'}`} />
+                    <span>Card</span>
+                  </button>
+                </div>
+
+                {/* Dropdown with all payment modes */}
                 <select
                   value={form.paymentMode}
                   onChange={e => handleChange('paymentMode', e.target.value)}
                   className={inputClass}
                 >
-                  {PAYMENT_MODES.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI / QR Code</option>
+                  <option value="Card">Card (Debit / Credit)</option>
+                  <option value="Net Banking">Net Banking</option>
                 </select>
+
+                {/* Optional reference inputs for UPI & Card */}
+                {form.paymentMode === 'UPI' && (
+                  <div className="mt-1.5">
+                    <input
+                      type="text"
+                      value={paymentRef}
+                      onChange={e => setPaymentRef(e.target.value)}
+                      placeholder="UPI UTR / Ref No (optional)"
+                      className="w-full px-2.5 py-1.5 border border-purple-200 bg-purple-50/40 rounded-xl text-xs font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    />
+                    <span className="text-[9px] text-gray-400 mt-0.5 block">Record GPay / PhonePe / Paytm UTR number if available.</span>
+                  </div>
+                )}
+                {form.paymentMode === 'Card' && (
+                  <div className="mt-1.5">
+                    <input
+                      type="text"
+                      value={paymentRef}
+                      onChange={e => setPaymentRef(e.target.value)}
+                      placeholder="Card Slip Auth / Ref No (optional)"
+                      className="w-full px-2.5 py-1.5 border border-blue-200 bg-blue-50/40 rounded-xl text-xs font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                    <span className="text-[9px] text-gray-400 mt-0.5 block">Record POS machine approval code or last 4 card digits.</span>
+                  </div>
+                )}
               </div>
               <div className="sm:col-span-3">
                 <label className={labelClass}>Notes / Remarks</label>

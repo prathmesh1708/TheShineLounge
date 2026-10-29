@@ -57,6 +57,11 @@ connectDB().then(() => {
   if (shouldRunBreakScheduler && require('./common/config/env').WHATSAPP_SENDER_ENABLED) {
     whatsapp.startWhatsAppSender();
   }
+  // Salon booking reminders 30 min before the slot; on Vercel driven by
+  // POST /api/internal/salon-reminders/tick.
+  if (shouldRunBreakScheduler && require('./common/config/env').SALON_REMINDER_ENABLED) {
+    whatsapp.startSalonReminders();
+  }
 });
 
 // CORS Configuration — allow Vercel frontend + localhost dev

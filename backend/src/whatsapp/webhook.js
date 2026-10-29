@@ -5,6 +5,7 @@ const WhatsAppContactPref = require('../models/WhatsAppContactPref');
 const provider = require('./provider');
 const { normalizePhone } = require('./phone');
 const { invalidateContacts } = require('./contacts');
+const { handleSalonReply } = require('./salonReminderChat');
 
 // Meta calls this for delivery receipts and for messages people send to the
 // business number. Mounted ahead of the global JSON parser (see server.js):
@@ -94,6 +95,8 @@ router.post('/', async (req, res) => {
         for (const s of value.statuses || []) await applyStatus(s);
         for (const m of value.messages || []) {
           await applyInbound(m, value.contacts);
+          // Answers to a salon booking reminder (Yes / No / reschedule).
+          await handleSalonReply(m).catch((err) => console.warn('Salon reminder reply failed:', err.message));
           inbound += 1;
         }
       }

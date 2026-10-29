@@ -507,6 +507,12 @@ export const AdminProvider = ({ children }) => {
               membershipValidity: b.membershipValidity || '',
               membershipExpiry: b.membershipExpiry || '',
               vehicleDeregistered: Boolean(b.vehicleDeregistered),
+              // Salon WhatsApp reminder: whether it went out and what the customer answered.
+              reminderSent: Boolean(b.reminderSent),
+              reminderSentAt: b.reminderSentAt || null,
+              reminderError: b.reminderError || '',
+              customerResponse: b.customerResponse || null,
+              chatState: b.chatState || null,
               createdAt: b.createdAt || b.bookedAt || b.date,
               bookedAt: b.bookedAt || b.createdAt
             };

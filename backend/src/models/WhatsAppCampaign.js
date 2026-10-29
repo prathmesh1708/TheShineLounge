@@ -23,8 +23,9 @@ const recipientSchema = new mongoose.Schema({
 const whatsAppCampaignSchema = new mongoose.Schema(
   {
     title: { type: String, trim: true, default: 'Untitled campaign' },
-    // 'hub' = sent from the admin WhatsApp Hub; 'invoice' = a receipt sent from billing.
-    source: { type: String, enum: ['hub', 'invoice'], default: 'hub', index: true },
+    // 'hub' = sent from the admin WhatsApp Hub; 'invoice' = a receipt sent from billing;
+    // 'reminder' = the automatic salon booking reminder.
+    source: { type: String, enum: ['hub', 'invoice', 'reminder'], default: 'hub', index: true },
     invoiceNo: { type: String, default: '' },
     provider: { type: String, default: '' },
     // template = Meta-approved template (works any time);

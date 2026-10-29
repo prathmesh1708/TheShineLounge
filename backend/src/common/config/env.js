@@ -107,5 +107,19 @@ module.exports = {
   WHATSAPP_SENDER_ENABLED: process.env.WHATSAPP_SENDER_ENABLED !== 'false',
   // Shared secret for POST /api/internal/whatsapp/tick; falls back to the
   // break scheduler's secret so one cron job can drive both.
-  WHATSAPP_CRON_SECRET: process.env.WHATSAPP_CRON_SECRET || process.env.BREAK_CRON_SECRET || ''
+  WHATSAPP_CRON_SECRET: process.env.WHATSAPP_CRON_SECRET || process.env.BREAK_CRON_SECRET || '',
+
+  // ── Salon booking reminders (whatsapp/salonReminder.js) ──
+  // Set to 'false' to stop the per-minute reminder scheduler.
+  SALON_REMINDER_ENABLED: process.env.SALON_REMINDER_ENABLED !== 'false',
+  // Minutes before the appointment the reminder goes out (sent within ±1 min).
+  SALON_REMINDER_LEAD_MIN: positiveInt(process.env.SALON_REMINDER_LEAD_MIN, 30),
+  // The approved WhatsApp template that opens the conversation. Its body
+  // variables {{1}}, {{2}} ... are filled from SALON_REMINDER_TEMPLATE_VARS in
+  // order; available keys: name, firstName, time, date, service, stylist, bookingId.
+  SALON_REMINDER_TEMPLATE_NAME: process.env.SALON_REMINDER_TEMPLATE_NAME || 'salon_booking_reminder',
+  SALON_REMINDER_TEMPLATE_LANGUAGE: process.env.SALON_REMINDER_TEMPLATE_LANGUAGE || 'en',
+  SALON_REMINDER_TEMPLATE_CATEGORY: (process.env.SALON_REMINDER_TEMPLATE_CATEGORY || 'UTILITY').toUpperCase(),
+  SALON_REMINDER_TEMPLATE_VARS: (process.env.SALON_REMINDER_TEMPLATE_VARS || 'name,time,service')
+    .split(',').map((v) => v.trim()).filter(Boolean)
 };

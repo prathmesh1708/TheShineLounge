@@ -223,6 +223,57 @@ const bookingSchema = new mongoose.Schema({
   gstAmount: {
     type: Number,
     default: 0
+  },
+  // ── Salon WhatsApp reminder (whatsapp/salonReminder.js) ──
+  // Set only once the reminder actually went out, so a failed send is retried
+  // on the next tick and a restart never sends it twice.
+  reminderSent: {
+    type: Boolean,
+    default: false
+  },
+  reminderSentAt: {
+    type: Date,
+    default: null
+  },
+  // The normalized number the reminder went to; replies are matched on it.
+  reminderPhone: {
+    type: String,
+    default: ''
+  },
+  // Claimed by one scheduler tick while it sends; expires if that tick dies.
+  reminderLockUntil: {
+    type: Date,
+    default: null
+  },
+  // Why the last attempt did not send (no phone, opted out, provider error).
+  reminderError: {
+    type: String,
+    default: ''
+  },
+  // null until a reminder has been sent.
+  customerResponse: {
+    type: String,
+    enum: ['pending', 'confirmed', 'cancelled', 'rescheduled', 'no_response'],
+    default: null
+  },
+  // Where the WhatsApp conversation about this booking stands.
+  chatState: {
+    type: String,
+    enum: ['awaiting_confirmation', 'awaiting_reschedule_choice', 'awaiting_day', 'awaiting_slot', 'done'],
+    default: null
+  },
+  // Options offered during a reschedule, so "2" means what the customer saw.
+  chatContext: {
+    dayOptions: { type: [String], default: undefined },
+    selectedDay: { type: String, default: '' },
+    slotOptions: { type: [String], default: undefined },
+    // Meta retries webhooks; a repeated message id must not advance the chat twice.
+    lastInboundId: { type: String, default: '' },
+    updatedAt: { type: Date, default: null }
+  },
+  rescheduledAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true
@@ -231,6 +282,9 @@ const bookingSchema = new mongoose.Schema({
 bookingSchema.index({ createdAt: -1 });
 bookingSchema.index({ customerEmail: 1, createdAt: -1 });
 bookingSchema.index({ serviceKey: 1, vehicleNoNormalized: 1, createdAt: -1 });
+bookingSchema.index({ serviceKey: 1, date: 1 });
+bookingSchema.index({ reminderPhone: 1, chatState: 1 });
+bookingSchema.index({ chatState: 1 });
 
 bookingSchema.pre('save', function () {
   if (!this.isModified('vehicleNo')) return;
