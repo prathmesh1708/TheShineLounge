@@ -54,6 +54,7 @@ import { isWashRedemptionRecord } from '../../../common/utils/membershipUtils';
 import { formatVehicleName } from '../../../common/services/vehicleService';
 import {
   getServicesSync,
+  getServices,
   saveService,
   updateServicePrice as apiUpdatePrice,
   deleteService as apiDeleteService,
@@ -129,6 +130,9 @@ export default function CarDetailingAdminHubPage() {
 
   useEffect(() => {
     fetchLiveStaff();
+    getServices().then(setDetailingServices).catch(err => {
+      console.warn('Could not load live car-detailing treatments:', err.message);
+    });
     try {
       localStorage.removeItem('shine_car_detailing_bookings');
     } catch (e) {}
@@ -1369,8 +1373,12 @@ export default function CarDetailingAdminHubPage() {
             isOpen={isOfflineSaleModalOpen}
             onClose={() => setIsOfflineSaleModalOpen(false)}
             onSubmit={async (formData) => {
-              if (addOfflineSale) await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
+              if (!addOfflineSale) return null;
+              const sale = await addOfflineSale({ ...formData, serviceKey: 'car-detailing', serviceName: 'Car Detailing' });
+              if (sale) setSelectedInvoiceSale(sale);
+              return sale;
             }}
+            onWarrantyIssued={(warranty, sale, payload) => setSelectedInvoiceSale(prev => ({ ...(prev || sale || {}), ...(payload || {}), warranty }))}
             services={services}
           />
 

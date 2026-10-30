@@ -36,7 +36,7 @@ const getOfflineSales = async (req, res) => {
 // @access  Private (Staff/Admin)
 const createOfflineSale = async (req, res) => {
   try {
-    const { customerName, customerEmail, phone, vehicleNo, vehicleType, vehicles, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes } = req.body;
+    const { customerName, customerEmail, phone, vehicleNo, vehicleType, vehicles, serviceKey, serviceName, packageName, price, subtotal, gstAmount, includeGst, paymentMode, saleDate, saleType, staffId, staffName, notes, petName, petBreed, serviceDetails } = req.body;
 
     if (!customerName || !packageName || price === undefined) {
       return res.status(400).json({
@@ -88,6 +88,9 @@ const createOfflineSale = async (req, res) => {
       vehicleNo: primaryVehicleNo,
       vehicleType: primaryVehicleType,
       vehicles: finalVehicles,
+      petName: petName || '',
+      petBreed: petBreed || '',
+      serviceDetails: serviceDetails || '',
       serviceKey: serviceKey || 'car-wash',
       serviceName: serviceName || 'Car Wash',
       packageName: packageName || 'Single Wash',
@@ -207,7 +210,10 @@ const updateOfflineSale = async (req, res) => {
       membershipExpiry,
       staffId,
       staffName,
-      notes
+      notes,
+      petName,
+      petBreed,
+      serviceDetails
     } = req.body;
 
     const resolvedPackageName = packageName || membershipName;
@@ -245,6 +251,9 @@ const updateOfflineSale = async (req, res) => {
     if (phone !== undefined) sale.phone = phone;
     if (vehicleNo !== undefined) sale.vehicleNo = (vehicleNo || '').toUpperCase().trim();
     if (resolvedVehicleType) sale.vehicleType = resolvedVehicleType;
+    if (petName !== undefined) sale.petName = petName;
+    if (petBreed !== undefined) sale.petBreed = petBreed;
+    if (serviceDetails !== undefined) sale.serviceDetails = serviceDetails;
     if (parsedVehicles !== undefined) sale.vehicles = parsedVehicles;
     if (serviceKey !== undefined) sale.serviceKey = serviceKey;
     if (serviceName !== undefined) sale.serviceName = serviceName;

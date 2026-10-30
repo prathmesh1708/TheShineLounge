@@ -1,4 +1,5 @@
 const CarDetailingModel = require('./carDetailing.model');
+const DetailingService = require('../models/DetailingService');
 
 // In-memory database for testing/mock mode
 const bookingsDb = [];
@@ -61,31 +62,30 @@ const addBooking = async (bookingData) => {
 };
 
 const fetchServices = async () => {
-  return servicesDb;
+  return DetailingService.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
 };
 
 const addService = async (serviceData) => {
-  const item = new CarDetailingModel(serviceData);
-  servicesDb.push(item);
-  return item;
+  const slug = String(serviceData.id || serviceData.name || 'detailing-treatment')
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const id = serviceData.id || `${slug}-${Date.now()}`;
+  return DetailingService.create({ ...serviceData, id, price: Number(serviceData.price) || 0 });
 };
 
 const updateService = async (id, serviceData) => {
-  const index = servicesDb.findIndex(s => s.id === id);
-  if (index !== -1) {
-    servicesDb[index] = { ...servicesDb[index], ...serviceData };
-    return servicesDb[index];
-  }
-  throw new Error('Service not found');
+  const updated = await DetailingService.findOneAndUpdate(
+    { id: String(id), isDeleted: { $ne: true } },
+    { $set: serviceData },
+    { new: true, runValidators: true }
+  );
+  if (!updated) throw new Error('Service not found');
+  return updated;
 };
 
 const deleteService = async (id) => {
-  const index = servicesDb.findIndex(s => s.id === id);
-  if (index !== -1) {
-    const deleted = servicesDb.splice(index, 1);
-    return deleted[0];
-  }
-  throw new Error('Service not found');
+  const deleted = await DetailingService.findOneAndDelete({ id: String(id) });
+  if (!deleted) throw new Error('Service not found');
+  return deleted;
 };
 
 const fetchServiceDetails = async () => {
@@ -93,7 +93,7 @@ const fetchServiceDetails = async () => {
     name: 'CarDetailing Service',
     description: 'Professional car-detailing services and booking platform.',
     isActive: true,
-    servicesCount: servicesDb.length
+    servicesCount: await DetailingService.countDocuments({ isDeleted: { $ne: true } })
   };
 };
 

@@ -209,6 +209,10 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  warrantyNo: {
+    type: String,
+    default: ''
+  },
   membershipValidity: {
     type: String,
     default: ''

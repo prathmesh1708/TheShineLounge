@@ -1,5 +1,7 @@
 const DetailingWarranty = require('../models/DetailingWarranty');
 const WarrantyPeriod = require('../models/WarrantyPeriod');
+const Booking = require('../models/Booking');
+const OfflineSale = require('../models/OfflineSale');
 const { nextSequentialId } = require('../utils/sequentialId');
 const { normalizePlate } = require('../utils/plateNormalizer');
 
@@ -122,6 +124,13 @@ const createWarranty = async (req, res) => {
       terms: String(req.body.terms || ''),
       notes: String(req.body.notes || '')
     });
+
+    if (warranty.sourceId) {
+      await Promise.all([
+        Booking.updateOne({ bookingId: warranty.sourceId }, { $set: { warrantyNo } }),
+        OfflineSale.updateOne({ saleId: warranty.sourceId }, { $set: { warrantyNo } })
+      ]);
+    }
 
     res.status(201).json({ success: true, message: 'Warranty issued', warranty });
   } catch (error) {
