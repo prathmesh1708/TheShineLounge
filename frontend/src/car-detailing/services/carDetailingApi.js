@@ -1,4 +1,6 @@
-// Mock Data for Premium Car Detailing & Car Wash Services
+import apiClient from '../../common/utils/apiClient';
+
+// Default menu is used as a cache/offline fallback. The live catalogue is stored by the backend.
 
 export const SERVICES = [
   {
@@ -500,82 +502,62 @@ export const getServicesSync = () => {
   }
 };
 
-export const getServices = () => Promise.resolve(getServicesSync());
+export const getServices = async () => {
+  try {
+    const response = await apiClient.get('/car-detailing/services');
+    let items = Array.isArray(response.data?.data) ? response.data.data : [];
+    // First admin visit after introducing the shared catalogue migrates the
+    // existing admin browser's menu into MongoDB so staff on other devices see it.
+    if (items.length === 0) {
+      const localItems = getServicesSync();
+      for (const item of localItems) {
+        const saved = await apiClient.post('/car-detailing/services', item);
+        if (saved.data?.data) items.push(saved.data.data);
+      }
+    }
+    if (items.length > 0) {
+      localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(items));
+      notifyDataChange();
+      return items;
+    }
+  } catch (err) {
+    console.warn('Could not load detailing treatments from the server:', err.message);
+  }
+  return getServicesSync();
+};
 
 export const getServiceById = (id) => {
   const allServices = getServicesSync();
   return Promise.resolve(allServices.find(s => s.id === id || s._id === id || s.slug === id));
 };
 
-export const saveService = (serviceData) => {
+export const saveService = async (serviceData) => {
   const currentServices = getServicesSync();
-  const existingIndex = currentServices.findIndex(s => s.id === serviceData.id || (serviceData.id && s.id === serviceData.id));
-
-  let updatedList;
-  if (existingIndex !== -1) {
-    updatedList = [...currentServices];
-    updatedList[existingIndex] = {
-      ...updatedList[existingIndex],
-      ...serviceData
-    };
-  } else {
-    const newId = serviceData.id || serviceData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const newService = {
-      id: newId,
-      name: serviceData.name || 'New Detailing Treatment',
-      category: serviceData.category || 'Paint Protection',
-      price: Number(serviceData.price) || 199,
-      duration: serviceData.duration || '120 mins',
-      rating: Number(serviceData.rating) || 5.0,
-      reviewsCount: Number(serviceData.reviewsCount) || 1,
-      tagline: serviceData.tagline || '',
-      description: serviceData.description || '',
-      image: serviceData.image || 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&q=80&w=800',
-      status: serviceData.status || 'active',
-      features: Array.isArray(serviceData.features) ? serviceData.features : (serviceData.features ? serviceData.features.split('\n').filter(Boolean) : []),
-      inclusions: Array.isArray(serviceData.inclusions) ? serviceData.inclusions : (serviceData.inclusions ? serviceData.inclusions.split('\n').filter(Boolean) : [])
-    };
-    updatedList = [newService, ...currentServices];
-  }
-
-  try {
-    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
-  } catch (e) {
-    console.error('Error saving car detailing services:', e);
-  }
+  const existing = currentServices.find(s => s.id === serviceData.id || s._id === serviceData.id);
+  const response = existing
+    ? await apiClient.put(`/car-detailing/services/${encodeURIComponent(serviceData.id)}`, serviceData)
+    : await apiClient.post('/car-detailing/services', serviceData);
+  const saved = response.data?.data;
+  const updatedList = [saved, ...currentServices.filter(s => s.id !== saved.id && s._id !== saved._id)];
+  localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
   notifyDataChange();
-  return Promise.resolve(updatedList);
+  return updatedList;
 };
 
-export const updateServicePrice = (id, newPrice) => {
+export const updateServicePrice = async (id, newPrice) => {
   const currentServices = getServicesSync();
-  const updatedList = currentServices.map(s => {
-    if (s.id === id || s._id === id) {
-      return { ...s, price: Number(newPrice) };
-    }
-    return s;
-  });
-
-  try {
-    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
-  } catch (e) {
-    console.error('Error updating car detailing price:', e);
-  }
-  notifyDataChange();
-  return Promise.resolve(updatedList);
+  const service = currentServices.find(s => s.id === id || s._id === id);
+  if (!service) return currentServices;
+  return saveService({ ...service, id: service.id || String(id), price: Number(newPrice) });
 };
 
-export const deleteService = (id) => {
+export const deleteService = async (id) => {
   const currentServices = getServicesSync();
+  await apiClient.delete(`/car-detailing/services/${encodeURIComponent(id)}`);
   const updatedList = currentServices.filter(s => s.id !== id && s._id !== id);
-
-  try {
-    localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
-  } catch (e) {
-    console.error('Error deleting car detailing service:', e);
-  }
+  localStorage.setItem(STORAGE_KEY_SERVICES, JSON.stringify(updatedList));
   notifyDataChange();
-  return Promise.resolve(updatedList);
+  return updatedList;
 };
 
 export const getPackagesSync = () => {

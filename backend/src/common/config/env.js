@@ -136,5 +136,19 @@ module.exports = {
   // suggests re-polling every 5-10s up to a merchant-set limit of ~5 minutes.
   PINELABS_POLL_TIMEOUT_MS: positiveInt(process.env.PINELABS_POLL_TIMEOUT_MS, 300000),
   // true = run the full flow without calling Pine Labs (fake approvals).
-  PINELABS_DRY_RUN: process.env.PINELABS_DRY_RUN === 'true'
+  PINELABS_DRY_RUN: process.env.PINELABS_DRY_RUN === 'true',
+
+  // ── Salon booking reminders (whatsapp/salonReminder.js) ──
+  // Set to 'false' to stop the per-minute reminder scheduler.
+  SALON_REMINDER_ENABLED: process.env.SALON_REMINDER_ENABLED !== 'false',
+  // Minutes before the appointment the reminder goes out (sent within ±1 min).
+  SALON_REMINDER_LEAD_MIN: positiveInt(process.env.SALON_REMINDER_LEAD_MIN, 30),
+  // The approved WhatsApp template that opens the conversation. Its body
+  // variables {{1}}, {{2}} ... are filled from SALON_REMINDER_TEMPLATE_VARS in
+  // order; available keys: name, firstName, time, date, service, stylist, bookingId.
+  SALON_REMINDER_TEMPLATE_NAME: process.env.SALON_REMINDER_TEMPLATE_NAME || 'salon_booking_reminder',
+  SALON_REMINDER_TEMPLATE_LANGUAGE: process.env.SALON_REMINDER_TEMPLATE_LANGUAGE || 'en',
+  SALON_REMINDER_TEMPLATE_CATEGORY: (process.env.SALON_REMINDER_TEMPLATE_CATEGORY || 'UTILITY').toUpperCase(),
+  SALON_REMINDER_TEMPLATE_VARS: (process.env.SALON_REMINDER_TEMPLATE_VARS || 'name,time,service')
+    .split(',').map((v) => v.trim()).filter(Boolean)
 };

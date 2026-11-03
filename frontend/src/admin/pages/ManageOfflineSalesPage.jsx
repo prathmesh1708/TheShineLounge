@@ -569,10 +569,11 @@ export default function ManageOfflineSalesPage() {
 
     try {
       if (updateOfflineSale) {
-        await updateOfflineSale(saleId, formData);
+        return await updateOfflineSale(saleId, formData);
       }
     } catch (err) {
       console.error('Error updating offline sale:', err);
+      throw err;
     }
   };
 
@@ -1512,6 +1513,7 @@ export default function ManageOfflineSalesPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleOfflineSaleSubmit}
+        onWarrantyIssued={(warranty, sale, payload) => setSelectedInvoiceSale(prev => ({ ...(prev || sale || {}), ...(payload || {}), warranty }))}
         services={services}
       />
 
@@ -1521,6 +1523,7 @@ export default function ManageOfflineSalesPage() {
           isOpen={Boolean(editingSale)}
           onClose={() => setEditingSale(null)}
           onSubmit={handleEditSaleSubmit}
+          onWarrantyIssued={(warranty, sale, payload) => setSelectedInvoiceSale(prev => ({ ...(prev || sale || {}), ...(payload || {}), warranty }))}
           editSale={editingSale}
           services={services}
         />

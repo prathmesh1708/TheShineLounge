@@ -5,6 +5,7 @@ import apiClient from '../../../common/utils/apiClient';
 import userService from '../../../common/services/userService';
 import {
   isMembershipPackage,
+  isMembershipRecord,
   isWashRedemptionRecord,
   buildMembershipSchedule,
   findMembershipMeta,
@@ -234,7 +235,9 @@ export const AdminProvider = ({ children }) => {
    */
   const deriveMembershipsFromBookings = (allBookings, servicesList) => {
     const bookingList = allBookings || [];
-    const membershipBookings = bookingList.filter(b => isMembershipPackage(b.plan || b.packageName));
+    // Trust the explicit saleType flag, not just the package name -- a typo in
+    // the name must not make a sold membership vanish from this list.
+    const membershipBookings = bookingList.filter(isMembershipRecord);
 
     // Purchases made offline (or before the API call landed) live in localStorage.
     const knownIds = new Set();
@@ -507,6 +510,12 @@ export const AdminProvider = ({ children }) => {
               membershipValidity: b.membershipValidity || '',
               membershipExpiry: b.membershipExpiry || '',
               vehicleDeregistered: Boolean(b.vehicleDeregistered),
+              // Salon WhatsApp reminder: whether it went out and what the customer answered.
+              reminderSent: Boolean(b.reminderSent),
+              reminderSentAt: b.reminderSentAt || null,
+              reminderError: b.reminderError || '',
+              customerResponse: b.customerResponse || null,
+              chatState: b.chatState || null,
               createdAt: b.createdAt || b.bookedAt || b.date,
               bookedAt: b.bookedAt || b.createdAt
             };
@@ -1409,7 +1418,7 @@ export const AdminProvider = ({ children }) => {
       const match = (normPassId && normBId && normPassId === normBId) ||
                     bId === memId ||
                     b.membershipPassId === memId ||
-                    (targetPlate && bPlate && targetPlate === bPlate && isMembershipPackage(b.packageName || b.plan));
+                    (targetPlate && bPlate && targetPlate === bPlate && isMembershipRecord(b));
 
       if (match) {
         const startISO = updatedFields.startDate ? toISODateString(parseFlexibleDate(updatedFields.startDate)) : b.membershipStartDate;

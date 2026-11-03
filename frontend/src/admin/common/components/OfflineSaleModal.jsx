@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt, Plus, Trash2 } from 'lucide-react';
+import { X, ShoppingBag, User, Car, CreditCard, FileText, CheckCircle2, ChevronDown, Receipt, Plus, Trash2, Banknote, Smartphone } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../context/AdminContext';
 import { toIsoDate } from '../../../common/utils/dateFormat';
 import VehicleImagePicker from '../../../common/components/VehicleImagePicker';
 import PineLabsPaymentModal from '../../../common/components/PineLabsPaymentModal';
 import { getPineLabsConfig } from '../../../common/services/pineLabsService';
+import { getWarrantyPeriods, issueWarranty, formatWarrantyDate, previewExpiry } from '../../../car-detailing/services/warrantyApi';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -77,6 +78,9 @@ const initialFormState = {
   vehicleNo: '',
   vehicleModel: '',
   vehicles: [{ plateNumber: '', model: '', brand: '', imageUrl: '' }],
+  petName: '',
+  petBreed: '',
+  serviceDetails: '',
   saleType: 'service',
   packageName: '',
   membershipName: '',
@@ -153,7 +157,7 @@ const extractMemberships = (service, serviceKey) => {
   return list;
 };
 
-export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale = null, services: propsServices = [] }) {
+export default function OfflineSaleModal({ isOpen, onClose, onSubmit, onWarrantyIssued, editSale = null, services: propsServices = [] }) {
   const adminContext = useAdmin();
   const contextServices = adminContext?.services || [];
   const allServices = propsServices.length > 0 ? propsServices : contextServices;
@@ -166,6 +170,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const [imageUploads, setImageUploads] = useState(0);
   const [isCustomPackage, setIsCustomPackage] = useState(false);
   const [isCustomMembership, setIsCustomMembership] = useState(false);
+  const [paymentRef, setPaymentRef] = useState('');
   const [cacheVersion, setCacheVersion] = useState(0);
   const isSubmittingRef = useRef(false);
   // The card machine is only offered once the backend says it is set up and
@@ -173,6 +178,9 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   const [pineLabs, setPineLabs] = useState({ enabled: false, departments: [], pollTimeoutMs: 150000 });
   // Set while the customer is at the terminal; holds the sale waiting on it.
   const [cardPayment, setCardPayment] = useState(null);
+  const [warrantyYears, setWarrantyYears] = useState(0);
+  const [warrantyNote, setWarrantyNote] = useState('');
+  const [warrantyPeriods, setWarrantyPeriods] = useState([]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -180,6 +188,17 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     getPineLabsConfig().then((cfg) => { if (alive) setPineLabs(cfg || { enabled: false, departments: [] }); });
     return () => { alive = false; };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || form.serviceKey !== 'car-detailing') {
+      setWarrantyYears(0);
+      setWarrantyNote('');
+      return;
+    }
+    getWarrantyPeriods().then(setWarrantyPeriods).catch((err) => {
+      console.warn('Could not load detailing warranty periods:', err.message);
+    });
+  }, [isOpen, form.serviceKey]);
 
   // Helper to parse phone number into code and 10 digits
   const parsePhoneInfo = (rawPhone) => {
@@ -218,7 +237,9 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         const sKey = editSale.serviceKey || 'car-wash';
         const sMatch = SERVICE_OPTIONS.find(s => s.key === sKey);
         const sName = editSale.serviceName || (sMatch ? sMatch.serviceName : 'Car Wash');
-        const sType = editSale.saleType || (editSale.membershipName ? 'membership' : 'service');
+        const sType = sKey === 'car-wash'
+          ? (editSale.saleType || (editSale.membershipName ? 'membership' : 'service'))
+          : 'service';
         const pName = editSale.packageName || (sType === 'service' ? editSale.membershipName : '') || '';
         const mName = editSale.membershipName || (sType === 'membership' ? editSale.packageName : '') || '';
 
@@ -248,6 +269,9 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
           vehicleNo: editSale.vehicleNo || editSale.plate || (rawVehicles[0]?.plateNumber || ''),
           vehicleModel: editSale.vehicleModel || editSale.vehicleType || editSale.model || (rawVehicles[0]?.model || ''),
           vehicles: rawVehicles,
+          petName: editSale.petName || '',
+          petBreed: editSale.petBreed || '',
+          serviceDetails: editSale.serviceDetails || '',
           saleType: sType,
           packageName: pName,
           membershipName: mName,
@@ -263,6 +287,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
 
         setIsCustomPackage(Boolean(pName && !DEFAULT_CAR_WASH_PACKAGES.some(p => p.name === pName)));
         setIsCustomMembership(Boolean(mName && !DEFAULT_CAR_WASH_MEMBERSHIPS.some(m => m.name === mName)));
+        const existingRef = (editSale.notes || '').match(/(?:UPI|Card|Payment)\s*Ref:\s*([^|]+)/i)?.[1]?.trim() || editSale.paymentRef || '';
+        setPaymentRef(existingRef);
       } else {
         setForm({ ...initialFormState, vehicles: [{ plateNumber: '', model: '', brand: '', imageUrl: '' }], saleDate: new Date().toISOString().split('T')[0] });
         setCountryCode('+91');
@@ -270,6 +296,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         setCustomCountryCode('');
         setIsCustomPackage(false);
         setIsCustomMembership(false);
+        setPaymentRef('');
       }
     }
   }, [isOpen, editSale]);
@@ -309,6 +336,7 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
   // Derive available packages and memberships for the selected service
   const availablePackages = useMemo(() => extractPlans(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
   const availableMemberships = useMemo(() => extractMemberships(selectedService, form.serviceKey), [selectedService, form.serviceKey]);
+  const membershipAllowed = form.serviceKey === 'car-wash';
 
   const calcSettings = adminContext?.calculationSettings;
   const activeGstRate = Number(
@@ -329,8 +357,28 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         updated.membershipName = '';
         updated.basePrice = '';
         updated.price = '';
+        updated.vehicleNo = '';
+        updated.vehicleModel = '';
+        updated.vehicles = [{ plateNumber: '', model: '', brand: '', imageUrl: '' }];
+        updated.petName = '';
+        updated.petBreed = '';
+        updated.serviceDetails = '';
+        if (value !== 'car-wash') {
+          updated.saleType = 'service';
+          updated.membershipName = '';
+          updated.validityDays = '30';
+        }
+        if (value !== 'car-detailing') {
+          setWarrantyYears(0);
+          setWarrantyNote('');
+        }
         setIsCustomPackage(false);
         setIsCustomMembership(false);
+        // The new department may not have a card machine; don't leave the
+        // form asking for one that does not exist.
+        if (updated.paymentMode === PINE_LABS && !(pineLabs.departments || []).includes(value)) {
+          updated.paymentMode = 'Cash';
+        }
       }
       if (field === 'price') {
         updated.basePrice = value;
@@ -462,7 +510,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
       .filter(v => Boolean(v.plateNumber));
 
     const primaryPlate = cleanVehicles[0]?.plateNumber || (form.vehicleNo || '').toUpperCase().trim();
-    if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || !primaryPlate || !form.price) return;
+    const needsVehicle = ['car-wash', 'car-detailing'].includes(form.serviceKey);
+    if (!form.customerName || !trimmedPhone || trimmedPhone.length !== 10 || (needsVehicle && !primaryPlate) || !form.price) return;
 
     isSubmittingRef.current = true;
     setSubmitting(true);
@@ -476,18 +525,35 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     const gAmt = form.includeGst ? Math.round((bVal * activeGstRate) / 100) : 0;
     const finalTot = form.includeGst ? bVal + gAmt : bVal;
 
+    const trimmedRef = paymentRef.trim();
+    let finalNotes = (form.notes || '').trim();
+    if (trimmedRef && !finalNotes.toLowerCase().includes(trimmedRef.toLowerCase())) {
+      const refTag = form.paymentMode === 'UPI' ? 'UPI Ref' : form.paymentMode === 'Card' ? 'Card Ref' : 'Payment Ref';
+      finalNotes = finalNotes ? `${finalNotes} | ${refTag}: ${trimmedRef}` : `${refTag}: ${trimmedRef}`;
+    }
+
     const payload = {
       ...form,
+      saleType: membershipAllowed ? form.saleType : 'service',
+      packageName: form.saleType === 'membership' && membershipAllowed ? form.membershipName : form.packageName,
+      membershipName: membershipAllowed && form.saleType === 'membership' ? form.membershipName : '',
       ...(editSale ? { id: editSale.id || editSale.bookingId || editSale._id, saleId: editSale.id || editSale.bookingId || editSale._id } : {}),
       vehicleNo: primaryPlate,
       vehicleModel: cleanVehicles[0]?.model || form.vehicleModel || '',
-      vehicles: cleanVehicles.length > 0 ? cleanVehicles : [{ plateNumber: primaryPlate, model: form.vehicleModel || '', brand: '' }],
+      vehicles: ['car-wash', 'car-detailing'].includes(form.serviceKey)
+        ? (cleanVehicles.length > 0 ? cleanVehicles : [{ plateNumber: primaryPlate, model: form.vehicleModel || '', brand: '' }])
+        : [],
+      petName: form.petName,
+      petBreed: form.petBreed,
+      serviceDetails: form.serviceDetails,
       phone: finalPhone,
       includeGst: form.includeGst,
       gstRate: form.includeGst ? activeGstRate : 0,
       subtotal: bVal,
       gstAmount: gAmt,
-      price: finalTot
+      price: finalTot,
+      notes: finalNotes,
+      paymentRef: trimmedRef
     };
 
     // A card sale is not a sale until the terminal approves it, so the form
@@ -512,9 +578,34 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
     setCustomCountryCode('');
     setIsCustomPackage(false);
     setIsCustomMembership(false);
+    setPaymentRef('');
 
     try {
-      await onSubmit(payload);
+      const savedSale = await onSubmit(payload);
+      if (payload.serviceKey === 'car-detailing' && warrantyYears > 0 && (!editSale || (!editSale.warrantyNo && !editSale.warranty))) {
+        try {
+          const saleId = savedSale?.bookingId || savedSale?.saleId || savedSale?.id || payload.saleId || payload.id || '';
+          const warranty = await issueWarranty({
+            sourceType: 'booking',
+            sourceId: saleId,
+            customerName: payload.customerName,
+            customerPhone: payload.phone,
+            customerEmail: payload.customerEmail,
+            vehicleNo: payload.vehicleNo,
+            vehicleModel: payload.vehicleModel,
+            packageName: payload.packageName,
+            years: warrantyYears,
+            amountPaid: payload.price,
+            issuedBy: 'Admin',
+            startDate: payload.saleDate || undefined,
+            notes: warrantyNote
+          });
+          onWarrantyIssued?.(warranty, savedSale, payload);
+          adminContext?.showToast?.(`Warranty ${warranty.warrantyNo} issued through ${formatWarrantyDate(warranty.expiryDate)}`, 'success');
+        } catch (err) {
+          adminContext?.showToast?.(err?.response?.data?.message || 'Sale saved, but the warranty could not be issued', 'error');
+        }
+      }
     } catch (err) {
       console.error('Offline sale submission error:', err);
     } finally {
@@ -696,8 +787,8 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
             </div>
           </div>
 
-          {/* Vehicle Info */}
-          <div>
+          {/* Service specific details */}
+          {['car-wash', 'car-detailing'].includes(form.serviceKey) ? <div>
             <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-3">
               <div className="flex items-center gap-2 text-xs font-black text-gray-900">
                 <Car className="w-4 h-4 text-amber-500" />
@@ -769,17 +860,58 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
                 </div>
               ))}
             </div>
-          </div>
+          </div> : form.serviceKey === 'dog-wash' ? <div>
+            <div className={sectionHeadingClass}><User className="w-4 h-4 text-amber-500" />Pet Details</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className={labelClass}>Pet Name *</label><input required value={form.petName} onChange={e => handleChange('petName', e.target.value)} placeholder="e.g. Bruno" className={inputClass} /></div>
+              <div><label className={labelClass}>Breed</label><input value={form.petBreed} onChange={e => handleChange('petBreed', e.target.value)} placeholder="e.g. Golden Retriever" className={inputClass} /></div>
+            </div>
+          </div> : ['cafe', 'drive-through-cafe'].includes(form.serviceKey) ? <div>
+            <div className={sectionHeadingClass}><FileText className="w-4 h-4 text-amber-500" />Order Details</div>
+            <label className={labelClass}>Items / Order Notes</label>
+            <textarea value={form.serviceDetails} onChange={e => handleChange('serviceDetails', e.target.value)} placeholder="List items and quantities, e.g. 2 Cappuccino, 1 Sandwich" className={`${inputClass} h-20 resize-none`} />
+          </div> : <div>
+            <div className={sectionHeadingClass}><User className="w-4 h-4 text-amber-500" />Salon Service Details</div>
+            <label className={labelClass}>Service / Stylist Details</label>
+            <textarea value={form.serviceDetails} onChange={e => handleChange('serviceDetails', e.target.value)} placeholder="e.g. Haircut and beard trim; stylist name" className={`${inputClass} h-20 resize-none`} />
+          </div>}
+
+          {form.serviceKey === 'car-detailing' && (!editSale || (!editSale.warrantyNo && !editSale.warranty)) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black text-amber-900 uppercase tracking-wide">Detailing Warranty</label>
+                {warrantyYears > 0 && (
+                  <span className="text-[11px] font-black text-emerald-700">
+                    Valid to {formatWarrantyDate(previewExpiry(form.saleDate || new Date(), warrantyYears))}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => setWarrantyYears(0)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${warrantyYears === 0 ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  No Warranty
+                </button>
+                {warrantyPeriods.map(period => (
+                  <button key={period._id || period.years} type="button" onClick={() => setWarrantyYears(period.years)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${warrantyYears === period.years ? 'bg-amber-500 text-white border-amber-500 shadow-xs' : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50'}`}>
+                    {period.label}
+                  </button>
+                ))}
+              </div>
+              {warrantyYears > 0 && <>
+                <input value={warrantyNote} onChange={e => setWarrantyNote(e.target.value)} placeholder="Warranty note (coating type, coverage, conditions)" className="w-full px-3 py-2 rounded-lg border border-amber-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50" />
+                <p className="text-[11px] font-semibold text-amber-800">Cover starts on the sale date. A warranty number is issued when the sale is recorded.</p>
+              </>}
+            </div>
+          )}
 
           {/* Service & Membership */}
           <div>
             <div className={sectionHeadingClass}>
               <CreditCard className="w-4 h-4 text-amber-500" />
-              Package / Membership
+              {membershipAllowed ? 'Package / Membership' : 'Service Pricing'}
             </div>
 
             {/* Sale Type Toggle */}
-            <div className="flex gap-2 mb-3">
+            {membershipAllowed && <div className="flex gap-2 mb-3">
               {SALE_TYPES.map(t => (
                 <button
                   key={t.value}
@@ -795,9 +927,9 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
                   {t.label}
                 </button>
               ))}
-            </div>
+            </div>}
 
-            {form.saleType === 'service' ? (
+            {!membershipAllowed || form.saleType === 'service' ? (
               <div className="space-y-3">
                 <div>
                   <label className={labelClass}>Select Package *</label>
@@ -1016,6 +1148,47 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
               </div>
               <div>
                 <label className={labelClass}>Payment Mode *</label>
+                {/* 1-click Quick Select Buttons for Cash, UPI & Card */}
+                <div className="grid grid-cols-3 gap-1 mb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'Cash')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'Cash'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <Banknote className={`w-3.5 h-3.5 ${form.paymentMode === 'Cash' ? 'text-white' : 'text-emerald-600'}`} />
+                    <span>Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'UPI')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'UPI'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <Smartphone className={`w-3.5 h-3.5 ${form.paymentMode === 'UPI' ? 'text-white' : 'text-purple-600'}`} />
+                    <span>UPI</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('paymentMode', 'Card')}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      form.paymentMode === 'Card'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-xs ring-1 ring-amber-400'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <CreditCard className={`w-3.5 h-3.5 ${form.paymentMode === 'Card' ? 'text-white' : 'text-blue-600'}`} />
+                    <span>Card</span>
+                  </button>
+                </div>
+
+                {/* Dropdown with all payment modes */}
                 <select
                   value={form.paymentMode}
                   onChange={e => handleChange('paymentMode', e.target.value)}

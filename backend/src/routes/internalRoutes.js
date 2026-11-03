@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { BREAK_CRON_SECRET, WHATSAPP_CRON_SECRET } = require('../common/config/env');
 const { runBreakSchedulerTick } = require('../services/breakScheduler');
 const { runWhatsAppSenderTick } = require('../whatsapp/sender');
+const { runSalonReminderTick } = require('../whatsapp/salonReminder');
 
 const router = express.Router();
 
@@ -44,6 +45,21 @@ router.post('/whatsapp/tick', async (req, res) => {
     return res.status(200).json({ success: true, ...summary });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'WhatsApp tick failed' });
+  }
+});
+
+// Salon booking reminders, for serverless deployments. Needs a per-minute
+// cron; uses the WhatsApp cron secret.
+router.post('/salon-reminders/tick', async (req, res) => {
+  if (!WHATSAPP_CRON_SECRET) return res.status(404).json({ success: false, message: 'Not found' });
+  if (!secretMatches(req.headers['x-cron-secret'], WHATSAPP_CRON_SECRET)) {
+    return res.status(401).json({ success: false, message: 'Invalid cron secret' });
+  }
+  try {
+    const summary = await runSalonReminderTick(new Date());
+    return res.status(200).json({ success: true, ...summary });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Salon reminder tick failed' });
   }
 });
 

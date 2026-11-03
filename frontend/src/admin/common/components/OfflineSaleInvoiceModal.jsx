@@ -1,17 +1,20 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Loader2, Printer } from 'lucide-react';
+import { X, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import ReceiptDocument, { formatReceiptDate, getReceiptValidityRange } from '../../../common/components/ReceiptDocument';
 import { downloadReceiptPdf, printReceiptDocument } from '../../../common/utils/receiptPdfGenerator';
 import {
   getInvoiceWhatsAppConfig, sendReceiptOnWhatsApp, renderReceiptTemplate, saleTemplateValues, whatsappNumber
 } from '../../../common/services/whatsappInvoiceService';
+import { getWarranties, formatWarrantyDate } from '../../../car-detailing/services/warrantyApi';
 
 
 export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
   const receiptRef = useRef(null);
+  const warrantyRef = useRef(null);
   const isProcessingRef = useRef(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [resolvedWarranty, setResolvedWarranty] = useState(sale?.warranty || null);
 
   const handlePrint = async () => {
     if (!receiptRef.current || isPrinting) return;
@@ -20,6 +23,32 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
       await printReceiptDocument(receiptRef.current);
     } catch (err) {
       console.error('Print error:', err);
+      window.print();
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleDownloadWarranty = async () => {
+    if (!warrantyRef.current || !resolvedWarranty || isGeneratingPdf) return;
+    try {
+      setIsGeneratingPdf(true);
+      await downloadReceiptPdf(warrantyRef.current, `Warranty-${resolvedWarranty.warrantyNo}.pdf`);
+    } catch (err) {
+      console.error('Warranty PDF error:', err);
+      window.print();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handlePrintWarranty = async () => {
+    if (!warrantyRef.current || !resolvedWarranty || isPrinting) return;
+    try {
+      setIsPrinting(true);
+      await printReceiptDocument(warrantyRef.current);
+    } catch (err) {
+      console.error('Warranty print error:', err);
       window.print();
     } finally {
       setIsPrinting(false);
@@ -54,11 +83,22 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
 
   useEffect(() => {
     setTargetPhone(getInitialPhone());
+    setResolvedWarranty(sale?.warranty || null);
     setPhoneError('');
     setStatusNotice(null);
     setDirectError('');
     setShowWhatsAppModal(false);
   }, [sale]);
+
+  useEffect(() => {
+    if (!isOpen || !sale || sale.serviceKey !== 'car-detailing' || sale.warranty || resolvedWarranty) return;
+    const search = sale.warrantyNo || sale.bookingId || sale.saleId || sale.id || '';
+    if (!search) return;
+    getWarranties({ search }).then(items => {
+      const found = items.find(item => item.warrantyNo === sale.warrantyNo || String(item.sourceId) === String(search));
+      if (found) setResolvedWarranty(found);
+    }).catch(err => console.warn('Could not load sale warranty:', err.message));
+  }, [isOpen, sale, resolvedWarranty]);
 
   // The row's "WhatsApp" button opens this modal with autoOpenWhatsApp: send
   // right away once the receipt has painted (it is what becomes the PDF).
@@ -184,6 +224,11 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
+            {resolvedWarranty && (
+              <button onClick={handleDownloadWarranty} disabled={isGeneratingPdf} className="hidden sm:flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60" title="Download the car detailing warranty card">
+                <ShieldCheck className="h-4 w-4" /> Warranty Card
+              </button>
+            )}
             {/* Print Invoice Button */}
             <button
               onClick={handlePrint}
@@ -266,6 +311,43 @@ export default function OfflineSaleInvoiceModal({ isOpen, onClose, sale }) {
           >
             <ReceiptDocument ref={receiptRef} sale={sale} />
           </div>
+          {resolvedWarranty && (
+            <div className="mx-auto mt-5 max-w-[680px] space-y-3">
+              <div className="flex justify-end gap-2">
+                <button onClick={handlePrintWarranty} disabled={isPrinting} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60">
+                  <Printer className="h-4 w-4" /> Print Warranty Card
+                </button>
+                <button onClick={handleDownloadWarranty} disabled={isGeneratingPdf} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-60">
+                  {isGeneratingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download Warranty PDF
+                </button>
+              </div>
+              <div ref={warrantyRef} className="overflow-hidden rounded-3xl border-[10px] border-amber-100 bg-gradient-to-br from-[#fffaf0] via-white to-[#fff3d5] p-7 text-slate-900 shadow-lg">
+                <div className="flex items-start justify-between gap-4 border-b border-amber-200 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-600 text-white"><ShieldCheck className="h-6 w-6" /></div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">The Shine Lounge</p>
+                      <h2 className="text-xl font-black">Car Detailing Warranty</h2>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Warranty No.</p>
+                    <p className="font-mono text-sm font-black text-amber-800">{resolvedWarranty.warrantyNo}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-5">
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Customer</p><p className="mt-1 text-sm font-extrabold">{resolvedWarranty.customerName || sale.customerName || '—'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Vehicle Registration</p><p className="mt-1 font-mono text-sm font-extrabold">{resolvedWarranty.vehicleNo || sale.vehicleNo || '—'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Treatment</p><p className="mt-1 text-sm font-extrabold">{resolvedWarranty.packageName || sale.packageName || 'Car Detailing'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Coverage</p><p className="mt-1 text-sm font-extrabold">{resolvedWarranty.years} year{Number(resolvedWarranty.years) === 1 ? '' : 's'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Valid From</p><p className="mt-1 text-sm font-bold">{formatWarrantyDate(resolvedWarranty.startDate)}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Valid Until</p><p className="mt-1 text-sm font-black text-emerald-700">{formatWarrantyDate(resolvedWarranty.expiryDate)}</p></div>
+                </div>
+                {resolvedWarranty.notes && <p className="border-t border-amber-200 pt-3 text-xs font-medium leading-relaxed text-slate-600">{resolvedWarranty.notes}</p>}
+                <p className="border-t border-amber-200 pt-3 text-[10px] font-semibold text-slate-500">Present this warranty number with the vehicle registration when requesting warranty service.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bottom Control Bar */}

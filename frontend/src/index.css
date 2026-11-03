@@ -89,12 +89,15 @@
 [data-theme="dark"] .bg-zinc-50,
 [data-theme="dark"] .bg-slate-50,
 [data-theme="dark"] .bg-gray-50,
-[data-theme="dark"] .bg-gray-100 {
+[data-theme="dark"] .bg-gray-100,
+/* The salon pages' cream panels: their text turns white in dark mode too. */
+[data-theme="dark"] .bg-\[\#FAF9F6\] {
   background-color: #15171D !important;
   color: #FFFFFF !important;
   border-color: #2A2E36 !important;
 }
 
+[data-theme="dark"] .text-zinc-700,
 [data-theme="dark"] .text-zinc-800,
 [data-theme="dark"] .text-zinc-900,
 [data-theme="dark"] .text-slate-800,

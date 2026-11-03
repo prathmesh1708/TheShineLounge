@@ -88,6 +88,17 @@ const extractAdminServices = (serviceData) => {
   return list;
 };
 
+const extractDetailingTreatments = (items) => (Array.isArray(items) ? items : [])
+  .filter(item => item && item.status !== 'inactive' && item.isDeleted !== true)
+  .map((item, index) => ({
+    id: item.id || item._id || `detailing-${index}`,
+    name: String(item.name || item.title || '').trim(),
+    price: Number(item.price) || 0,
+    description: item.description || '',
+    type: 'treatment'
+  }))
+  .filter(item => item.name);
+
 // Helper to read cached service data for a department slug
 const getCachedServiceData = (deptSlug) => {
   try {
@@ -252,15 +263,26 @@ export default function StaffInvoicingPage() {
 
     // 2. Fetch live data from backend database
     try {
-      const res = await serviceApi.getServiceBySlug(currentDeptKey);
-      if (res?.success && res.service) {
-        const liveItems = extractAdminServices(res.service);
+      if (currentDeptKey === 'car-detailing') {
+        const res = await apiClient.get('/car-detailing/services');
+        const liveItems = extractDetailingTreatments(res?.data?.data);
         if (liveItems.length > 0) {
           setDeptServices(liveItems);
           try {
-            const storageKey = `tsl_${currentDeptKey.replace(/-/g, '_')}_service`;
-            localStorage.setItem(storageKey, JSON.stringify(res.service));
+            localStorage.setItem('shine_car_detailing_services', JSON.stringify(res.data.data));
           } catch (e) {}
+        }
+      } else {
+        const res = await serviceApi.getServiceBySlug(currentDeptKey);
+        if (res?.success && res.service) {
+          const liveItems = extractAdminServices(res.service);
+          if (liveItems.length > 0) {
+            setDeptServices(liveItems);
+            try {
+              const storageKey = `tsl_${currentDeptKey.replace(/-/g, '_')}_service`;
+              localStorage.setItem(storageKey, JSON.stringify(res.service));
+            } catch (e) {}
+          }
         }
       }
     } catch (err) {
