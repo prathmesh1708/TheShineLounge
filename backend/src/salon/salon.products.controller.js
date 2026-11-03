@@ -2,6 +2,10 @@ const SalonProduct = require('../models/SalonProduct');
 const SalonProductSale = require('../models/SalonProductSale');
 const SalonProductOption = require('../models/SalonProductOption');
 const { nextSequentialId } = require('../utils/sequentialId');
+const pineLabs = require('../payments/pinelabs').service;
+
+// The one spelling of the card option that the UI and the API agree on.
+const PINE_LABS = 'Pine Labs';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -344,6 +348,19 @@ const createProductSale = async (req, res) => {
     const gstAmount = includeGst ? round2((taxable * gstRate) / 100) : 0;
     const total = round2(taxable + gstAmount);
 
+    // A card sale may only be billed against a payment the terminal actually
+    // approved, for the amount it approved. Checked before the bill number is
+    // allocated; the stock rollback in the catch below covers the items already
+    // decremented if this throws.
+    let payment = null;
+    if (String(req.body.paymentMode || '') === PINE_LABS) {
+      payment = await pineLabs.verifyForSale({
+        txnRef: req.body.pineLabsTxnRef,
+        amount: total,
+        source: 'salon-pos'
+      });
+    }
+
     const billNo = await nextSequentialId(SalonProductSale, {
       field: 'billNo',
       prefix: 'SAL-BILL-',
@@ -365,10 +382,31 @@ const createProductSale = async (req, res) => {
       gstAmount,
       total,
       paymentMode: req.body.paymentMode || 'Cash',
+      paymentStatus: 'paid',
+      pineLabsTxnRef: payment ? payment.txnRef : '',
+      ...(payment
+        ? {
+            cardDetails: {
+              cardType: payment.cardType,
+              last4: payment.cardLast4,
+              approvalCode: payment.approvalCode,
+              rrn: payment.rrn,
+              acquirerName: payment.acquirerName
+            }
+          }
+        : {}),
       soldBy: req.body.soldBy || (req.user && req.user.fullName) || '',
       soldById: (req.user && req.user._id) || null,
       notes: String(req.body.notes || '')
     });
+
+    // Point the card payment at the bill it paid for, so the same approval can
+    // never be quoted on a second bill.
+    if (payment) {
+      await pineLabs
+        .consumeForSale({ txnRef: payment.txnRef, amount: sale.total, source: 'salon-pos', sourceId: sale.billNo })
+        .catch(() => {});
+    }
 
     res.status(201).json({ success: true, message: 'Bill created', sale });
   } catch (error) {

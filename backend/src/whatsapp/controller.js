@@ -60,6 +60,8 @@ exports.getStatus = async (req, res) => {
       user: env.BHASHSMS_USER,
       sender: env.BHASHSMS_SENDER,
       baseUrl: env.BHASHSMS_BASE_URL,
+      businessCode: env.BHASHSMS_BUSINESS_CODE || 'BSLB00494',
+      version: env.BHASHSMS_VERSION || 'v2',
       credentialsSet: provider.bhashsms.isConfigured(),
       balance: '',
       balanceError: ''
@@ -244,6 +246,7 @@ const syncBhashTemplates = async () => {
       metaStatus: r.status,
       rejectedReason: r.rejectedReason || '',
       headerType: r.headerType,
+      metaTemplateId: r.metaTemplateId || r.templateCode || '',
       lastSyncedAt: new Date()
     };
     if (r.category) fields.category = r.category;
@@ -256,6 +259,13 @@ const syncBhashTemplates = async () => {
       Object.assign(local, fields);
       local.variableMap = variableMapFor(local.body, local.variableMap);
       await local.save();
+      // If no approved template currently has invoice purpose, claim it for this approved invoice
+      if (local.metaStatus === 'APPROVED' && local.headerType === 'document' && /invoice|receipt|bill/i.test(local.name)
+        && !(await WhatsAppTemplate.exists({ purpose: 'invoice', metaStatus: 'APPROVED' }))) {
+        local.purpose = 'invoice';
+        await local.save();
+        await claimInvoicePurpose(local);
+      }
       updated += 1;
     } else {
       const body = r.body || r.name;
@@ -270,10 +280,11 @@ const syncBhashTemplates = async () => {
         createdBy: 'bhashsms-sync'
       });
       // First approved PDF invoice template becomes the receipt template.
-      if (created.headerType === 'document' && /invoice|receipt|bill/i.test(created.name)
-        && !(await WhatsAppTemplate.exists({ purpose: 'invoice' }))) {
+      if (created.metaStatus === 'APPROVED' && created.headerType === 'document' && /invoice|receipt|bill/i.test(created.name)
+        && !(await WhatsAppTemplate.exists({ purpose: 'invoice', metaStatus: 'APPROVED' }))) {
         created.purpose = 'invoice';
         await created.save();
+        await claimInvoicePurpose(created);
       }
       imported += 1;
     }
@@ -373,6 +384,9 @@ exports.updateTemplate = async (req, res) => {
   if (template.provider === 'bhashsms') {
     // A registration mirrors the BhashSMS panel; fix it freely if it was typed wrong.
     if (req.body.name !== undefined) template.name = String(req.body.name).trim();
+    if (req.body.metaStatus && ['APPROVED', 'PENDING', 'REJECTED', 'DISABLED'].includes(req.body.metaStatus)) {
+      template.metaStatus = req.body.metaStatus;
+    }
     Object.assign(template, pickTemplateFields(req.body));
     const error = validateRegisteredTemplate(template);
     if (error) return fail(res, 400, error);
@@ -622,6 +636,7 @@ const buildCampaign = async (body, req) => {
     Object.assign(doc, {
       templateId: t._id,
       templateName: t.name,
+      templateCode: t.metaTemplateId || '',
       templateCategory: t.category,
       templateLanguage: t.language,
       variableMap: t.variableMap || [],

@@ -36,7 +36,7 @@ const pineLabsTransactionSchema = new mongoose.Schema(
 
     // What this attempt was paying for. sourceId stays empty until the
     // invoice/sale is written, which only happens on approval.
-    source: { type: String, enum: ['invoice', 'offline-sale'], required: true },
+    source: { type: String, enum: ['invoice', 'offline-sale', 'salon-pos'], required: true },
     sourceId: { type: String, default: '', index: true },
 
     staffId: { type: String, default: '' },

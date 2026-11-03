@@ -575,15 +575,11 @@ export default function StaffInvoicingPage() {
   const isIgst = calcSettings?.taxType === 'igst';
   const sacCode = calcSettings?.categorySacCodes?.[currentDeptKey] || '998714';
 
-  // Cash is always possible; the card machine only when this counter has one.
-  const cardOffered = Boolean(pineLabs.enabled && (pineLabs.departments || []).includes(currentDeptKey));
-  const paymentOptions = cardOffered ? ['Cash', PINE_LABS] : ['Cash'];
-
-  // Switching to a department with no terminal must not leave the form set to
-  // a payment method it can no longer take.
-  useEffect(() => {
-    if (!cardOffered && paymentMethod === PINE_LABS) setPaymentMethod('Cash');
-  }, [cardOffered, paymentMethod]);
+  // Both options are always offered: staff should never wonder where the card
+  // button went. Whether THIS counter's terminal is actually reachable is the
+  // server's call, and it says so in the payment window rather than here.
+  const paymentOptions = ['Cash', PINE_LABS];
+  const cardReady = Boolean(pineLabs.enabled && (pineLabs.departments || []).includes(currentDeptKey));
 
 
   const subtotal = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
@@ -1169,7 +1165,7 @@ export default function StaffInvoicingPage() {
         {/* Payment Options */}
         <div>
           <label className="block text-xs font-bold text-gray-700 mb-1">Payment Method</label>
-          <div className={`grid gap-2 ${cardOffered ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="grid grid-cols-2 gap-2">
             {paymentOptions.map(m => (
               <button
                 key={m}
@@ -1186,8 +1182,10 @@ export default function StaffInvoicingPage() {
               The amount is sent to the {currentDeptLabel} card machine. The invoice is saved only once it is approved.
             </p>
           )}
-          {!cardOffered && pineLabs.enabled && (
-            <p className="text-[10px] text-gray-400 mt-1">No Pine Labs terminal is set up for {currentDeptLabel}.</p>
+          {paymentMethod === PINE_LABS && !cardReady && (
+            <p className="text-[10px] text-amber-600 mt-1">
+              No Pine Labs terminal is set up for {currentDeptLabel} yet — the card step will say what is missing.
+            </p>
           )}
         </div>
 

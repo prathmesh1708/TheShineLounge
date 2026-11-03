@@ -99,7 +99,7 @@ const initiate = async ({ amount, source, departmentKey, staffId, staffName, cus
   if (!Number.isFinite(value) || value <= 0) {
     throw new PaymentError('A payment amount is required.');
   }
-  if (!['invoice', 'offline-sale'].includes(source)) {
+  if (!['invoice', 'offline-sale', 'salon-pos'].includes(source)) {
     throw new PaymentError('Unknown payment source.');
   }
   if (!provider.isConfigured()) {
@@ -154,7 +154,7 @@ const initiate = async ({ amount, source, departmentKey, staffId, staffName, cus
     txn.rawResponse = err.raw || null;
     txn.completedAt = new Date();
     await txn.save();
-    throw new PaymentError(err.message, 502);
+    throw new PaymentError(err.message, err.transient ? 504 : 502);
   }
 
   return publicView(txn);

@@ -1527,6 +1527,8 @@ export const AdminProvider = ({ children }) => {
       vehicleModel: target.vehicleModel || target.vehicleType || '',
       price: amount,
       paymentMode: payment.paymentMode || 'Cash',
+      // Set when the renewal was paid on the Pine Labs terminal.
+      pineLabsTxnRef: payment.pineLabsTxnRef || '',
       saleDate: payment.saleDate || todayISO,
       membershipStartDate: startISO,
       membershipExpiryDate: expiryISO,

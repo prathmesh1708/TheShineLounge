@@ -54,7 +54,7 @@ export const cancelPineLabsPayment = async (txnRef) => {
 // Polls until the terminal settles. A poll that fails to reach OUR server is
 // not an answer about the card, so it is retried rather than treated as a
 // decline — only the backend may decide a payment failed.
-export const pollPineLabsPayment = (txnRef, { intervalMs = 3000, timeoutMs = 150000, onTick, signal } = {}) =>
+export const pollPineLabsPayment = (txnRef, { intervalMs = 5000, timeoutMs = 300000, onTick, signal } = {}) =>
   new Promise((resolve, reject) => {
     const startedAt = Date.now();
     let stopped = false;

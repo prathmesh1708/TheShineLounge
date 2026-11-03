@@ -19,6 +19,8 @@ const db = require('./helpers/testDb');
 const Staff = require('../src/models/Staff');
 const Invoice = require('../src/models/Invoice');
 const OfflineSale = require('../src/models/OfflineSale');
+const SalonProductSale = require('../src/models/SalonProductSale');
+const SalonProduct = require('../src/models/SalonProduct');
 const PineLabsTransaction = require('../src/models/PineLabsTransaction');
 
 // Stand-in for the Plutus cloud: records what we send and answers with the
@@ -59,6 +61,7 @@ app.use(express.json());
 app.use('/api/payments/pinelabs', require('../src/payments/pinelabs').routes);
 app.use('/api/invoices', require('../src/routes/invoiceRoutes'));
 app.use('/api/offline-sales', require('../src/routes/offlineSaleRoutes'));
+app.use('/api/salon', require('../src/salon').routes);
 app.use((err, _req, res, _next) => res.status(500).json({ success: false, message: err.message }));
 
 let server;
@@ -269,4 +272,82 @@ test('cash is unaffected by any of this', async () => {
   assert.equal(res.status, 201);
   assert.equal(res.body.invoice.pineLabsTxnRef, '');
   assert.equal(calls.length, 0);
+});
+
+// ── Salon counter sale ──────────────────────────────────────────────────────
+// The salon POS prices the bill on the SERVER, so the card is charged for what
+// the screen showed and the bill must agree with it or nothing is sold.
+
+const stockProduct = () => SalonProduct.create({
+  name: 'Argan Shampoo', sku: 'SH-1', barcode: '890111', mrp: 500, sellPrice: 500, stock: 10
+});
+
+test('a salon bill is only created once the terminal approves, and the stock holds', async () => {
+  const product = await stockProduct();
+  const paid = await payFor(500, 'salon-pos', 'salon');
+
+  const res = await request('POST', '/api/salon/product-sales', {
+    items: [{ productId: product._id.toString(), quantity: 1 }],
+    customerName: 'Riya', paymentMode: 'Pine Labs', pineLabsTxnRef: paid.txnRef,
+    includeGst: false, gstRate: 0
+  });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.sale.pineLabsTxnRef, paid.txnRef);
+  assert.equal(res.body.sale.cardDetails.last4, '4242');
+  assert.equal((await SalonProduct.findById(product._id)).stock, 9);
+});
+
+test('a salon bill with no approved card sells nothing and puts the stock back', async () => {
+  const product = await stockProduct();
+
+  const res = await request('POST', '/api/salon/product-sales', {
+    items: [{ productId: product._id.toString(), quantity: 1 }],
+    paymentMode: 'Pine Labs', pineLabsTxnRef: 'PL-2026-99999',
+    includeGst: false, gstRate: 0
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal(await SalonProductSale.countDocuments(), 0);
+  assert.equal((await SalonProduct.findById(product._id)).stock, 10, 'the stock must not stay decremented');
+});
+
+// ── Pine Labs' documented Cloud status mapping ──────────────────────────────
+// Pine Billing SDK 2.0.0, flows/check-status: 0 = Completed, 1001
+// ("TXN UPLOADED") = Pending/re-poll, any other non-zero = Failed. Getting
+// 1001 wrong strands staff on a spinner; getting another code wrong tells
+// them a refused card is still being tried.
+
+test('1001 means keep waiting, every other non-zero code means refused', async () => {
+  const started = await initiate();
+  const ref = started.body.payment.txnRef;
+
+  statusReply = () => ({ ResponseCode: 1001, ResponseMessage: 'TXN UPLOADED' });
+  assert.equal((await request('GET', `/api/payments/pinelabs/${ref}`)).body.payment.status, 'pending');
+
+  // 1002 is NOT a pending code, whatever it looks like.
+  statusReply = () => ({ ResponseCode: 1002, ResponseMessage: 'TXN FAILED' });
+  assert.equal((await request('GET', `/api/payments/pinelabs/${ref}`)).body.payment.status, 'failed');
+});
+
+test('an upload answering TXN UPLOADED is a registered bill, not a failure', async () => {
+  uploadReply = () => ({ ResponseCode: 1001, ResponseMessage: 'TXN UPLOADED', PlutusTransactionReferenceID: 2000011199 });
+  const res = await initiate();
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.payment.status, 'pending');
+
+  statusReply = approvedReply;
+  const done = await request('GET', `/api/payments/pinelabs/${res.body.payment.txnRef}`);
+  assert.equal(done.body.payment.status, 'success');
+});
+
+test('a timeout talking to Pine Labs tells staff to check the machine', async () => {
+  uploadReply = () => { const e = new Error('The operation timed out'); e.name = 'TimeoutError'; throw e; };
+  const res = await initiate();
+
+  assert.equal(res.status, 504);
+  assert.match(res.body.message, /check the terminal/i);
+  const row = await PineLabsTransaction.findOne({}).lean();
+  assert.equal(row.status, 'failed');
 });

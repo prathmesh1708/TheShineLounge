@@ -30,7 +30,7 @@ export default function PineLabsPaymentModal({
   phone = '',
   vehicleNo = '',
   staffName = '',
-  pollTimeoutMs = 150000,
+  pollTimeoutMs = 300000,
   onPaid,
   onCancel,
   onPayCash

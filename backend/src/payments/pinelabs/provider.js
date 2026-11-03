@@ -12,24 +12,33 @@ const env = require('../../common/config/env');
 //   GetCloudBasedTxnStatus   — poll that push until the card is approved
 //   CancelTransaction        — pull the bill back off the terminal
 //
-// NOTE: the exact path prefix and the response codes below come from the
-// integration document Pine Labs issues per merchant. Confirm them against
-// your own document during UAT; PINELABS_RESPONSE codes are kept in one place
-// here so a difference is a one-line change.
+// Response codes follow Pine Labs' documented Cloud status mapping
+// (Pine Billing SDK 2.0.0, flows/check-status):
+//   0    -> Completed (approved)
+//   1001 -> TXN UPLOADED: the bill is registered but the cardholder has not
+//           paid yet, so keep polling
+//   any other non-zero -> Failed
+// The path prefix still comes from the integration document Pine Labs issues
+// per merchant, so it stays in PINELABS_BASE_URL.
 
 class PineLabsError extends Error {
-  constructor(message, { code, raw } = {}) {
+  constructor(message, { code, raw, transient } = {}) {
     super(message);
     this.name = 'PineLabsError';
     this.code = code;
     this.raw = raw;
+    // true when we never got an answer, so the bill's fate is unknown.
+    this.transient = Boolean(transient);
   }
 }
 
-// Pine Labs' own codes. 0 is the only success; 1001-style codes mean the
-// customer is still at the machine and we should keep polling.
+// Pine Labs' own codes. 0 is the only settled success; 1001 ("TXN UPLOADED")
+// means the bill reached the terminal and the customer has not paid yet.
+// Everything else non-zero is a failure -- treating an unknown code as pending
+// would leave staff watching a spinner for a card that was already refused.
 const APPROVED = 0;
-const PENDING_CODES = new Set([1001, 1002]);
+const TXN_UPLOADED = 1001;
+const PENDING_CODES = new Set([TXN_UPLOADED]);
 const PENDING_MESSAGE = /in\s*progress|pending|not\s*(yet\s*)?(complete|received|found)|waiting/i;
 
 // The terse replies ("INVALID IMEI") say nothing about what to do next.
@@ -89,7 +98,15 @@ const post = async (endpoint, body) => {
       signal: AbortSignal.timeout(20000)
     });
   } catch (err) {
-    throw new PineLabsError(`Could not reach Pine Labs: ${redact(err.message)}`);
+    // Pine Labs' guidance: a request that timed out was still sent. Say so,
+    // because for an upload the bill may be live on the terminal right now.
+    const timedOut = /timeout|abort/i.test(err.name || err.message || '');
+    throw new PineLabsError(
+      timedOut
+        ? `Pine Labs did not answer in time. The request was sent, so check the terminal before retrying: ${redact(err.message)}`
+        : `Could not reach Pine Labs: ${redact(err.message)}`,
+      { transient: true }
+    );
   }
 
   const text = await res.text();
@@ -172,7 +189,10 @@ const uploadBilledTransaction = async ({ txnRef, amount, terminalImei, staffName
     UserID: String(staffName || 'POS').slice(0, 20)
   });
 
-  if (Number(data.ResponseCode) !== APPROVED) {
+  // The upload answers 0, or 1001 ("TXN UPLOADED") -- both mean the bill is
+  // registered upstream and the customer can now pay. Anything else failed.
+  const uploadCode = Number(data.ResponseCode);
+  if (uploadCode !== APPROVED && uploadCode !== TXN_UPLOADED) {
     throw new PineLabsError(explain(data.ResponseMessage || `code ${data.ResponseCode}`), {
       code: data.ResponseCode,
       raw: data

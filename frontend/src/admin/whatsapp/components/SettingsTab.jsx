@@ -39,9 +39,12 @@ function CopyField({ value }) {
 }
 
 const BHASH_ENV_SNIPPET = `WHATSAPP_PROVIDER=bhashsms
-BHASHSMS_BASE_URL=https://bhashsms.com/api
-BHASHSMS_USER=
+BHASHSMS_VERSION=v2
+BHASHSMS_BASE_URL=https://apiv2.bhashsms.com
+BHASHSMS_USER=manik@theshinelounge.in
 BHASHSMS_PASS=
+BHASHSMS_API_KEY=
+BHASHSMS_BUSINESS_CODE=BSLB00494
 BHASHSMS_SENDER=BUZWAP`;
 
 function InvoiceTemplatePicker({ templates, current, onChanged }) {
@@ -98,7 +101,9 @@ function BhashSmsSettings({ status, onRefresh, loading, templates, onReloadTempl
         </div>
         <div className="divide-y divide-gray-50 mt-2">
           <Row ok={b.credentialsSet} title="Login"
-            detail={b.credentialsSet ? `User ${b.user} · sender ${b.sender}` : 'Set BHASHSMS_USER, BHASHSMS_PASS and BHASHSMS_SENDER in backend/.env.'} />
+            detail={b.credentialsSet ? `User ${b.user} · business ${b.businessCode || 'BSLB00494'} · sender ${b.sender}` : 'Set BHASHSMS_USER, BHASHSMS_PASS / BHASHSMS_API_KEY in backend/.env.'} />
+          {b.balance ? <Row ok={true} title="Wallet Balance" detail={b.balance} /> : null}
+          {b.balanceError ? <Row ok={false} title="Wallet Balance Error" detail={b.balanceError} /> : null}
           <Row ok={Boolean(tpl)} title="Invoice receipt template"
             detail={tpl ? `"${tpl.displayName || tpl.name}" — staff billing sends invoices with it.` : 'Register the approved invoice template in the Templates tab and set "Use for: Invoice receipts".'} />
           <InvoiceTemplatePicker templates={templates} current={tpl} onChanged={async () => { await onRefresh(); if (onReloadTemplates) await onReloadTemplates(); }} />

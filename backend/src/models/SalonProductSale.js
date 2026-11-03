@@ -54,6 +54,17 @@ const salonProductSaleSchema = new mongoose.Schema(
     total: { type: Number, default: 0, min: 0 },
 
     paymentMode: { type: String, default: 'Cash' },
+    // Set for Pine Labs card sales -- see models/Invoice.js for why the
+    // terminal's own record lives in its own collection.
+    paymentStatus: { type: String, enum: ['paid', 'pending', 'failed'], default: 'paid' },
+    pineLabsTxnRef: { type: String, default: '', index: true },
+    cardDetails: {
+      cardType: { type: String, default: '' },
+      last4: { type: String, default: '' },
+      approvalCode: { type: String, default: '' },
+      rrn: { type: String, default: '' },
+      acquirerName: { type: String, default: '' }
+    },
     soldBy: { type: String, default: '' },
     soldById: { type: mongoose.Schema.Types.ObjectId, default: null },
     notes: { type: String, default: '' },

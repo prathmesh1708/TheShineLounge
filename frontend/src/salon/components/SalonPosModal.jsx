@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Search, ScanLine, Plus, Minus, Trash2, Loader2, ShoppingCart } from 'lucide-react';
 import { findSalonProductByCode, createSalonProductSale } from '../services/salonProductApi';
+import PineLabsPaymentModal from '../../common/components/PineLabsPaymentModal';
 
 const money = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-const PAYMENT_MODES = ['Cash', 'UPI', 'Card', 'Net Banking'];
+// The card option's label, spelled the same here, in the API and on the bill.
+const PINE_LABS = 'Pine Labs';
+const PAYMENT_MODES = ['Cash', PINE_LABS];
 
 export default function SalonPosModal({ open, products, onClose, onSold }) {
   const [cart, setCart] = useState([]);
@@ -19,6 +22,9 @@ export default function SalonPosModal({ open, products, onClose, onSold }) {
   const [includeGst, setIncludeGst] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Set while the customer is at the terminal; the bill is only created once
+  // the card is approved, so a decline leaves no bill and no stock movement.
+  const [cardPayment, setCardPayment] = useState(null);
   const scanRef = useRef(null);
 
   useEffect(() => {
@@ -126,12 +132,24 @@ export default function SalonPosModal({ open, products, onClose, onSold }) {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return setError('Add at least one product');
+    setError('');
+    if (paymentMode === PINE_LABS) {
+      // Nothing is billed and no stock moves until the terminal approves.
+      setCardPayment({ amount: totals.total });
+      return;
+    }
+    await completeSale(null);
+  };
+
+  const completeSale = async (payment, mode = paymentMode) => {
     setSaving(true);
     setError('');
     try {
       const sale = await createSalonProductSale({
         items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-        customerName, customerPhone, paymentMode,
+        customerName, customerPhone,
+        paymentMode: payment ? PINE_LABS : mode,
+        pineLabsTxnRef: payment?.txnRef || '',
         billDiscount: Number(billDiscount) || 0,
         includeGst, gstRate: 18
       });
@@ -287,6 +305,26 @@ export default function SalonPosModal({ open, products, onClose, onSold }) {
           </div>
         </div>
       </div>
+
+      {/* The customer is at the card machine; the bill is created on approval. */}
+      <PineLabsPaymentModal
+        isOpen={Boolean(cardPayment)}
+        amount={cardPayment?.amount || 0}
+        source="salon-pos"
+        departmentKey="salon"
+        customerName={customerName}
+        phone={customerPhone}
+        onPaid={async (payment) => {
+          setCardPayment(null);
+          await completeSale(payment);
+        }}
+        onCancel={() => setCardPayment(null)}
+        onPayCash={async () => {
+          setCardPayment(null);
+          setPaymentMode('Cash');
+          await completeSale(null, 'Cash');
+        }}
+      />
     </div>
   );
 }

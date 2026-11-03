@@ -32,6 +32,7 @@ const whatsAppCampaignSchema = new mongoose.Schema(
     mode: { type: String, enum: ['template', 'freeform'], required: true },
     templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'WhatsAppTemplate', default: null },
     templateName: { type: String, default: '' },
+    templateCode: { type: String, default: '' },
     templateCategory: { type: String, default: '' },
     templateLanguage: { type: String, default: 'en' },
     variableMap: { type: [String], default: [] },

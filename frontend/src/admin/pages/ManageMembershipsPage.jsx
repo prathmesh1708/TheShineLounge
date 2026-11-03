@@ -21,6 +21,7 @@ import { useAdmin } from '../common/context/AdminContext';
 import DataTable from '../common/components/DataTable';
 import AdminModal from '../common/components/AdminModal';
 import { parseFlexibleDate } from '../../common/utils/membershipUtils';
+import PineLabsPaymentModal from '../../common/components/PineLabsPaymentModal';
 
 const POPULAR_PLANS = [
   'Monthly Unlimited Wash',
@@ -38,6 +39,9 @@ const STATUS_OPTIONS = [
   'Expired',
   'Suspended'
 ];
+
+// The card option's label, spelled the same here, in the API and on the bill.
+const PINE_LABS = 'Pine Labs';
 
 const PAYMENT_MODES = [
   'Cash',
@@ -95,14 +99,27 @@ export default function ManageMembershipsPage() {
       saleDate: todayIso()
     });
   };
+  // Set while the customer is at the terminal; holds the renewal waiting on it.
+  const [renewCardPayment, setRenewCardPayment] = useState(null);
+
   const submitRenew = async (e) => {
     e.preventDefault();
     if (!renewTarget || renewSaving) return;
+    if (renewForm.paymentMode === PINE_LABS) {
+      // The renewal is only recorded once the terminal approves.
+      setRenewCardPayment({ target: renewTarget, amount: Number(renewForm.amount) });
+      return;
+    }
+    await finishRenew(null);
+  };
+
+  const finishRenew = async (payment, target = renewTarget) => {
     setRenewSaving(true);
     try {
-      const sale = await renewMembership(renewTarget, {
+      const sale = await renewMembership(target, {
         amount: Number(renewForm.amount),
-        paymentMode: renewForm.paymentMode,
+        paymentMode: payment ? PINE_LABS : 'Cash',
+        pineLabsTxnRef: payment?.txnRef || '',
         saleDate: renewForm.saleDate
       });
       if (sale) setRenewTarget(null);
@@ -866,7 +883,7 @@ export default function ManageMembershipsPage() {
                   onChange={(e) => setRenewForm({ ...renewForm, paymentMode: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl font-bold text-gray-900 bg-white"
                 >
-                  {['Cash', 'UPI', 'Card', 'Net Banking'].map((m) => <option key={m} value={m}>{m}</option>)}
+                  {['Cash', PINE_LABS].map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
               <label className="block">
@@ -892,6 +909,29 @@ export default function ManageMembershipsPage() {
           </form>
         )}
       </AdminModal>
+
+      {/* The member is at the card machine; the renewal is recorded on approval. */}
+      <PineLabsPaymentModal
+        isOpen={Boolean(renewCardPayment)}
+        amount={renewCardPayment?.amount || 0}
+        source="offline-sale"
+        departmentKey={renewCardPayment?.target?.serviceKey || 'car-wash'}
+        customerName={renewCardPayment?.target?.customerName}
+        phone={renewCardPayment?.target?.phone}
+        vehicleNo={renewCardPayment?.target?.vehicleNo}
+        onPaid={async (payment) => {
+          const pending = renewCardPayment;
+          setRenewCardPayment(null);
+          if (pending) await finishRenew(payment, pending.target);
+        }}
+        onCancel={() => setRenewCardPayment(null)}
+        onPayCash={async () => {
+          const pending = renewCardPayment;
+          setRenewCardPayment(null);
+          setRenewForm((f) => ({ ...f, paymentMode: 'Cash' }));
+          if (pending) await finishRenew(null, pending.target);
+        }}
+      />
     </div>
   );
 }

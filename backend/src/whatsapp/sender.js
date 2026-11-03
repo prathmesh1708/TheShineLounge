@@ -91,6 +91,7 @@ const bhashSend = (campaign, phones, vars = {}) => (campaign.mode === 'template'
   ? provider.bhashsms.sendTemplate({
     phones,
     templateName: campaign.templateName,
+    templateCode: campaign.metaTemplateId || campaign.templateCode,
     category: campaign.templateCategory,
     params: (campaign.variableMap || []).map((key) => valueFor(vars, key)),
     media: bhashMedia(campaign)
@@ -162,9 +163,22 @@ const processCampaign = async (campaign, now) => {
     if (!group.length) return;
     const members = group.splice(0, group.length);
     try {
-      const { messageId, raw } = await bhashSend(campaign, members.map((r) => r.phone));
-      for (const r of members) {
-        await setRecipient(campaign._id, r._id, { status: 'sent', waMessageId: messageId || '', providerResponse: raw || '', error: '', sentAt: new Date() });
+      const { messageId, messageIds = [], raw } = await bhashSend(campaign, members.map((r) => r.phone));
+      // One id per number means they line up positionally. If BhashSMS answers
+      // with a different count we cannot tell whose is whose, so everyone keeps
+      // the first id and the full reply is stored for support to read. We do
+      // not guess a failure from a short list: marking a delivered number as
+      // failed invites a retry, and the customer gets the message twice.
+      const perRecipient = messageIds.length === members.length;
+      const sentAt = new Date();
+      for (let i = 0; i < members.length; i += 1) {
+        await setRecipient(campaign._id, members[i]._id, {
+          status: 'sent',
+          waMessageId: (perRecipient ? messageIds[i] : messageId) || '',
+          providerResponse: raw || '',
+          error: '',
+          sentAt
+        });
       }
       summary.sent += members.length;
     } catch (err) {

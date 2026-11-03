@@ -74,12 +74,20 @@ module.exports = {
   // Shared secret for POST /api/internal/break-scheduler/tick. Unset = endpoint off.
   BREAK_CRON_SECRET: process.env.BREAK_CRON_SECRET || '',
 
-  // ── WhatsApp provider: 'bhashsms' (reseller HTTP API) or 'meta' (Cloud API) ──
+  // ── WhatsApp provider: 'bhashsms' (V2 REST API / V1 HTTP) or 'meta' (Cloud API) ──
   WHATSAPP_PROVIDER: (process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase(),
-  BHASHSMS_BASE_URL: (process.env.BHASHSMS_BASE_URL || 'https://bhashsms.com/api').replace(/\/+$/, ''),
+  BHASHSMS_VERSION: (process.env.BHASHSMS_VERSION || (process.env.BHASHSMS_API_KEY ? 'v2' : 'v1')).toLowerCase(),
+  BHASHSMS_BASE_URL: (() => {
+    const raw = process.env.BHASHSMS_BASE_URL || 'https://apiv2.bhashsms.com';
+    const cleaned = raw.replace(/\/+$/, '');
+    return cleaned.includes('app.bhashsms.com') ? 'https://apiv2.bhashsms.com' : cleaned;
+  })(),
   BHASHSMS_USER: process.env.BHASHSMS_USER || '',
-  BHASHSMS_PASS: process.env.BHASHSMS_PASS || '',
-  BHASHSMS_SENDER: process.env.BHASHSMS_SENDER || '',
+  BHASHSMS_PASS: process.env.BHASHSMS_PASS || process.env.BHASHSMS_API_KEY || '',
+  BHASHSMS_API_KEY: process.env.BHASHSMS_API_KEY || process.env.BHASHSMS_PASS || '',
+  BHASHSMS_BUSINESS_CODE: process.env.BHASHSMS_BUSINESS_CODE || 'BSLB00494',
+  BHASHSMS_PANEL_PASS: process.env.BHASHSMS_PANEL_PASS || '',
+  BHASHSMS_SENDER: process.env.BHASHSMS_SENDER || 'BUZWAP',
   // BhashSMS bills Utility and Marketing on separate scripts: Utility
   // templates go through sendmsgutil.php, Marketing (and plain text) through sendmsg.php.
   BHASHSMS_UTILITY_SCRIPT: process.env.BHASHSMS_UTILITY_SCRIPT || 'sendmsgutil.php',
@@ -124,8 +132,9 @@ module.exports = {
   PINELABS_DEFAULT_IMEI: process.env.PINELABS_DEFAULT_IMEI || '',
   // How long the bill stays on the terminal before Pine Labs cancels it.
   PINELABS_AUTO_CANCEL_MIN: positiveInt(process.env.PINELABS_AUTO_CANCEL_MIN, 3),
-  // How long the POS keeps polling before it gives up on the card.
-  PINELABS_POLL_TIMEOUT_MS: positiveInt(process.env.PINELABS_POLL_TIMEOUT_MS, 150000),
+  // How long the POS keeps polling before it gives up on the card. Pine Labs
+  // suggests re-polling every 5-10s up to a merchant-set limit of ~5 minutes.
+  PINELABS_POLL_TIMEOUT_MS: positiveInt(process.env.PINELABS_POLL_TIMEOUT_MS, 300000),
   // true = run the full flow without calling Pine Labs (fake approvals).
   PINELABS_DRY_RUN: process.env.PINELABS_DRY_RUN === 'true'
 };

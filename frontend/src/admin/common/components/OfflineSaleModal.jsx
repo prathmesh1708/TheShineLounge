@@ -331,11 +331,6 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
         updated.price = '';
         setIsCustomPackage(false);
         setIsCustomMembership(false);
-        // The new department may not have a card machine; don't leave the
-        // form asking for one that does not exist.
-        if (updated.paymentMode === PINE_LABS && !(pineLabs.departments || []).includes(value)) {
-          updated.paymentMode = 'Cash';
-        }
       }
       if (field === 'price') {
         updated.basePrice = value;
@@ -530,13 +525,13 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
 
   if (!isOpen) return null;
 
-  // Cash is always possible. The card machine is offered only for a new sale
-  // at a counter that has a terminal: an existing sale cannot be switched to
-  // card after the fact, because no card was ever presented for it.
-  const cardOffered = Boolean(pineLabs.enabled && !editSale && (pineLabs.departments || []).includes(form.serviceKey));
-  const paymentModeOptions = cardOffered
-    ? PAYMENT_MODES
-    : Array.from(new Set(['Cash', form.paymentMode].filter(Boolean)));
+  // Both options are always offered on a new sale. An EXISTING sale still
+  // cannot be switched to card after the fact, because no card was ever
+  // presented for it -- there would be nothing to bill it against.
+  const paymentModeOptions = editSale
+    ? Array.from(new Set(['Cash', form.paymentMode].filter(Boolean)))
+    : PAYMENT_MODES;
+  const cardReady = Boolean(pineLabs.enabled && (pineLabs.departments || []).includes(form.serviceKey));
 
   const inputClass = 'w-full p-2.5 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none transition-all bg-white';
   const labelClass = 'block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wide';
@@ -1031,8 +1026,10 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, editSale =
                   ))}
                 </select>
                 {form.paymentMode === PINE_LABS && !editSale && (
-                  <span className="text-[9px] text-gray-500 mt-0.5 block">
-                    Sent to the card machine on submit. Saved only once approved.
+                  <span className={`text-[9px] mt-0.5 block ${cardReady ? 'text-gray-500' : 'text-amber-600'}`}>
+                    {cardReady
+                      ? 'Sent to the card machine on submit. Saved only once approved.'
+                      : 'No terminal is set up for this department yet — the card step will say what is missing.'}
                   </span>
                 )}
               </div>

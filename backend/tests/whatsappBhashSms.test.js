@@ -7,6 +7,8 @@ process.env.BHASHSMS_USER = 'Shine_test';
 process.env.BHASHSMS_PASS = 'sup3r-secret';
 process.env.BHASHSMS_SENDER = 'BUZWAP';
 process.env.BHASHSMS_MAX_NUMBERS_PER_CALL = '50';
+process.env.BHASHSMS_VERSION = 'v1';
+process.env.BHASHSMS_API_KEY = '';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -187,6 +189,56 @@ test('identical templates go to many numbers in one comma-separated call', async
   assert.equal(sends[0].q.phone, '9876543210,9811111111,9822222222');
   assert.equal(sends[0].q.Params, undefined);
   assert.equal(done.recipients.filter((r) => r.status === 'sent').length, 3);
+});
+
+// A bulk call answers with one id per number: "S.918396 S.13154 S.4410".
+// Each recipient must keep its own id, or no one can trace which message
+// reached which customer when BhashSMS support is asked about a delivery.
+test('each recipient of a bulk send keeps its own message id', async () => {
+  const token = await adminToken();
+  reply = () => 'S.111111 S.222222 S.333333';
+  const tpl = await request('POST', '/api/whatsapp/templates', { token, body: { name: 'bulk_ids', body: 'Happy Diwali from The Shine Lounge!' } });
+  const created = await request('POST', '/api/whatsapp/campaigns', {
+    token, body: { mode: 'template', templateId: tpl.body.template._id, recipients: ['9876543210', '9811111111', '+91 98222 22222'] }
+  });
+  const done = await waitForCampaign(created.body.campaign._id);
+
+  assert.equal(sendCalls().length, 1, 'still one call for the whole group');
+  const byPhone = Object.fromEntries(done.recipients.map((r) => [r.phone, r]));
+  assert.equal(byPhone['919876543210'].waMessageId, 'S.111111');
+  assert.equal(byPhone['919811111111'].waMessageId, 'S.222222');
+  assert.equal(byPhone['919822222222'].waMessageId, 'S.333333');
+  // The whole reply stays on each row for support to read back.
+  assert.ok(done.recipients.every((r) => r.providerResponse === 'S.111111 S.222222 S.333333'));
+  assert.ok(done.recipients.every((r) => r.status === 'sent'));
+});
+
+test('a single send stores just its own id, not the raw reply', async () => {
+  const token = await adminToken();
+  reply = () => 'S.909090';
+  const tpl = await request('POST', '/api/whatsapp/templates', { token, body: { name: 'single_id', body: 'Your car is ready.' } });
+  const created = await request('POST', '/api/whatsapp/campaigns', {
+    token, body: { mode: 'template', templateId: tpl.body.template._id, recipients: ['9876543210'] }
+  });
+  const done = await waitForCampaign(created.body.campaign._id);
+  assert.equal(done.recipients[0].waMessageId, 'S.909090');
+});
+
+// If the count does not line up we cannot tell whose id is whose. Everyone is
+// still recorded as sent: calling a delivered number failed invites a retry,
+// and the customer would get the message twice.
+test('a reply with fewer ids than numbers does not mark anyone failed', async () => {
+  const token = await adminToken();
+  reply = () => 'S.555555';
+  const tpl = await request('POST', '/api/whatsapp/templates', { token, body: { name: 'odd_reply', body: 'Happy Diwali from The Shine Lounge!' } });
+  const created = await request('POST', '/api/whatsapp/campaigns', {
+    token, body: { mode: 'template', templateId: tpl.body.template._id, recipients: ['9876543210', '9811111111', '+91 98222 22222'] }
+  });
+  const done = await waitForCampaign(created.body.campaign._id);
+
+  assert.equal(done.status, 'done');
+  assert.equal(done.recipients.filter((r) => r.status === 'sent').length, 3);
+  assert.ok(done.recipients.every((r) => r.waMessageId === 'S.555555'));
 });
 
 test('a plain-text error reply fails the recipient without leaking the password', async () => {

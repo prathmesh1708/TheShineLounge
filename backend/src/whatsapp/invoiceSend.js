@@ -104,6 +104,7 @@ const deliverReceipt = async ({ req, template, phone, pdfUrl, receiptNo, custome
     mode: 'template',
     templateId: template._id,
     templateName: template.name,
+    templateCode: template.metaTemplateId || '',
     templateCategory: template.category,
     templateLanguage: template.language,
     variableMap: template.variableMap || [],
