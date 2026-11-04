@@ -217,6 +217,12 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Set when a pass is edited to start on another day. Empty means it starts on
+  // the sale date; saleDate itself always stays the day the money was taken.
+  membershipStartDate: {
+    type: String,
+    default: ''
+  },
   membershipExpiry: {
     type: String,
     default: ''

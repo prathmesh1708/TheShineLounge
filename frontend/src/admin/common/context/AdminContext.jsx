@@ -487,6 +487,7 @@ export const AdminProvider = ({ children }) => {
               // Carried through so the edit modal and range filters read the
               // unambiguous machine date instead of reverse-parsing `date`.
               saleDate: b.saleDate || toIsoDate(b.date) || '',
+              membershipStartDate: b.membershipStartDate || '',
               timeSlot: rawTime,
               total: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
               price: typeof b.price === 'number' ? b.price : (Number(b.price || b.total || b.amount) || 0),
@@ -1423,7 +1424,6 @@ export const AdminProvider = ({ children }) => {
       if (match) {
         const startISO = updatedFields.startDate ? toISODateString(parseFlexibleDate(updatedFields.startDate)) : b.membershipStartDate;
         const expiryISO = updatedFields.expiryDate ? toISODateString(parseFlexibleDate(updatedFields.expiryDate)) : b.membershipExpiry;
-        const displayDate = updatedFields.startDate ? formatLongDate(parseFlexibleDate(updatedFields.startDate)) : b.date;
 
         return {
           ...b,
@@ -1441,8 +1441,6 @@ export const AdminProvider = ({ children }) => {
           membershipExpiry: expiryISO,
           startDate: startISO,
           expiryDate: expiryISO,
-          date: displayDate,
-          saleDate: startISO || b.saleDate,
           washesUsed: updatedFields.washesUsed !== undefined ? Number(updatedFields.washesUsed) : b.washesUsed
         };
       }
@@ -1544,12 +1542,14 @@ export const AdminProvider = ({ children }) => {
       notes: `Renewal of ${target.bookingId || cleanId}`
     });
 
-    // Keep the standalone memberships collection's period in step (dates only).
+    // Keep the standalone memberships collection's period and payment mode in step.
     try {
       await apiClient.put(`/memberships/${cleanId}`, {
+        isRenewal: true,
         startDate: startISO,
         expiryDate: expiryISO,
         status: start > now ? 'Queued' : 'Active',
+        paymentMode: payment.paymentMode || 'Cash',
         washesUsed: 0,
         customerName: target.customerName,
         phone: target.phone,
