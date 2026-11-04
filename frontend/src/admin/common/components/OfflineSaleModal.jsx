@@ -1188,11 +1188,12 @@ export default function OfflineSaleModal({ isOpen, onClose, onSubmit, onWarranty
                   </button>
                 </div>
 
-                {/* Dropdown with all payment modes */}
+                {/* Dropdown with all payment modes. Hidden for now; it is the only
+                    way to choose Pine Labs, so remove `hidden` to bring that back. */}
                 <select
                   value={form.paymentMode}
                   onChange={e => handleChange('paymentMode', e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} hidden`}
                 >
                   {paymentModeOptions.map(m => (
                     <option key={m} value={m}>{m}</option>

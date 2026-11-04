@@ -20,8 +20,6 @@ yarn-error.log*
 Thumbs.db
 
 # Environment variables
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -31,7 +29,6 @@ Thumbs.db
 
 # IDE configurations
 .idea/
-.vscode/
 *.suo
 *.ntvs*
 *.njsproj
@@ -42,3 +39,4 @@ temp_auto_push.bat
 temp_interactive_push.bat
 backend/data/
 data/
+config.bat

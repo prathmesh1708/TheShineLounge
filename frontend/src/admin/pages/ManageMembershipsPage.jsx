@@ -43,6 +43,9 @@ const STATUS_OPTIONS = [
 // The card option's label, spelled the same here, in the API and on the bill.
 const PINE_LABS = 'Pine Labs';
 
+// UPI and Card are recorded as selected; only Pine Labs goes to the terminal.
+const RENEW_PAYMENT_MODES = ['Cash', 'UPI', 'Card', PINE_LABS];
+
 const PAYMENT_MODES = [
   'Cash',
   'UPI',
@@ -95,7 +98,9 @@ export default function ManageMembershipsPage() {
     setRenewTarget(member);
     setRenewForm({
       amount: String(Number(member?.amount) || Number(member?.price) || ''),
-      paymentMode: member?.paymentMode && !/pass|membership/i.test(member.paymentMode) ? member.paymentMode : 'Cash',
+      // Anything not offered here (e.g. 'Credit Card', 'Membership') starts as Cash,
+      // so the mode saved is always the one the dropdown shows.
+      paymentMode: RENEW_PAYMENT_MODES.includes(member?.paymentMode) ? member.paymentMode : 'Cash',
       saleDate: todayIso()
     });
   };
@@ -110,15 +115,15 @@ export default function ManageMembershipsPage() {
       setRenewCardPayment({ target: renewTarget, amount: Number(renewForm.amount) });
       return;
     }
-    await finishRenew(null);
+    await finishRenew(renewForm.paymentMode, null);
   };
 
-  const finishRenew = async (payment, target = renewTarget) => {
+  const finishRenew = async (paymentMode, payment, target = renewTarget) => {
     setRenewSaving(true);
     try {
       const sale = await renewMembership(target, {
         amount: Number(renewForm.amount),
-        paymentMode: payment ? PINE_LABS : 'Cash',
+        paymentMode,
         pineLabsTxnRef: payment?.txnRef || '',
         saleDate: renewForm.saleDate
       });
@@ -883,7 +888,7 @@ export default function ManageMembershipsPage() {
                   onChange={(e) => setRenewForm({ ...renewForm, paymentMode: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl font-bold text-gray-900 bg-white"
                 >
-                  {['Cash', PINE_LABS].map((m) => <option key={m} value={m}>{m}</option>)}
+                  {RENEW_PAYMENT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
               <label className="block">
@@ -922,14 +927,14 @@ export default function ManageMembershipsPage() {
         onPaid={async (payment) => {
           const pending = renewCardPayment;
           setRenewCardPayment(null);
-          if (pending) await finishRenew(payment, pending.target);
+          if (pending) await finishRenew(PINE_LABS, payment, pending.target);
         }}
         onCancel={() => setRenewCardPayment(null)}
         onPayCash={async () => {
           const pending = renewCardPayment;
           setRenewCardPayment(null);
           setRenewForm((f) => ({ ...f, paymentMode: 'Cash' }));
-          if (pending) await finishRenew(null, pending.target);
+          if (pending) await finishRenew('Cash', null, pending.target);
         }}
       />
     </div>

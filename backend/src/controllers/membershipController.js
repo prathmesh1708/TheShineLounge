@@ -204,10 +204,20 @@ const updateMembership = async (req, res) => {
         { 'membershipDetails.passId': pass.passId }
       ];
       if (isObjectId) bookingConditions.unshift({ _id: id });
-      if (phone) bookingConditions.push({ phone, saleType: 'membership' });
-      if (vehicleNo || finalVehicles[0]) bookingConditions.push({ vehicleNo: vehicleNo || finalVehicles[0], saleType: 'membership' });
 
-      const booking = await Booking.findOne({ $or: bookingConditions });
+      // Phone and plate are only a fallback for a pass with no sale under its id.
+      // Customers can share a phone (placeholder numbers exist), so trying these
+      // alongside the id let an update land on somebody else's sale.
+      const fallbackConditions = [];
+      if (phone) fallbackConditions.push({ phone, saleType: 'membership' });
+      if (vehicleNo || finalVehicles[0]) fallbackConditions.push({ vehicleNo: vehicleNo || finalVehicles[0], saleType: 'membership' });
+
+      // A renewal is its own sale carrying the new period. The sale it renews is
+      // history and stays exactly as it was.
+      const booking = req.body.isRenewal
+        ? null
+        : (await Booking.findOne({ $or: bookingConditions })) ||
+          (fallbackConditions.length > 0 ? await Booking.findOne({ $or: fallbackConditions }) : null);
       if (booking) {
         if (customerName) booking.customerName = customerName;
         if (phone) booking.phone = phone;
@@ -218,12 +228,9 @@ const updateMembership = async (req, res) => {
           booking.membershipName = planName;
         }
         if (finalAmount !== undefined) booking.price = finalAmount;
-        if (startDate) {
-          booking.membershipStartDate = new Date(startDate);
-          booking.date = new Date(startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-          booking.saleDate = new Date(startDate).toISOString().split('T')[0];
-          booking.purchasedAt = new Date(startDate);
-        }
+        // When the pass starts is not when it was sold: saleDate and date place
+        // the money in the revenue reports, so a pass edit must not move them.
+        if (startDate) booking.membershipStartDate = String(startDate);
         if (expiryDate) booking.membershipExpiry = new Date(expiryDate);
         if (status) {
           booking.membershipStatus = status;
