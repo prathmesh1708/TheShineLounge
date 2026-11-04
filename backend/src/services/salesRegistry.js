@@ -102,7 +102,7 @@ const mirrorMembershipPass = async (booking) => {
   // a replay cannot mint a duplicate.
   const passId = String(sourceId).startsWith('MEM-') ? sourceId : `MEM-${sourceId}`;
 
-  const startDate = parseDate(booking.saleDate || booking.date, new Date());
+  const startDate = parseDate(booking.membershipStartDate || booking.saleDate || booking.date, new Date());
   const expiryDate =
     parseDate(booking.membershipExpiry) ||
     new Date(startDate.getTime() + daysFromValidity(booking.membershipValidity) * 24 * 3600 * 1000);
