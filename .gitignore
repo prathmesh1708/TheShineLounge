@@ -42,5 +42,3 @@ data/
 config.bat
 
 # Local env files (secrets)
-.env
-**/.env
