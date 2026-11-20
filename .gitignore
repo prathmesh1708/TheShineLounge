@@ -40,3 +40,7 @@ temp_interactive_push.bat
 backend/data/
 data/
 config.bat
+
+# Local env files (secrets)
+.env
+**/.env
