@@ -15,6 +15,8 @@ const recipientSchema = new mongoose.Schema({
   error: { type: String, default: '' },
   // Raw reply from the provider (BhashSMS answers in plain text).
   providerResponse: { type: String, default: '' },
+  // BhashSMS's later verdict on an accepted request (SENT / REJECTED ...).
+  providerStatus: { type: String, default: '' },
   sentAt: { type: Date, default: null },
   deliveredAt: { type: Date, default: null },
   readAt: { type: Date, default: null }

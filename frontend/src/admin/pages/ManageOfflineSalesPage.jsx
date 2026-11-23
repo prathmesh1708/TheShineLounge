@@ -22,7 +22,8 @@ import {
   Globe,
   TrendingUp,
   Filter,
-  Wallet
+  Wallet,
+  StickyNote
 } from 'lucide-react';
 import { useAdmin } from '../common/context/AdminContext';
 import OfflineSaleModal from '../common/components/OfflineSaleModal';
@@ -423,6 +424,7 @@ export default function ManageOfflineSalesPage() {
           (s.phone || '').toLowerCase().includes(term) ||
           (s.packageName || '').toLowerCase().includes(term) ||
           (s.membershipName || '').toLowerCase().includes(term) ||
+          (s.notes || '').toLowerCase().includes(term) ||
           (s.id || '').toLowerCase().includes(term)
         );
         if (!matchesText) return false;
@@ -1398,6 +1400,15 @@ export default function ManageOfflineSalesPage() {
                           <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[9px] font-bold mt-0.5">
                             Membership
                           </span>
+                        )}
+                        {sale.notes?.trim() && (
+                          <p
+                            className="mt-1 flex items-start gap-1 text-[10px] text-gray-500 italic max-w-[220px]"
+                            title={sale.notes}
+                          >
+                            <StickyNote className="w-3 h-3 mt-[1px] shrink-0 text-amber-500" />
+                            <span className="break-words line-clamp-2">{sale.notes}</span>
+                          </p>
                         )}
                       </td>
                       <td className="px-4 py-3 font-bold text-gray-900">

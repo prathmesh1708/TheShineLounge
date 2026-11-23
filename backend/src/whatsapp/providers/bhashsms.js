@@ -234,7 +234,7 @@ const scriptFor = (category) => (String(category || '').toUpperCase() === 'MARKE
   : env.BHASHSMS_UTILITY_SCRIPT);
 
 // ── Public Send Methods ───────────────────────────────────────────────────────
-const sendTemplate = async ({ phones, templateName, templateCode, params = [], media = null, category = 'UTILITY' }) => {
+const sendTemplate = async ({ phones, templateName, templateCode, params = [], variableNames = [], media = null, category = 'UTILITY' }) => {
   if (!templateName && !templateCode) throw new BhashSmsError('Template name is missing');
 
   if (isV2()) {
@@ -245,8 +245,10 @@ const sendTemplate = async ({ phones, templateName, templateCode, params = [], m
     const businessCode = env.BHASHSMS_BUSINESS_CODE || 'BSLB00494';
     const tCode = templateCode || (await resolveTemplateCode(templateName, businessCode));
 
+    // The variable key must match the approved template's placeholder
+    // ({{name}} -> "name", {{1}} -> "1"), see render.templateVariableKeys.
     const values = params.map((val, idx) => ({
-      variable: String(idx + 1),
+      variable: String(variableNames[idx] || idx + 1),
       value: cleanParam(val)
     }));
 
@@ -333,6 +335,18 @@ const sendText = async ({ phones, text }) => {
 
   // V1 fallback
   return sendV1(phones, { text, htype: 'normal' });
+};
+
+// sendMessage only says the request was queued ("Message accepted"). BhashSMS
+// validates it afterwards; this returns that verdict, e.g.
+// { status: 'REJECTED', errorMessage: 'Missing template values: name' }.
+const getRequestStatus = async (requestCode) => {
+  if (!isV2() || !/^BSLB/i.test(String(requestCode || ''))) return null;
+  const data = await requestV2('/customer/api/v1/campaign/apiRequestStatus', {
+    query: { businessCode: env.BHASHSMS_BUSINESS_CODE || 'BSLB00494', requestCode }
+  });
+  const c = (data && data.content) || {};
+  return { status: String(c.status || '').toUpperCase(), errorMessage: c.errorMessage || '' };
 };
 
 const getBalance = async () => {
@@ -486,6 +500,7 @@ module.exports = {
   getAccessToken,
   sendTemplate,
   sendText,
+  getRequestStatus,
   getBalance,
   listTemplates,
   parseTemplateTable

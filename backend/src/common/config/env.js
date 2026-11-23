@@ -150,5 +150,28 @@ module.exports = {
   SALON_REMINDER_TEMPLATE_LANGUAGE: process.env.SALON_REMINDER_TEMPLATE_LANGUAGE || 'en',
   SALON_REMINDER_TEMPLATE_CATEGORY: (process.env.SALON_REMINDER_TEMPLATE_CATEGORY || 'UTILITY').toUpperCase(),
   SALON_REMINDER_TEMPLATE_VARS: (process.env.SALON_REMINDER_TEMPLATE_VARS || 'name,time,service')
-    .split(',').map((v) => v.trim()).filter(Boolean)
+    .split(',').map((v) => v.trim()).filter(Boolean),
+
+  // ── Google Reviews (google-reviews/) ──
+  // OAuth client from Google Cloud. The redirect URI may list several values
+  // separated by commas (localhost + production); the right one is picked per
+  // request, and each must be registered on the OAuth client.
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+  GOOGLE_OAUTH_REDIRECT_URIS: (process.env.GOOGLE_OAUTH_REDIRECT_URI || '')
+    .split(',').map((v) => v.trim()).filter(Boolean),
+  // Encrypts the stored refresh token (AES-256-GCM). Any long random string;
+  // falls back to JWT_SECRET so local development works without it.
+  GOOGLE_TOKEN_ENC_KEY: process.env.GOOGLE_TOKEN_ENC_KEY || '',
+  // Where the OAuth callback sends the admin's browser back to.
+  ADMIN_APP_URL: (process.env.ADMIN_APP_URL || (isProduction ? 'https://app.theshinelounge.in' : 'http://localhost:5175')).replace(/\/+$/, ''),
+  // Set to 'false' to stop the background review sync.
+  GOOGLE_REVIEWS_SYNC_ENABLED: process.env.GOOGLE_REVIEWS_SYNC_ENABLED !== 'false',
+  GOOGLE_REVIEWS_SYNC_MIN: positiveInt(process.env.GOOGLE_REVIEWS_SYNC_MIN, 30),
+  // Simple read-only mode: Places API (New) returns the rating, review count
+  // and up to 5 reviews with just an API key. GOOGLE_PLACE_ID is optional;
+  // without it the place is looked up by GOOGLE_PLACE_QUERY.
+  GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY || '',
+  GOOGLE_PLACE_ID: process.env.GOOGLE_PLACE_ID || '',
+  GOOGLE_PLACE_QUERY: process.env.GOOGLE_PLACE_QUERY || 'The Shine Lounge, Southern Peripheral Rd, Sector 75, Gurugram'
 };

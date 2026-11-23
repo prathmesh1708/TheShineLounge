@@ -33,6 +33,9 @@ const integrations = require('./integrations');
 // Import WhatsApp Hub (Meta WhatsApp Cloud API campaigns + webhook)
 const whatsapp = require('./whatsapp');
 
+// Google Business Profile reviews (admin Feedback page)
+const googleReviews = require('./google-reviews');
+
 // Import Auth, User & Dynamic Service Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -62,6 +65,10 @@ connectDB().then(() => {
   // POST /api/internal/salon-reminders/tick.
   if (shouldRunBreakScheduler && require('./common/config/env').SALON_REMINDER_ENABLED) {
     whatsapp.startSalonReminders();
+  }
+  // Google review sync; on Vercel driven by POST /api/internal/google-reviews/tick.
+  if (shouldRunBreakScheduler && require('./common/config/env').GOOGLE_REVIEWS_SYNC_ENABLED) {
+    googleReviews.startGoogleReviewsSync();
   }
 });
 
@@ -115,6 +122,8 @@ app.use(compression({ threshold: 1024 }));
 // purpose. Device requests are HMAC-signed over the exact bytes sent, so the
 // router has to read the raw body itself; once express.json() has consumed the
 // stream it is gone, and every signature check would fail.
+// Google OAuth redirect target; ahead of the device integrations router.
+app.use('/api/integrations/google', googleReviews.oauthRoutes);
 app.use('/api/integrations', integrations.routes);
 // Meta signs WhatsApp webhooks over the raw body too, so the same applies.
 app.use('/api/whatsapp/webhook', whatsapp.webhook);
@@ -153,6 +162,7 @@ app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/fcm-tokens', require('./routes/fcmTokenRoutes'));
 app.use('/api/upload', uploadRoutes);
+app.use('/api/google-reviews', googleReviews.routes);
 app.use('/api/internal', require('./routes/internalRoutes'));
 
 // Mount Isolated Collections Routes

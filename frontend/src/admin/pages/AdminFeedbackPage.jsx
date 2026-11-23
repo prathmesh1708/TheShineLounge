@@ -18,9 +18,23 @@ import {
   Sparkles,
   Check
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import apiClient from '../../common/utils/apiClient';
+import { useAuth } from '../../common/context/AuthContext';
+import GoogleReviewsTab from '../feedback/components/GoogleReviewsTab';
+
+const TABS = [
+  { id: 'submissions', label: 'Customer Submissions', icon: MessageSquare },
+  { id: 'google', label: 'Google Reviews', icon: Star }
+];
 
 export default function AdminFeedbackPage() {
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'submissions';
+  const setTab = (id) => setParams(id === 'submissions' ? {} : { tab: id });
+  const { user } = useAuth();
+  const isAdmin = ['admin', 'superadmin', 'manager'].includes(String(user?.role || '').toLowerCase());
+
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -208,19 +222,36 @@ export default function AdminFeedbackPage() {
             Feedback & Help Support Module
           </h1>
           <p className="text-xs text-slate-300 font-medium mt-1">
-            Review user feedback, answer support tickets, and send direct responses to lounge customers.
+            Review user feedback, answer support tickets, and reply to Google reviews in one place.
           </p>
         </div>
 
-        <button
-          onClick={fetchFeedbacks}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 active:scale-95 flex-shrink-0"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Feedbacks
-        </button>
+        {tab === 'submissions' && (
+          <button
+            onClick={fetchFeedbacks}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 active:scale-95 flex-shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh Feedbacks
+          </button>
+        )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-white border border-gray-200/90 rounded-2xl shadow-sm overflow-x-auto">
+        {TABS.map((t) => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            className={`flex-1 min-w-[150px] px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+              tab === t.id ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+            }`}>
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'google' && <GoogleReviewsTab isAdmin={isAdmin} />}
+
+      {tab === 'submissions' && (<>
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Feedbacks */}
@@ -444,6 +475,7 @@ export default function AdminFeedbackPage() {
           </div>
         )}
       </div>
+      </>)}
 
       {/* Reply Modal */}
       {selectedFeedback && (

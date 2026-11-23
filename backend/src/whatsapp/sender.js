@@ -13,7 +13,7 @@ const env = require('../common/config/env');
 const WhatsAppCampaign = require('../models/WhatsAppCampaign');
 const WhatsAppContactPref = require('../models/WhatsAppContactPref');
 const provider = require('./provider');
-const { renderText, valueFor, extractVariables } = require('./render');
+const { renderText, valueFor, extractVariables, templateVariableKeys } = require('./render');
 
 const TICK_MS = 15 * 1000;
 const LOCK_MS = 5 * 60 * 1000;
@@ -94,6 +94,7 @@ const bhashSend = (campaign, phones, vars = {}) => (campaign.mode === 'template'
     templateCode: campaign.metaTemplateId || campaign.templateCode,
     category: campaign.templateCategory,
     params: (campaign.variableMap || []).map((key) => valueFor(vars, key)),
+    variableNames: templateVariableKeys(campaign.body, campaign.variableMap || []),
     media: bhashMedia(campaign)
   })
   : provider.bhashsms.sendText({ phones, text: renderText(campaign.body, vars).trim() }));
@@ -266,12 +267,80 @@ const processCampaign = async (campaign, now) => {
   return summary;
 };
 
+// ── BhashSMS delivery verdicts ───────────────────────────────────────────────
+// BhashSMS answers every sendMessage with "Message accepted" and only rejects
+// a bad request afterwards (wrong variable, bad media ...). Without this the
+// hub shows "sent" for messages nobody ever receives. Each accepted request
+// code is looked up once it has a final verdict; rejected ones become
+// "failed" with BhashSMS's reason so "Retry failed" can resend them.
+const STATUS_CHECK_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const STATUS_CHECK_LIMIT = 25;
+const STATUS_CHECK_EVERY_MS = 20 * 1000;
+const REJECTED_STATUS = /REJECT|FAIL|ERROR|INVALID|EXPIRED/;
+const PENDING_STATUS = /^$|PENDING|QUEUE|PROCESS|SUBMIT|SCHEDULE/;
+let lastStatusCheck = 0;
+
+const reconcileBhashStatuses = async (now = new Date(), { force = false } = {}) => {
+  const result = { checked: 0, rejected: 0 };
+  if (!provider.isBhashSms() || provider.isDryRun() || !provider.bhashsms.isV2()) return result;
+  if (!force && Date.now() - lastStatusCheck < STATUS_CHECK_EVERY_MS) return result;
+  lastStatusCheck = Date.now();
+
+  const unchecked = { status: 'sent', providerStatus: { $in: ['', null] }, waMessageId: /^BSLB/ };
+  const campaigns = await WhatsAppCampaign.find({
+    provider: 'bhashsms',
+    dryRun: { $ne: true },
+    createdAt: { $gte: new Date(now.getTime() - STATUS_CHECK_WINDOW_MS) },
+    recipients: { $elemMatch: unchecked }
+  }).select('status recipients').sort({ createdAt: -1 }).limit(20).lean();
+
+  for (const campaign of campaigns) {
+    let touched = false;
+    for (const r of campaign.recipients) {
+      if (result.checked >= STATUS_CHECK_LIMIT) break;
+      if (r.status !== 'sent' || r.providerStatus || !/^BSLB/.test(r.waMessageId || '')) continue;
+      let verdict;
+      try {
+        verdict = await provider.bhashsms.getRequestStatus(r.waMessageId);
+      } catch (err) {
+        console.warn('BhashSMS status check failed:', err.message);
+        return result;
+      }
+      result.checked += 1;
+      if (!verdict || PENDING_STATUS.test(verdict.status)) continue;
+      if (REJECTED_STATUS.test(verdict.status)) {
+        await setRecipient(campaign._id, r._id, {
+          status: 'failed',
+          providerStatus: verdict.status,
+          error: `BhashSMS rejected it: ${verdict.errorMessage || verdict.status}`
+        });
+        result.rejected += 1;
+        touched = true;
+      } else {
+        await setRecipient(campaign._id, r._id, { providerStatus: verdict.status });
+      }
+    }
+    if (touched && campaign.status === 'done') {
+      const fresh = await WhatsAppCampaign.findById(campaign._id).select('recipients.status').lean();
+      const anySent = (fresh.recipients || []).some((x) => ['sent', 'delivered', 'read'].includes(x.status));
+      if (!anySent) await WhatsAppCampaign.updateOne({ _id: campaign._id, status: 'done' }, { $set: { status: 'failed' } });
+    }
+    if (result.checked >= STATUS_CHECK_LIMIT) break;
+  }
+  return result;
+};
+
 const runWhatsAppSenderTick = async (now = new Date(), { campaignId } = {}) => {
   if (!provider.isConfigured()) return { processed: 0, reason: 'WhatsApp API not configured' };
   const campaign = await claimCampaign(now, campaignId);
-  if (!campaign) return { processed: 0 };
-  const summary = await processCampaign(campaign, now);
-  return { processed: 1, ...summary };
+  const summary = campaign ? { processed: 1, ...(await processCampaign(campaign, now)) } : { processed: 0 };
+  try {
+    const verdicts = await reconcileBhashStatuses(now);
+    if (verdicts.checked) summary.statusChecked = verdicts.checked;
+  } catch (err) {
+    console.warn('BhashSMS status reconcile failed:', err.message);
+  }
+  return summary;
 };
 
 let timer = null;
@@ -301,6 +370,7 @@ const stopWhatsAppSender = () => {
 
 module.exports = {
   runWhatsAppSenderTick,
+  reconcileBhashStatuses,
   startWhatsAppSender,
   stopWhatsAppSender,
   buildTemplateMessage,

@@ -4,6 +4,7 @@ const { BREAK_CRON_SECRET, WHATSAPP_CRON_SECRET } = require('../common/config/en
 const { runBreakSchedulerTick } = require('../services/breakScheduler');
 const { runWhatsAppSenderTick } = require('../whatsapp/sender');
 const { runSalonReminderTick } = require('../whatsapp/salonReminder');
+const { runGoogleReviewsSyncTick } = require('../google-reviews/sync');
 
 const router = express.Router();
 
@@ -60,6 +61,21 @@ router.post('/salon-reminders/tick', async (req, res) => {
     return res.status(200).json({ success: true, ...summary });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Salon reminder tick failed' });
+  }
+});
+
+// Google review sync, for serverless deployments. Syncs only when the last
+// sync is older than GOOGLE_REVIEWS_SYNC_MIN, so any cron cadence is safe.
+router.post('/google-reviews/tick', async (req, res) => {
+  if (!WHATSAPP_CRON_SECRET) return res.status(404).json({ success: false, message: 'Not found' });
+  if (!secretMatches(req.headers['x-cron-secret'], WHATSAPP_CRON_SECRET)) {
+    return res.status(401).json({ success: false, message: 'Invalid cron secret' });
+  }
+  try {
+    const summary = await runGoogleReviewsSyncTick(new Date());
+    return res.status(200).json({ success: true, ...summary });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Google reviews tick failed' });
   }
 });
 

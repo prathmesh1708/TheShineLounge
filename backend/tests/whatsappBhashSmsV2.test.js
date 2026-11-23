@@ -85,6 +85,22 @@ test.beforeEach(() => {
       };
     }
 
+    // Mock apiRequestStatus
+    if (u.includes('/customer/api/v1/campaign/apiRequestStatus')) {
+      const code = new URL(u).searchParams.get('requestCode');
+      const rejected = code === 'BSLBBAD1';
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          content: rejected
+            ? { requestCode: code, status: 'REJECTED', errorMessage: 'Missing template values: name' }
+            : { requestCode: code, status: 'SENT' }
+        })
+      };
+    }
+
     // Mock sendReply
     if (u.includes('/messages/sendReply')) {
       return {
@@ -169,6 +185,35 @@ test('BhashSMS V2 sends template messages with header and variables', async () =
     { variable: '2', value: 'INV-500' },
     { variable: '3', value: '1500' }
   ]);
+});
+
+test('BhashSMS V2 sends named variables under their placeholder name', async () => {
+  // "Hello {{name}}" templates (the expiry / reminder ones) were sent as
+  // variable "1" and rejected with "Missing template values: name".
+  await bhash.sendTemplate({
+    phones: ['9876543210'],
+    templateName: '7_days_expiry',
+    templateCode: 'TEMPLATE29988',
+    params: ['Manik'],
+    variableNames: ['name'],
+    media: { type: 'image', url: 'https://res.cloudinary.com/x/image/upload/a.jpg' }
+  });
+  const sendCall = calls.find((c) => c.url.includes('/customer/api/v1/campaign/sendMessage'));
+  assert.deepEqual(sendCall.body.values, [{ variable: 'name', value: 'Manik' }]);
+});
+
+test('templateVariableKeys follows the approved template placeholders', () => {
+  const { templateVariableKeys } = require('../src/whatsapp/render');
+  assert.deepEqual(templateVariableKeys('Hello {{name}}😊 ...', ['name']), ['name']);
+  assert.deepEqual(templateVariableKeys('Hello{{name}}, {{vehicle}} {{name}}', ['name', 'vehicle']), ['name', 'vehicle']);
+  assert.deepEqual(templateVariableKeys('Dear {{1}},\r\nInvoice {{2}}', ['name', 'invoiceNo']), ['1', '2']);
+  assert.deepEqual(templateVariableKeys('No variables here', []), []);
+});
+
+test('BhashSMS V2 reads the later verdict of an accepted request', async () => {
+  assert.deepEqual(await bhash.getRequestStatus('BSLBBAD1'), { status: 'REJECTED', errorMessage: 'Missing template values: name' });
+  assert.deepEqual(await bhash.getRequestStatus('BSLBGOOD'), { status: 'SENT', errorMessage: '' });
+  assert.equal(await bhash.getRequestStatus('DRYRUN.abc'), null);
 });
 
 test('BhashSMS V2 sends free-form messages via sendReply', async () => {

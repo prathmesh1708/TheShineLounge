@@ -64,6 +64,23 @@ const toPositional = (text, variableMap) =>
     return idx === -1 ? match : `{{${idx + 1}}}`;
   });
 
+// The key BhashSMS expects for each template parameter, in send order. It
+// must be the placeholder exactly as written in the approved template:
+// "Dear {{1}}" -> ['1'], "Hello {{name}}" -> ['name']. Sending '1' for a
+// {{name}} template is accepted by the API and then rejected with
+// "Missing template values: name".
+const POSITIONAL = /\{\{\s*(\d+)\s*\}\}/g;
+const templateVariableKeys = (body, variableMap = []) => {
+  const positions = (String(body || '').match(POSITIONAL) || []).map((m) => Number(m.replace(/\D/g, '')));
+  if (positions.length) return Array.from({ length: Math.max(...positions) }, (_v, i) => String(i + 1));
+  const named = [];
+  String(body || '').replace(PLACEHOLDER, (m, key) => {
+    if (!named.includes(key)) named.push(key);
+    return m;
+  });
+  return named.length ? named : variableMap.map((_k, i) => String(i + 1));
+};
+
 const SAMPLE_VARS = {
   name: 'Rahul Sharma',
   firstName: 'Rahul',
@@ -83,4 +100,4 @@ const SAMPLE_VARS = {
   services: 'Premium Foam Wash'
 };
 
-module.exports = { VARIABLES, FALLBACKS, SAMPLE_VARS, renderText, extractVariables, toPositional, valueFor };
+module.exports = { VARIABLES, FALLBACKS, SAMPLE_VARS, renderText, extractVariables, toPositional, templateVariableKeys, valueFor };
